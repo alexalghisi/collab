@@ -37,6 +37,12 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
+      - name: Pin Gradle wrapper version
+        working-directory: android
+        run: |
+          sed -i 's#gradle-[0-9.]*-bin.zip#gradle-9.4.1-bin.zip#' gradle/wrapper/gradle-wrapper.properties
+          grep distributionUrl gradle/wrapper/gradle-wrapper.properties
+
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
