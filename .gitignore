@@ -19,6 +19,7 @@ ios/
 # Desktop build artifacts
 desktop/dist/
 desktop/out/
+desktop/web/
 
 # Environment
 .env
