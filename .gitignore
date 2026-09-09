@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+desktop/node_modules/
+
+# Expo
+.expo/
+dist/
+dist-web/
+web-build/
+*.orig.*
+
+# Native
+android/
+ios/
+*.apk
+*.aab
+*.ipa
+
+# Desktop build artifacts
+desktop/dist/
+desktop/out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.pem

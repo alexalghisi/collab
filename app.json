@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Collab",
+    "slug": "collab",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "collab",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.alexalghisi.collab",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Collab uses the camera for video calls.",
+        "NSMicrophoneUsageDescription": "Collab uses the microphone for audio calls."
+      }
+    },
+    "android": {
+      "package": "com.alexalghisi.collab",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.INTERNET"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["@config-plugins/react-native-webrtc"],
+    "extra": {
+      "signalingUrl": "http://localhost:4000"
+    }
+  }
+}
