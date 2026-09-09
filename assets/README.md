@@ -1,8 +1,6 @@
 # Assets
 
-Place the following binary assets in this directory:
+This directory holds the app's visual assets:
 
-- `demo.gif` — a short screen recording of a Collab call, referenced at the top of the root `README.md`.
-- `icon.png` — 1024x1024 application icon used by Expo and the desktop packagers.
-
-These files are intentionally not committed as binaries in the scaffold.
+- `icon.png` — application icon used by Expo (iOS, Android adaptive icon, web favicon) and the desktop packagers.
+- `demo.png` — product shot referenced at the top of the root `README.md`. Replace it with a recorded `demo.gif` of a live call when available.

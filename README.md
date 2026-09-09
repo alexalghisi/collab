@@ -1,6 +1,6 @@
 # Collab
 
-![App Demo](./assets/demo.gif)
+![App Demo](./assets/demo.png)
 
 > Cross-platform video conferencing built with React Native, Expo, WebRTC, and a Node.js signaling server. One codebase ships to **macOS, Windows, iOS, and Android**.
 
