@@ -1,0 +1,9 @@
+node_modules
+dist-web
+desktop/dist
+desktop/build
+.expo
+android
+ios
+package-lock.json
+*.gif
