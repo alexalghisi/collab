@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Pressable,
   SafeAreaView,
@@ -10,16 +10,38 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useCollabSession } from './src/hooks/useCollabSession';
+import { useAuth } from './src/auth/useAuth';
 import { VideoTile } from './src/components/VideoTile';
+import { LoginScreen } from './src/components/LoginScreen';
 
 const SIGNALING_URL = process.env.EXPO_PUBLIC_SIGNALING_URL ?? 'http://localhost:4000';
 
 export default function App() {
+  const auth = useAuth();
   const session = useCollabSession(SIGNALING_URL);
   const [roomId, setRoomId] = useState('demo-room');
   const [displayName, setDisplayName] = useState('');
 
+  useEffect(() => {
+    const name = auth.user?.displayName;
+    if (name) {
+      setDisplayName((current) => current || name);
+    }
+  }, [auth.user]);
+
   const inCall = session.status === 'connecting' || session.status === 'connected';
+
+  if (auth.enabled && auth.initializing) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="light" />
+      </SafeAreaView>
+    );
+  }
+
+  if (auth.enabled && !auth.user) {
+    return <LoginScreen onSignIn={auth.signIn} error={auth.error} />;
+  }
 
   const handleJoin = (): void => {
     const room = roomId.trim();
@@ -64,6 +86,12 @@ export default function App() {
 
           {session.status === 'error' && (
             <Text style={styles.error}>Unable to reach the signaling server.</Text>
+          )}
+
+          {auth.enabled && auth.user && (
+            <Pressable style={styles.signOut} onPress={auth.signOut}>
+              <Text style={styles.signOutText}>Sign out ({auth.user.displayName})</Text>
+            </Pressable>
           )}
         </View>
       </SafeAreaView>
@@ -151,6 +179,14 @@ const styles = StyleSheet.create({
   error: {
     color: '#f87171',
     textAlign: 'center',
+  },
+  signOut: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  signOutText: {
+    color: '#9ca3af',
+    fontSize: 14,
   },
   header: {
     flexDirection: 'row',
