@@ -1,0 +1,44 @@
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS build profile
+        default: production
+        required: true
+
+jobs:
+  testflight:
+    name: Build and submit to TestFlight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail early when EXPO_TOKEN is missing
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::EXPO_TOKEN secret is not set. Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and submit to TestFlight
+        run: eas build --platform ios --profile ${{ inputs.profile }} --non-interactive --auto-submit
