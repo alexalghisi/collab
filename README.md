@@ -33,11 +33,12 @@ Prebuilt binaries are published automatically for every tagged release.
 1. Open the **[Releases](https://github.com/alexalghisi/collab/releases)** tab of this repository.
 2. Expand **Assets** on the latest release and download the file for your platform:
 
-| Platform | Asset                        | How to run                                                                                 |
-| -------- | ---------------------------- | ------------------------------------------------------------------------------------------ |
-| Android  | `collab-<version>.apk`       | Copy to an Android device and open it. Allow "install from unknown sources" when prompted. |
-| Windows  | `Collab-Setup-<version>.exe` | Run the installer and launch **Collab** from the Start menu.                               |
-| macOS    | `Collab-<version>.dmg`       | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
+| Platform              | Asset                        | How to run                                                                                 |
+| --------------------- | ---------------------------- | ------------------------------------------------------------------------------------------ |
+| Android               | `app-release.apk`            | Copy to an Android device and open it. Allow "install from unknown sources" when prompted. |
+| Windows               | `Collab.Setup.<version>.exe` | Run the installer and launch **Collab** from the Start menu.                               |
+| macOS (Apple Silicon) | `Collab-<version>-arm64.dmg` | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
+| macOS (Intel)         | `Collab-<version>-x64.dmg`   | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
 
 > The macOS and Windows builds are unsigned in this scaffold. On macOS, right-click the app and choose **Open** the first time to bypass Gatekeeper. On Windows, choose **More info -> Run anyway** on the SmartScreen prompt.
 
