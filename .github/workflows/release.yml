@@ -126,9 +126,48 @@ jobs:
           path: desktop/dist/*.dmg
           if-no-files-found: error
 
+  linux:
+    name: Build Linux packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Export web build
+        run: npm run export:web
+
+      - name: Stage web build for desktop
+        run: npm run desktop:web
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Package Linux binaries
+        working-directory: desktop
+        run: npm run dist:linux
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: collab-linux
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: [android, windows, macos]
+    needs: [android, windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -145,3 +184,5 @@ jobs:
             artifacts/collab-android/*.apk
             artifacts/collab-windows/*.exe
             artifacts/collab-macos/*.dmg
+            artifacts/collab-linux/*.AppImage
+            artifacts/collab-linux/*.deb
