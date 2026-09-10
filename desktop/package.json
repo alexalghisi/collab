@@ -1,9 +1,12 @@
 {
   "name": "collab-desktop",
   "version": "1.0.0",
-  "description": "Electron desktop shell that packages the Collab web build into native macOS and Windows binaries.",
+  "description": "Electron desktop shell that packages the Collab web build into native macOS, Windows, and Linux binaries.",
   "license": "MIT",
-  "author": "Alex Alghisi",
+  "author": {
+    "name": "Alex Alghisi",
+    "email": "alexalghisi@gmail.com"
+  },
   "main": "main.js",
   "private": true,
   "repository": {
