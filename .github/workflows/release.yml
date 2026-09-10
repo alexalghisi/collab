@@ -126,6 +126,55 @@ jobs:
           path: desktop/dist/*.dmg
           if-no-files-found: error
 
+  ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+
+      - name: Build unsigned archive
+        working-directory: ios
+        run: |
+          SCHEME=$(basename ./*.xcworkspace .xcworkspace)
+          xcodebuild archive \
+            -workspace "$SCHEME.xcworkspace" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/$SCHEME.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package unsigned IPA
+        run: |
+          APP=$(ls -d "$RUNNER_TEMP"/*.xcarchive/Products/Applications/*.app | head -1)
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/Payload/"
+          (cd "$RUNNER_TEMP" && zip -qry "$GITHUB_WORKSPACE/Collab-unsigned.ipa" Payload)
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: collab-ios
+          path: Collab-unsigned.ipa
+          if-no-files-found: error
+
   linux:
     name: Build Linux packages
     runs-on: ubuntu-latest
@@ -167,7 +216,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [android, windows, macos, linux]
+    needs: [android, ios, windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -182,6 +231,7 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/collab-android/*.apk
+            artifacts/collab-ios/*.ipa
             artifacts/collab-windows/*.exe
             artifacts/collab-macos/*.dmg
             artifacts/collab-linux/*.AppImage
