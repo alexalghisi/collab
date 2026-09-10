@@ -39,6 +39,8 @@ Prebuilt binaries are published automatically for every tagged release.
 | Windows               | `Collab.Setup.<version>.exe` | Run the installer and launch **Collab** from the Start menu.                               |
 | macOS (Apple Silicon) | `Collab-<version>-arm64.dmg` | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
 | macOS (Intel)         | `Collab-<version>-x64.dmg`   | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
+| Linux (AppImage)      | `Collab-<version>.AppImage`  | `chmod +x` the file, then run it. Works on most distributions.                             |
+| Linux (Debian/Ubuntu) | `Collab-<version>.deb`       | Install with `sudo dpkg -i Collab-<version>.deb`, then launch **Collab**.                  |
 
 > The macOS and Windows builds are unsigned in this scaffold. On macOS, right-click the app and choose **Open** the first time to bypass Gatekeeper. On Windows, choose **More info -> Run anyway** on the SmartScreen prompt.
 
@@ -196,7 +198,8 @@ git push origin v1.0.0
 | ------- | ---------------- | -------------------------------------------- |
 | Android | `ubuntu-latest`  | `.apk` via `expo prebuild` + Gradle          |
 | Windows | `windows-latest` | `.exe` installer via Electron Builder (NSIS) |
-| macOS   | `macos-latest`   | `.dmg` via Electron Builder                  |
+| macOS   | `macos-latest`   | `.dmg` (arm64 + x64) via Electron Builder    |
+| Linux   | `ubuntu-latest`  | `.AppImage` and `.deb` via Electron Builder  |
 
 > The Android job signs the release APK with the debug keystore for a zero-config demo. For production, add a release keystore and configure `android/app/build.gradle` signing plus repository secrets.
 
