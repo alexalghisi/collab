@@ -36,6 +36,7 @@ Prebuilt binaries are published automatically for every tagged release.
 | Platform              | Asset                        | How to run                                                                                 |
 | --------------------- | ---------------------------- | ------------------------------------------------------------------------------------------ |
 | Android               | `app-release.apk`            | Copy to an Android device and open it. Allow "install from unknown sources" when prompted. |
+| iOS                   | `Collab-unsigned.ipa`        | Unsigned build — install by sideloading (AltStore / Sideloadly) or use TestFlight (below). |
 | Windows               | `Collab.Setup.<version>.exe` | Run the installer and launch **Collab** from the Start menu.                               |
 | macOS (Apple Silicon) | `Collab-<version>-arm64.dmg` | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
 | macOS (Intel)         | `Collab-<version>-x64.dmg`   | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
@@ -44,7 +45,7 @@ Prebuilt binaries are published automatically for every tagged release.
 
 > The macOS and Windows builds are unsigned in this scaffold. On macOS, right-click the app and choose **Open** the first time to bypass Gatekeeper. On Windows, choose **More info -> Run anyway** on the SmartScreen prompt.
 
-iOS is distributed through TestFlight — see [iOS distribution](#ios-distribution-eas--testflight).
+iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloaded `.ipa` directly, so it must be sideloaded (AltStore / Sideloadly) or, for the signed route, installed via TestFlight — see [iOS distribution](#ios-distribution-eas--testflight).
 
 ---
 
@@ -207,7 +208,9 @@ git push origin v1.0.0
 
 ## iOS distribution (EAS / TestFlight)
 
-Apple does not permit sideloading `.ipa` files, so iOS is not published to the Releases tab. Distribute through Expo Application Services (EAS) and TestFlight instead:
+The Releases tab includes an **unsigned** `Collab-unsigned.ipa` built by CI. Because Apple requires every iOS app to be signed, that file cannot be installed by simply downloading it — install it by sideloading with [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io), which re-sign it with your own Apple ID on device.
+
+For a signed, shareable build (recommended for reviewers), distribute through Expo Application Services (EAS) and TestFlight:
 
 ```bash
 npm install -g eas-cli
