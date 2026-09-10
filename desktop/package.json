@@ -12,7 +12,7 @@
   },
   "scripts": {
     "start": "electron .",
-    "dist:mac": "electron-builder --mac dmg --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
     "dist:win": "electron-builder --win nsis --publish never"
   },
   "devDependencies": {
