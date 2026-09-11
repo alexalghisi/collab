@@ -1,19 +1,25 @@
 import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import {
+  DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
   type ClientToServerEvents,
   type PeerInfo,
   type PeerState,
+  type RoomSettings,
   type ServerToClientEvents,
   type Stroke,
+  type WaitingPeer,
 } from '../../src/signaling/events';
 
 export interface SocketData {
+  sessionId?: string;
   roomId?: string;
   displayName?: string;
   joinedAt?: number;
   state?: PeerState;
+  /** Set while the socket sits in a waiting room instead of the room itself. */
+  waitingFor?: string;
 }
 
 export type CollabServer = Server<
@@ -35,14 +41,28 @@ interface RoomState {
   hostPeerId: string;
   strokes: Stroke[];
   notes: string;
+  settings: RoomSettings;
+  waiting: Map<string, WaitingPeer>;
+  /** Sessions that passed the waiting room (or joined before it was enabled). */
+  admitted: Set<string>;
 }
 
 const rooms = new Map<string, RoomState>();
 
+/** Socket.IO channel grouping the participants of a room's breakout rooms. */
+const breakoutChannel = (mainRoomId: string) => `${mainRoomId}:breakout`;
+
 function roomOf(roomId: string, firstPeerId: string): RoomState {
   let room = rooms.get(roomId);
   if (!room) {
-    room = { hostPeerId: firstPeerId, strokes: [], notes: '' };
+    room = {
+      hostPeerId: firstPeerId,
+      strokes: [],
+      notes: '',
+      settings: DEFAULT_ROOM_SETTINGS,
+      waiting: new Map(),
+      admitted: new Set(),
+    };
     rooms.set(roomId, room);
   }
   return room;
@@ -64,6 +84,36 @@ async function listRoomPeers(
     }));
 }
 
+function notifyWaitingList(io: CollabServer, room: RoomState): void {
+  io.to(room.hostPeerId).emit('waiting:update', [...room.waiting.values()]);
+}
+
+async function admit(io: CollabServer, socket: CollabServerSocket, roomId: string): Promise<void> {
+  const joinedAt = Date.now();
+  socket.data.joinedAt = joinedAt;
+  socket.data.waitingFor = undefined;
+  socket.data.roomId = roomId;
+  const { displayName = 'Guest', state = INITIAL_PEER_STATE } = socket.data;
+
+  const peers = await listRoomPeers(io, roomId, socket.id);
+  await socket.join(roomId);
+  const room = roomOf(roomId, socket.id);
+  if (socket.data.sessionId) {
+    room.admitted.add(socket.data.sessionId);
+  }
+
+  socket.emit('room:joined', {
+    selfPeerId: socket.id,
+    selfJoinedAt: joinedAt,
+    hostPeerId: room.hostPeerId,
+    peers,
+    strokes: room.strokes,
+    notes: room.notes,
+    settings: room.settings,
+  });
+  socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
+}
+
 async function handleLeave(io: CollabServer, roomId: string, peerId: string): Promise<void> {
   const room = rooms.get(roomId);
   const remaining = await listRoomPeers(io, roomId, peerId);
@@ -75,33 +125,76 @@ async function handleLeave(io: CollabServer, roomId: string, peerId: string): Pr
     const [next] = [...remaining].sort((a, b) => a.joinedAt - b.joinedAt);
     room.hostPeerId = next.peerId;
     io.to(roomId).emit('room:host', next.peerId);
+    notifyWaitingList(io, room);
   }
 }
 
 function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
   const currentRoom = (): RoomState | undefined =>
     socket.data.roomId ? rooms.get(socket.data.roomId) : undefined;
+  const hostedRoom = (): RoomState | undefined => {
+    const room = currentRoom();
+    return room?.hostPeerId === socket.id ? room : undefined;
+  };
 
-  socket.on('room:join', async ({ roomId, displayName, state }) => {
-    const joinedAt = Date.now();
-    socket.data.roomId = roomId;
+  socket.on('room:join', async ({ sessionId, roomId, displayName, state, breakoutOf }) => {
+    socket.data.sessionId = sessionId;
     socket.data.displayName = displayName;
-    socket.data.joinedAt = joinedAt;
     socket.data.state = state;
+    if (breakoutOf) {
+      await socket.join(breakoutChannel(breakoutOf));
+    }
 
-    const peers = await listRoomPeers(io, roomId, socket.id);
-    await socket.join(roomId);
-    const room = roomOf(roomId, socket.id);
+    const room = rooms.get(roomId);
+    if (room && room.settings.waitingRoom && !room.admitted.has(sessionId)) {
+      socket.data.waitingFor = roomId;
+      room.waiting.set(socket.id, { peerId: socket.id, displayName });
+      socket.emit('room:waiting');
+      notifyWaitingList(io, room);
+      return;
+    }
+    await admit(io, socket, roomId);
+  });
 
-    socket.emit('room:joined', {
-      selfPeerId: socket.id,
-      selfJoinedAt: joinedAt,
-      hostPeerId: room.hostPeerId,
-      peers,
-      strokes: room.strokes,
-      notes: room.notes,
-    });
-    socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
+  socket.on('waiting:decide', async ({ peerId, admit: shouldAdmit }) => {
+    const room = hostedRoom();
+    const target = io.sockets.sockets.get(peerId);
+    if (!room || !socket.data.roomId || !room.waiting.delete(peerId) || !target) {
+      return;
+    }
+    notifyWaitingList(io, room);
+    if (shouldAdmit) {
+      await admit(io, target, socket.data.roomId);
+    } else {
+      target.data.waitingFor = undefined;
+      target.emit('room:denied');
+    }
+  });
+
+  socket.on('room:settings', (settings) => {
+    const room = hostedRoom();
+    const roomId = socket.data.roomId;
+    if (!room || !roomId) {
+      return;
+    }
+    const closingBreakouts = room.settings.breakoutOpen && !settings.breakoutOpen;
+    room.settings = settings;
+    io.to(roomId).emit('room:settings', settings);
+    if (closingBreakouts) {
+      io.to(breakoutChannel(roomId)).emit('host:command', { action: 'move', roomId });
+    }
+  });
+
+  socket.on('host:command', ({ targetPeerId, command }) => {
+    const roomId = socket.data.roomId;
+    if (!hostedRoom() || !roomId) {
+      return;
+    }
+    if (targetPeerId === null) {
+      socket.to(roomId).emit('host:command', command);
+    } else {
+      io.to(targetPeerId).emit('host:command', command);
+    }
   });
 
   socket.on('peer:state', (state) => {
@@ -162,7 +255,11 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
   });
 
   socket.on('disconnect', async () => {
-    const { roomId } = socket.data;
+    const { roomId, waitingFor } = socket.data;
+    const waitingRoom = waitingFor ? rooms.get(waitingFor) : undefined;
+    if (waitingRoom?.waiting.delete(socket.id)) {
+      notifyWaitingList(io, waitingRoom);
+    }
     if (!roomId) {
       return;
     }
