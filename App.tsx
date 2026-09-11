@@ -14,6 +14,7 @@ import { TeamChatScreen } from './src/components/chat/TeamChatScreen';
 import { HomeScreen } from './src/components/home/HomeScreen';
 import { LoginScreen } from './src/components/LoginScreen';
 import { MeetingScreen } from './src/components/meeting/MeetingScreen';
+import { WaitingScreen } from './src/components/meeting/WaitingScreen';
 import { MeetingsScreen } from './src/components/meetings/MeetingsScreen';
 import { ScheduleMeetingScreen } from './src/components/meetings/ScheduleMeetingScreen';
 import { AppShell } from './src/components/shell/AppShell';
@@ -39,7 +40,8 @@ export default function App() {
     }
   }, [auth.user]);
 
-  const inMeeting = session.status === 'connected';
+  // Stays true while moving between a room and its breakout rooms.
+  const inMeeting = session.roomId !== null;
 
   useEffect(() => {
     syncRoomInLink(inMeeting ? roomId : null);
@@ -86,6 +88,15 @@ export default function App() {
 
   if (auth.enabled && !auth.user) {
     return <LoginScreen onSignIn={auth.signIn} error={auth.error} />;
+  }
+
+  if (session.status === 'waiting') {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="light" />
+        <WaitingScreen roomId={roomId.trim()} onLeave={session.leave} />
+      </SafeAreaView>
+    );
   }
 
   if (inMeeting) {
