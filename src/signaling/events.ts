@@ -43,11 +43,24 @@ export interface ChatMessage {
   readonly sentAt: number;
 }
 
+/** One freehand line on the shared whiteboard. */
+export interface Stroke {
+  readonly id: string;
+  readonly peerId: string;
+  readonly color: string;
+  readonly width: number;
+  /** Flat x,y pairs normalised to 0..1 so every screen size renders the same drawing. */
+  readonly points: number[];
+}
+
 export interface RoomJoinedPayload {
   readonly selfPeerId: string;
   readonly selfJoinedAt: number;
   readonly hostPeerId: string;
   readonly peers: PeerInfo[];
+  /** Whiteboard content so far; transports that stream strokes send an empty list here. */
+  readonly strokes: Stroke[];
+  readonly notes: string;
 }
 
 export interface OutgoingSdpPayload {
@@ -77,6 +90,9 @@ export interface ClientToServerEvents {
   'signal:ice': (payload: OutgoingIcePayload) => void;
   'peer:state': (state: PeerState) => void;
   'chat:message': (text: string) => void;
+  'board:stroke': (stroke: Stroke) => void;
+  'board:remove': (strokeIds: string[]) => void;
+  'notes:update': (text: string) => void;
 }
 
 export interface ServerToClientEvents {
@@ -89,4 +105,7 @@ export interface ServerToClientEvents {
   'signal:answer': (payload: IncomingSdpPayload) => void;
   'signal:ice': (payload: IncomingIcePayload) => void;
   'chat:message': (message: ChatMessage) => void;
+  'board:stroke': (stroke: Stroke) => void;
+  'board:remove': (strokeIds: string[]) => void;
+  'notes:update': (text: string) => void;
 }

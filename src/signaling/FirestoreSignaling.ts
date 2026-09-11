@@ -9,13 +9,14 @@ import {
   runTransaction,
   setDoc,
   updateDoc,
+  writeBatch,
   type CollectionReference,
   type DocumentReference,
   type Firestore,
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
-import type { ChatMessage, PeerInfo, PeerState } from './events';
+import type { ChatMessage, PeerInfo, PeerState, Stroke } from './events';
 import {
   SignalingEmitter,
   type OutgoingEvent,
@@ -33,6 +34,7 @@ interface ParticipantDoc {
 
 interface RoomDoc {
   readonly hostPeerId: string;
+  readonly notes?: string;
 }
 
 type SignalType = 'offer' | 'answer' | 'ice';
@@ -72,6 +74,7 @@ class FirestoreChannel implements SignalingChannel {
   private readonly room: DocumentReference;
   private readonly participants: CollectionReference;
   private readonly messages: CollectionReference;
+  private readonly strokes: CollectionReference;
   private readonly unsubscribers: Unsubscribe[] = [];
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private joinedAt = 0;
@@ -99,7 +102,23 @@ class FirestoreChannel implements SignalingChannel {
       };
       void addDoc(this.messages, message);
     },
+    'board:stroke': (stroke) => {
+      void setDoc(doc(this.strokes, stroke.id), stroke);
+    },
+    'board:remove': (strokeIds) => {
+      const batch = writeBatch(this.room.firestore);
+      for (const id of strokeIds) {
+        batch.delete(doc(this.strokes, id));
+      }
+      void batch.commit();
+    },
+    'notes:update': (notes) => {
+      this.lastSentNotes = notes;
+      void setDoc(this.room, { notes }, { merge: true });
+    },
   };
+  /** Our own notes writes echo back through the room snapshot; they must not overwrite newer typing. */
+  private lastSentNotes: string | null = null;
 
   constructor(
     db: Firestore,
@@ -110,6 +129,7 @@ class FirestoreChannel implements SignalingChannel {
     this.room = doc(db, 'rooms', roomId);
     this.participants = collection(this.room, 'participants');
     this.messages = collection(this.room, 'messages');
+    this.strokes = collection(this.room, 'strokes');
   }
 
   on: SignalingChannel['on'] = (event, handler) => {
@@ -129,17 +149,19 @@ class FirestoreChannel implements SignalingChannel {
       state: this.initialState,
     };
     await setDoc(this.selfRef(), self);
-    const hostPeerId = await this.claimHostIfVacant();
+    const room = await this.claimHostIfVacant();
 
     this.heartbeat = setInterval(() => {
       void updateDoc(this.selfRef(), { lastSeen: Date.now() });
     }, HEARTBEAT_MS);
     this.subscribeInbox();
-    this.subscribeHost();
+    this.subscribeRoom();
     this.subscribeMessages();
     this.pageHide.attach();
 
-    await this.subscribeParticipants(hostPeerId);
+    await this.subscribeParticipants(room);
+    // After room:joined, so the existing drawing streams in as board:stroke events.
+    this.subscribeStrokes();
   }
 
   disconnect(): void {
@@ -178,22 +200,24 @@ class FirestoreChannel implements SignalingChannel {
     void addDoc(this.inboxOf(targetPeerId), signal);
   }
 
-  private async claimHostIfVacant(): Promise<string> {
+  /** Returns the room document as it stands after joining: current host and shared notes. */
+  private async claimHostIfVacant(): Promise<Required<RoomDoc>> {
     return runTransaction(this.room.firestore, async (transaction) => {
       const room = await transaction.get(this.room);
-      const currentHost = (room.data() as RoomDoc | undefined)?.hostPeerId;
-      if (currentHost) {
-        const hostDoc = await transaction.get(doc(this.participants, currentHost));
+      const data = room.data() as RoomDoc | undefined;
+      const notes = data?.notes ?? '';
+      if (data?.hostPeerId) {
+        const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
-          return currentHost;
+          return { hostPeerId: data.hostPeerId, notes };
         }
       }
-      transaction.set(this.room, { hostPeerId: this.peerId } satisfies RoomDoc, { merge: true });
-      return this.peerId;
+      transaction.set(this.room, { hostPeerId: this.peerId }, { merge: true });
+      return { hostPeerId: this.peerId, notes };
     });
   }
 
-  private subscribeParticipants(hostPeerId: string): Promise<void> {
+  private subscribeParticipants({ hostPeerId, notes }: Required<RoomDoc>): Promise<void> {
     return new Promise((resolve, reject) => {
       let initial = true;
       const unsubscribe = onSnapshot(
@@ -219,6 +243,8 @@ class FirestoreChannel implements SignalingChannel {
               selfJoinedAt: this.joinedAt,
               hostPeerId,
               peers,
+              strokes: [],
+              notes,
             });
             resolve();
             return;
@@ -243,11 +269,32 @@ class FirestoreChannel implements SignalingChannel {
     });
   }
 
-  private subscribeHost(): void {
+  private subscribeRoom(): void {
     const unsubscribe = onSnapshot(this.room, (snapshot) => {
-      const host = (snapshot.data() as RoomDoc | undefined)?.hostPeerId;
-      if (host) {
-        this.emitter.dispatch('room:host', host);
+      const data = snapshot.data() as RoomDoc | undefined;
+      if (data?.hostPeerId) {
+        this.emitter.dispatch('room:host', data.hostPeerId);
+      }
+      const notes = data?.notes ?? '';
+      if (notes !== this.lastSentNotes) {
+        this.emitter.dispatch('notes:update', notes);
+      }
+    });
+    this.unsubscribers.push(unsubscribe);
+  }
+
+  private subscribeStrokes(): void {
+    const unsubscribe = onSnapshot(this.strokes, (snapshot) => {
+      const removed: string[] = [];
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'added') {
+          this.emitter.dispatch('board:stroke', change.doc.data() as Stroke);
+        } else if (change.type === 'removed') {
+          removed.push(change.doc.id);
+        }
+      }
+      if (removed.length > 0) {
+        this.emitter.dispatch('board:remove', removed);
       }
     });
     this.unsubscribers.push(unsubscribe);
