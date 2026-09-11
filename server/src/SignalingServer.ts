@@ -1,14 +1,18 @@
+import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
-import type {
-  ClientToServerEvents,
-  PeerInfo,
-  ServerToClientEvents,
+import {
+  INITIAL_PEER_STATE,
+  type ClientToServerEvents,
+  type PeerInfo,
+  type PeerState,
+  type ServerToClientEvents,
 } from '../../src/signaling/events';
 
 export interface SocketData {
   roomId?: string;
   displayName?: string;
   joinedAt?: number;
+  state?: PeerState;
 }
 
 export type CollabServer = Server<
@@ -39,6 +43,7 @@ async function listRoomPeers(
       peerId: peer.id,
       displayName: peer.data.displayName ?? 'Guest',
       joinedAt: peer.data.joinedAt ?? 0,
+      state: peer.data.state ?? INITIAL_PEER_STATE,
     }));
 }
 
@@ -54,11 +59,12 @@ async function reassignHost(io: CollabServer, roomId: string): Promise<void> {
 }
 
 function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
-  socket.on('room:join', async ({ roomId, displayName }) => {
+  socket.on('room:join', async ({ roomId, displayName, state }) => {
     const joinedAt = Date.now();
     socket.data.roomId = roomId;
     socket.data.displayName = displayName;
     socket.data.joinedAt = joinedAt;
+    socket.data.state = state;
 
     const peers = await listRoomPeers(io, roomId, socket.id);
     await socket.join(roomId);
@@ -72,7 +78,28 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
       hostPeerId,
       peers,
     });
-    socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt });
+    socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
+  });
+
+  socket.on('peer:state', (state) => {
+    const { roomId } = socket.data;
+    if (roomId) {
+      socket.data.state = state;
+      socket.to(roomId).emit('peer:state', { peerId: socket.id, state });
+    }
+  });
+
+  socket.on('chat:message', (text) => {
+    const { roomId, displayName } = socket.data;
+    if (roomId) {
+      io.to(roomId).emit('chat:message', {
+        id: randomUUID(),
+        peerId: socket.id,
+        displayName: displayName ?? 'Guest',
+        text,
+        sentAt: Date.now(),
+      });
+    }
   });
 
   socket.on('signal:offer', ({ targetPeerId, description }) => {

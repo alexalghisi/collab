@@ -1,7 +1,8 @@
-import type { ClientToServerEvents, ServerToClientEvents } from './events';
+import type { ClientToServerEvents, PeerState, ServerToClientEvents } from './events';
 
 /** Events a client may send once it is inside a room. */
 export type OutgoingEvent = Exclude<keyof ClientToServerEvents, 'room:join'>;
+export type OutgoingPayload<E extends OutgoingEvent> = Parameters<ClientToServerEvents[E]>[0];
 
 /**
  * Transport-agnostic signaling contract. Handlers are registered before
@@ -9,7 +10,7 @@ export type OutgoingEvent = Exclude<keyof ClientToServerEvents, 'room:join'>;
  */
 export interface SignalingChannel {
   on<E extends keyof ServerToClientEvents>(event: E, handler: ServerToClientEvents[E]): void;
-  emit<E extends OutgoingEvent>(event: E, payload: Parameters<ClientToServerEvents[E]>[0]): void;
+  emit<E extends OutgoingEvent>(event: E, payload: OutgoingPayload<E>): void;
   connect(): Promise<void>;
   disconnect(): void;
 }
@@ -17,6 +18,7 @@ export interface SignalingChannel {
 export interface SignalingOptions {
   readonly roomId: string;
   readonly displayName: string;
+  readonly state: PeerState;
 }
 
 export type SignalingFactory = (options: SignalingOptions) => SignalingChannel;
