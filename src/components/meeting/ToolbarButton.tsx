@@ -1,9 +1,7 @@
-import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme';
-
-export type IconName = ComponentProps<typeof Ionicons>['name'];
+import type { IconName } from '../ui/icons';
 
 export interface ToolbarButtonProps {
   icon: IconName;

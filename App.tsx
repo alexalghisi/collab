@@ -4,15 +4,28 @@ import { StatusBar } from 'expo-status-bar';
 import { useCollabSession } from './src/hooks/useCollabSession';
 import { useAuth } from './src/auth/useAuth';
 import { createSignaling } from './src/signaling';
+import { nextHalfHour } from './src/meeting/calendar';
 import { readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
-import { Lobby } from './src/components/Lobby';
+import type { Meeting, MeetingDraft } from './src/meeting/types';
+import { useMeetings } from './src/meeting/useMeetings';
+import { CalendarScreen } from './src/components/calendar/CalendarScreen';
+import { HomeScreen } from './src/components/home/HomeScreen';
 import { LoginScreen } from './src/components/LoginScreen';
 import { MeetingScreen } from './src/components/meeting/MeetingScreen';
+import { MeetingsScreen } from './src/components/meetings/MeetingsScreen';
+import { ScheduleMeetingScreen } from './src/components/meetings/ScheduleMeetingScreen';
+import { AppShell } from './src/components/shell/AppShell';
+import type { Section } from './src/components/shell/sections';
 import { colors } from './src/theme';
+
+type View = Section | 'schedule';
 
 export default function App() {
   const auth = useAuth();
   const session = useCollabSession(createSignaling);
+  const meetings = useMeetings(auth.user?.uid ?? 'guest');
+  const [view, setView] = useState<View>('home');
+  const [scheduleStart, setScheduleStart] = useState(() => nextHalfHour());
   const [roomId, setRoomId] = useState(() => readRoomFromLink() ?? '');
   const [displayName, setDisplayName] = useState('');
 
@@ -29,6 +42,37 @@ export default function App() {
     syncRoomInLink(inMeeting ? roomId : null);
   }, [inMeeting, roomId]);
 
+  const joinRoom = async (nextRoomId: string, video: boolean) => {
+    setRoomId(nextRoomId);
+    setView('home');
+    const joined = await session.join({
+      roomId: nextRoomId,
+      displayName: displayName.trim(),
+      video,
+    });
+    if (joined) {
+      await meetings.recordInstant(nextRoomId);
+    }
+  };
+
+  const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
+  const deleteMeeting = (meeting: Meeting) => void meetings.remove(meeting.id);
+
+  /** Opens the form at the next half hour, on `day` when one was picked in the calendar. */
+  const openSchedule = (day?: Date) => {
+    const start = nextHalfHour();
+    if (day) {
+      start.setFullYear(day.getFullYear(), day.getMonth(), day.getDate());
+    }
+    setScheduleStart(start);
+    setView('schedule');
+  };
+
+  const saveMeeting = (draft: MeetingDraft) => {
+    void meetings.schedule(draft);
+    setView('meetings');
+  };
+
   if (auth.enabled && auth.initializing) {
     return (
       <SafeAreaView style={styles.screen}>
@@ -41,26 +85,63 @@ export default function App() {
     return <LoginScreen onSignIn={auth.signIn} error={auth.error} />;
   }
 
+  if (inMeeting) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <StatusBar style="light" />
+        <MeetingScreen session={session} roomId={roomId.trim()} displayName={displayName.trim()} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="light" />
-      {inMeeting ? (
-        <MeetingScreen session={session} roomId={roomId.trim()} displayName={displayName.trim()} />
-      ) : (
-        <Lobby
-          displayName={displayName}
-          onDisplayNameChange={setDisplayName}
-          roomId={roomId}
-          onRoomIdChange={setRoomId}
-          onJoin={(video) =>
-            void session.join({ roomId: roomId.trim(), displayName: displayName.trim(), video })
-          }
-          connecting={session.status === 'connecting'}
-          error={session.error}
-          user={auth.user}
-          onSignOut={() => void auth.signOut()}
-        />
-      )}
+      <AppShell
+        section={view === 'schedule' ? 'meetings' : view}
+        onSelect={setView}
+        user={auth.user}
+        onSignOut={() => void auth.signOut()}
+      >
+        {view === 'home' && (
+          <HomeScreen
+            displayName={displayName}
+            onDisplayNameChange={setDisplayName}
+            roomId={roomId}
+            onRoomIdChange={setRoomId}
+            onJoin={(nextRoomId, video) => void joinRoom(nextRoomId, video)}
+            onSchedule={() => openSchedule()}
+            connecting={session.status === 'connecting'}
+            error={session.error}
+            meetings={meetings.meetings}
+            onStartMeeting={startMeeting}
+            onDeleteMeeting={deleteMeeting}
+          />
+        )}
+        {view === 'meetings' && (
+          <MeetingsScreen
+            meetings={meetings.meetings}
+            onStart={startMeeting}
+            onDelete={deleteMeeting}
+            onSchedule={() => openSchedule()}
+          />
+        )}
+        {view === 'calendar' && (
+          <CalendarScreen
+            meetings={meetings.meetings}
+            onStart={startMeeting}
+            onDelete={deleteMeeting}
+            onSchedule={openSchedule}
+          />
+        )}
+        {view === 'schedule' && (
+          <ScheduleMeetingScreen
+            initialStart={scheduleStart}
+            onSave={saveMeeting}
+            onCancel={() => setView('meetings')}
+          />
+        )}
+      </AppShell>
     </SafeAreaView>
   );
 }
