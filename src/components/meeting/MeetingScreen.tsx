@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
@@ -14,9 +14,11 @@ import { INVITE_ACTION_LABEL, shareInvite } from '../../meeting/invite';
 import { colors } from '../../theme';
 import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
+import { NotesPanel } from './NotesPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
 import { ToolbarButton } from './ToolbarButton';
+import { Whiteboard } from './Whiteboard';
 
 export interface MeetingScreenProps {
   session: CollabSession;
@@ -24,10 +26,12 @@ export interface MeetingScreenProps {
   displayName: string;
 }
 
-type Panel = 'participants' | 'chat' | null;
+type Panel = 'participants' | 'chat' | 'notes' | null;
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
 const PANEL_WIDTH = 340;
+/** Tile width in the strip shown above the whiteboard. */
+const STRIP_TILE_WIDTH = 180;
 const CAN_SHARE_SCREEN = Platform.OS === 'web';
 
 function columnsFor(tileCount: number, width: number): number {
@@ -42,6 +46,7 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
   const { width } = useWindowDimensions();
   const [panel, setPanel] = useState<Panel>(null);
   const [reactionsOpen, setReactionsOpen] = useState(false);
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const [readCount, setReadCount] = useState(0);
   const [inviteDone, setInviteDone] = useState(false);
 
@@ -84,6 +89,28 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
     })),
   ];
 
+  const tiles: Array<[string, ReactNode]> = [
+    [
+      'self',
+      <VideoTile
+        label={`${displayName} (You)`}
+        state={session.self}
+        stream={session.localStream ?? undefined}
+        isHost={session.hostPeerId === session.selfPeerId}
+        mirror
+      />,
+    ],
+    ...session.participants.map((participant): [string, ReactNode] => [
+      participant.peerId,
+      <VideoTile
+        label={participant.displayName}
+        state={participant.state}
+        stream={participant.stream}
+        isHost={participant.peerId === session.hostPeerId}
+      />,
+    ]),
+  ];
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -104,37 +131,49 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
       </View>
 
       <View style={styles.body}>
-        <ScrollView contentContainerStyle={styles.grid}>
-          <View style={[styles.cell, { width: cellWidth }]}>
-            <VideoTile
-              label={`${displayName} (You)`}
-              state={session.self}
-              stream={session.localStream ?? undefined}
-              isHost={session.hostPeerId === session.selfPeerId}
-              mirror
+        {whiteboardOpen ? (
+          <View style={styles.stage}>
+            <ScrollView horizontal style={styles.stripScroll} contentContainerStyle={styles.strip}>
+              {tiles.map(([key, tile]) => (
+                <View key={key} style={[styles.cell, { width: STRIP_TILE_WIDTH }]}>
+                  {tile}
+                </View>
+              ))}
+            </ScrollView>
+            <Whiteboard
+              strokes={session.strokes}
+              selfPeerId={session.selfPeerId}
+              onAddStroke={session.addStroke}
+              onRemoveStrokes={session.removeStrokes}
             />
           </View>
-          {session.participants.map((participant) => (
-            <View key={participant.peerId} style={[styles.cell, { width: cellWidth }]}>
-              <VideoTile
-                label={participant.displayName}
-                state={participant.state}
-                stream={participant.stream}
-                isHost={participant.peerId === session.hostPeerId}
-              />
-            </View>
-          ))}
-        </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={styles.grid}>
+            {tiles.map(([key, tile]) => (
+              <View key={key} style={[styles.cell, { width: cellWidth }]}>
+                {tile}
+              </View>
+            ))}
+          </ScrollView>
+        )}
 
         {panel && (
           <View style={wide ? styles.sidePanel : styles.overlayPanel}>
-            {panel === 'participants' ? (
+            {panel === 'participants' && (
               <ParticipantsPanel rows={rows} onClose={() => setPanel(null)} />
-            ) : (
+            )}
+            {panel === 'chat' && (
               <ChatPanel
                 messages={session.messages}
                 selfPeerId={session.selfPeerId}
                 onSend={session.sendMessage}
+                onClose={() => setPanel(null)}
+              />
+            )}
+            {panel === 'notes' && (
+              <NotesPanel
+                notes={session.notes}
+                onChange={session.updateNotes}
                 onClose={() => setPanel(null)}
               />
             )}
@@ -184,6 +223,18 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
           label="React"
           active={reactionsOpen}
           onPress={() => setReactionsOpen((open) => !open)}
+        />
+        <ToolbarButton
+          icon="brush"
+          label="Whiteboard"
+          active={whiteboardOpen}
+          onPress={() => setWhiteboardOpen((open) => !open)}
+        />
+        <ToolbarButton
+          icon="document-text-outline"
+          label="Notes"
+          active={panel === 'notes'}
+          onPress={() => togglePanel('notes')}
         />
         <ToolbarButton
           icon="people"
@@ -245,6 +296,16 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     flexDirection: 'row',
+  },
+  stage: {
+    flex: 1,
+  },
+  stripScroll: {
+    flexGrow: 0,
+  },
+  strip: {
+    paddingHorizontal: 6,
+    paddingTop: 6,
   },
   grid: {
     flexDirection: 'row',
