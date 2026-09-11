@@ -54,6 +54,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - Multi-party video and voice calls over a mesh of WebRTC peer connections; join with video or audio only and turn the camera on later without renegotiation.
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs.
+- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
 - Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
@@ -140,18 +141,25 @@ sequenceDiagram
 
 ```
 Collab/
-├── App.tsx                     # Root React Native component (lobby + call screen)
+├── App.tsx                     # Root component: auth gate, app shell, meeting screen
 ├── index.ts                    # Expo entry point; registers WebRTC globals
 ├── app.json                    # Expo configuration
 ├── src/
-│   ├── components/             # VideoTile (base + .native variant with RTCView)
+│   ├── components/
+│   │   ├── shell/              # Sidebar / tab-bar navigation
+│   │   ├── home/               # Dashboard (new / join / schedule, up next)
+│   │   ├── meetings/           # Upcoming & past lists, schedule form
+│   │   ├── calendar/           # Monthly calendar
+│   │   ├── meeting/            # In-call screen: toolbar, participants, chat
+│   │   └── ui/                 # Shared buttons and icon types
 │   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
+│   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
 ├── server/
 │   └── src/                    # Express + Socket.IO signaling server
-├── firestore.rules             # Security rules for the Firestore transport
+├── firestore.rules             # Security rules for signaling rooms and per-user meetings
 ├── desktop/                    # Electron shell + electron-builder config (.dmg / .exe)
 ├── scripts/                    # Build helpers
 └── .github/                    # CI, release workflow, issue & PR templates
