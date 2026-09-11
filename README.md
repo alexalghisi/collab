@@ -53,7 +53,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 
 - Multi-party calls over a mesh of WebRTC peer connections.
 - Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
-- Real-time signaling over Socket.IO with strongly typed events shared between client and server.
+- Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
 - Automated multi-platform release pipeline that publishes installable binaries to GitHub Releases.
 - Strict CI quality gates: Prettier, ESLint, and TypeScript.
@@ -62,7 +62,12 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 
 ## Architecture
 
-Collab uses a **mesh topology**: each participant holds a direct `RTCPeerConnection` with every other participant. The signaling server never touches media — it only relays SDP and ICE metadata to bootstrap the peer connections.
+Collab uses a **mesh topology**: each participant holds a direct `RTCPeerConnection` with every other participant. Signaling never touches media — it only relays SDP and ICE metadata to bootstrap the peer connections.
+
+Signaling is a small interface (`SignalingChannel`) with two transports:
+
+- **Firestore** (web, when Firebase is configured) — rooms, participants and per-peer signal inboxes live in Firestore, so the deployed web app needs no server at all.
+- **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`.
 
 ```mermaid
 flowchart LR
@@ -72,11 +77,12 @@ flowchart LR
     C["Web app<br/>(Expo Web)"]
   end
 
-  S["Signaling server<br/>(Node.js · Express · Socket.IO)"]
+  S["Signaling server<br/>(Node.js · Socket.IO)"]
+  F["Firestore<br/>(serverless signaling)"]
 
-  A -- "SDP / ICE (Socket.IO)" --> S
-  B -- "SDP / ICE (Socket.IO)" --> S
-  C -- "SDP / ICE (Socket.IO)" --> S
+  A -- "SDP / ICE" --> S
+  B -- "SDP / ICE" --> S
+  C -- "SDP / ICE" --> F
 
   A <== "Media (SRTP / WebRTC)" ==> B
   B <== "Media (SRTP / WebRTC)" ==> C
@@ -89,25 +95,30 @@ The reusable core is deliberately platform-agnostic. It is written against the s
 flowchart TD
   UI["App.tsx / VideoTile"] --> Hook["useCollabSession"]
   Hook --> Manager["PeerConnectionManager"]
-  Hook --> Client["SignalingClient (socket.io-client)"]
+  Hook --> Channel["SignalingChannel"]
   Manager --> RTC["RTCPeerConnection (W3C API)"]
-  Manager --> Client
-  Client --> Server["Signaling server"]
+  Manager --> Channel
+  Channel --> Sock["SocketSignaling → Node server"]
+  Channel --> Fire["FirestoreSignaling → Firestore"]
 ```
 
 ---
 
 ## Call setup flow
 
+For every pair of peers exactly one side sends the offer: the one that joined
+later (ties broken by peer id). This keeps negotiation glare-free on both
+transports without any extra round trip.
+
 ```mermaid
 sequenceDiagram
   participant N as Newcomer
-  participant S as Signaling server
+  participant S as Signaling (Firestore or server)
   participant P as Existing peer
 
-  N->>S: room:join { roomId, displayName }
-  S-->>N: room:peers [existing peers]
-  S-->>P: peer:joined { peerId, displayName }
+  N->>S: join { roomId, displayName }
+  S-->>N: room:joined { selfPeerId, hostPeerId, peers[] }
+  S-->>P: peer:joined { peerId, displayName, joinedAt }
   N->>N: createOffer + setLocalDescription
   N->>S: signal:offer { targetPeerId }
   S-->>P: signal:offer { fromPeerId }
@@ -132,11 +143,13 @@ Collab/
 ├── app.json                    # Expo configuration
 ├── src/
 │   ├── components/             # VideoTile (base + .native variant with RTCView)
+│   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
-│   ├── signaling/             # Shared event contract + Socket.IO client
+│   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
 ├── server/
 │   └── src/                    # Express + Socket.IO signaling server
+├── firestore.rules             # Security rules for the Firestore transport
 ├── desktop/                    # Electron shell + electron-builder config (.dmg / .exe)
 ├── scripts/                    # Build helpers
 └── .github/                    # CI, release workflow, issue & PR templates
@@ -164,6 +177,10 @@ npm run server
 ```
 
 The server listens on `http://localhost:4000` and exposes `GET /health`.
+
+Skip this step on web if Firebase is configured (see below): the web app then
+signals through Firestore. Publish [`firestore.rules`](firestore.rules) in the
+Firebase console once (Firestore Database → Rules).
 
 ### 3. Start the app
 

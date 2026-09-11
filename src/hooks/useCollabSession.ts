@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { createSignalingClient, type CollabSocket } from '../signaling/SignalingClient';
+import type { SignalingChannel, SignalingFactory } from '../signaling/SignalingChannel';
 import { PeerConnectionManager } from '../webrtc/PeerConnectionManager';
 import { acquireLocalStream } from '../webrtc/media';
 
@@ -19,12 +19,12 @@ export interface CollabSession {
   leave: () => void;
 }
 
-export function useCollabSession(signalingUrl: string): CollabSession {
+export function useCollabSession(createSignaling: SignalingFactory): CollabSession {
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
 
-  const socketRef = useRef<CollabSocket | null>(null);
+  const signalingRef = useRef<SignalingChannel | null>(null);
   const managerRef = useRef<PeerConnectionManager | null>(null);
 
   const upsertParticipant = useCallback((next: RemoteParticipant) => {
@@ -50,8 +50,8 @@ export function useCollabSession(signalingUrl: string): CollabSession {
     managerRef.current?.close();
     managerRef.current = null;
 
-    socketRef.current?.disconnect();
-    socketRef.current = null;
+    signalingRef.current?.disconnect();
+    signalingRef.current = null;
 
     setLocalStream((stream) => {
       stream?.getTracks().forEach((track) => track.stop());
@@ -69,25 +69,21 @@ export function useCollabSession(signalingUrl: string): CollabSession {
       const stream = await acquireLocalStream({ video: true, audio: true });
       setLocalStream(stream);
 
-      const socket = createSignalingClient(signalingUrl);
-      socketRef.current = socket;
+      const signaling = createSignaling({ roomId, displayName });
+      signalingRef.current = signaling;
 
-      socket.on('room:peers', (peers) => {
+      signaling.on('room:joined', ({ peers }) => {
         for (const peer of peers) {
           upsertParticipant({ peerId: peer.peerId, displayName: peer.displayName });
         }
       });
-
-      socket.on('peer:joined', (peer) => {
+      signaling.on('peer:joined', (peer) => {
         upsertParticipant({ peerId: peer.peerId, displayName: peer.displayName });
       });
-
-      socket.on('peer:left', removeParticipant);
-      socket.on('connect', () => setStatus('connected'));
-      socket.on('connect_error', () => setStatus('error'));
+      signaling.on('peer:left', removeParticipant);
 
       const manager = new PeerConnectionManager({
-        socket,
+        signaling,
         localStream: stream,
         onRemoteStream: attachStream,
         onPeerClosed: removeParticipant,
@@ -95,10 +91,15 @@ export function useCollabSession(signalingUrl: string): CollabSession {
       manager.start();
       managerRef.current = manager;
 
-      socket.connect();
-      socket.emit('room:join', { roomId, displayName });
+      try {
+        await signaling.connect();
+        setStatus('connected');
+      } catch {
+        leave();
+        setStatus('error');
+      }
     },
-    [signalingUrl, upsertParticipant, attachStream, removeParticipant],
+    [createSignaling, upsertParticipant, attachStream, removeParticipant, leave],
   );
 
   return { status, localStream, participants, join, leave };

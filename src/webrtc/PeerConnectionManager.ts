@@ -1,24 +1,37 @@
 import { buildRtcConfiguration, type IceServerConfig } from './config';
-import type { CollabSocket } from '../signaling/SignalingClient';
+import type { PeerInfo } from '../signaling/events';
+import type { SignalingChannel } from '../signaling/SignalingChannel';
 
 export interface PeerConnectionManagerOptions {
-  readonly socket: CollabSocket;
+  readonly signaling: SignalingChannel;
   readonly localStream: MediaStream;
   readonly iceServers?: readonly IceServerConfig[];
   readonly onRemoteStream: (peerId: string, stream: MediaStream) => void;
   readonly onPeerClosed: (peerId: string) => void;
 }
 
+interface PeerEntry {
+  readonly connection: RTCPeerConnection;
+  /** Candidates that arrived before the remote description was applied. */
+  readonly pendingCandidates: RTCIceCandidateInit[];
+}
+
+/**
+ * Maintains one RTCPeerConnection per remote peer (full mesh). Offers are
+ * glare-free: for any pair, only the peer that joined later initiates.
+ */
 export class PeerConnectionManager {
-  private readonly socket: CollabSocket;
+  private readonly signaling: SignalingChannel;
   private readonly localStream: MediaStream;
   private readonly configuration: RTCConfiguration;
   private readonly onRemoteStream: (peerId: string, stream: MediaStream) => void;
   private readonly onPeerClosed: (peerId: string) => void;
-  private readonly peers = new Map<string, RTCPeerConnection>();
+  private readonly peers = new Map<string, PeerEntry>();
+  private selfPeerId = '';
+  private selfJoinedAt = 0;
 
   constructor(options: PeerConnectionManagerOptions) {
-    this.socket = options.socket;
+    this.signaling = options.signaling;
     this.localStream = options.localStream;
     this.configuration = buildRtcConfiguration(options.iceServers);
     this.onRemoteStream = options.onRemoteStream;
@@ -26,31 +39,46 @@ export class PeerConnectionManager {
   }
 
   start(): void {
-    this.socket.on('room:peers', (peers) => {
+    this.signaling.on('room:joined', ({ selfPeerId, selfJoinedAt, peers }) => {
+      this.selfPeerId = selfPeerId;
+      this.selfJoinedAt = selfJoinedAt;
       for (const peer of peers) {
+        if (this.shouldInitiate(peer)) {
+          void this.callPeer(peer.peerId);
+        }
+      }
+    });
+
+    this.signaling.on('peer:joined', (peer) => {
+      if (this.shouldInitiate(peer)) {
         void this.callPeer(peer.peerId);
       }
     });
 
-    this.socket.on('signal:offer', ({ fromPeerId, description }) => {
+    this.signaling.on('signal:offer', ({ fromPeerId, description }) => {
       void this.answerPeer(fromPeerId, description);
     });
 
-    this.socket.on('signal:answer', ({ fromPeerId, description }) => {
-      const connection = this.peers.get(fromPeerId);
-      if (connection) {
-        void connection.setRemoteDescription(description);
+    this.signaling.on('signal:answer', ({ fromPeerId, description }) => {
+      const entry = this.peers.get(fromPeerId);
+      if (entry) {
+        void this.applyRemoteDescription(entry, description);
       }
     });
 
-    this.socket.on('signal:ice', ({ fromPeerId, candidate }) => {
-      const connection = this.peers.get(fromPeerId);
-      if (connection) {
-        void connection.addIceCandidate(candidate);
+    this.signaling.on('signal:ice', ({ fromPeerId, candidate }) => {
+      const entry = this.peers.get(fromPeerId);
+      if (!entry) {
+        return;
+      }
+      if (entry.connection.remoteDescription) {
+        void entry.connection.addIceCandidate(candidate);
+      } else {
+        entry.pendingCandidates.push(candidate);
       }
     });
 
-    this.socket.on('peer:left', (peerId) => {
+    this.signaling.on('peer:left', (peerId) => {
       this.closePeer(peerId);
     });
   }
@@ -61,7 +89,14 @@ export class PeerConnectionManager {
     }
   }
 
-  private createConnection(peerId: string): RTCPeerConnection {
+  private shouldInitiate(peer: PeerInfo): boolean {
+    if (peer.joinedAt === this.selfJoinedAt) {
+      return peer.peerId < this.selfPeerId;
+    }
+    return peer.joinedAt < this.selfJoinedAt;
+  }
+
+  private createEntry(peerId: string): PeerEntry {
     const connection = new RTCPeerConnection(this.configuration);
 
     for (const track of this.localStream.getTracks()) {
@@ -70,7 +105,7 @@ export class PeerConnectionManager {
 
     connection.addEventListener('icecandidate', (event) => {
       if (event.candidate) {
-        this.socket.emit('signal:ice', {
+        this.signaling.emit('signal:ice', {
           targetPeerId: peerId,
           candidate: event.candidate.toJSON(),
         });
@@ -90,31 +125,42 @@ export class PeerConnectionManager {
       }
     });
 
-    this.peers.set(peerId, connection);
-    return connection;
+    const entry: PeerEntry = { connection, pendingCandidates: [] };
+    this.peers.set(peerId, entry);
+    return entry;
+  }
+
+  private async applyRemoteDescription(
+    entry: PeerEntry,
+    description: RTCSessionDescriptionInit,
+  ): Promise<void> {
+    await entry.connection.setRemoteDescription(description);
+    for (const candidate of entry.pendingCandidates.splice(0)) {
+      await entry.connection.addIceCandidate(candidate);
+    }
   }
 
   private async callPeer(peerId: string): Promise<void> {
-    const connection = this.createConnection(peerId);
+    const { connection } = this.createEntry(peerId);
     const offer = await connection.createOffer();
     await connection.setLocalDescription(offer);
-    this.socket.emit('signal:offer', { targetPeerId: peerId, description: offer });
+    this.signaling.emit('signal:offer', { targetPeerId: peerId, description: offer });
   }
 
   private async answerPeer(peerId: string, description: RTCSessionDescriptionInit): Promise<void> {
-    const connection = this.peers.get(peerId) ?? this.createConnection(peerId);
-    await connection.setRemoteDescription(description);
-    const answer = await connection.createAnswer();
-    await connection.setLocalDescription(answer);
-    this.socket.emit('signal:answer', { targetPeerId: peerId, description: answer });
+    const entry = this.peers.get(peerId) ?? this.createEntry(peerId);
+    await this.applyRemoteDescription(entry, description);
+    const answer = await entry.connection.createAnswer();
+    await entry.connection.setLocalDescription(answer);
+    this.signaling.emit('signal:answer', { targetPeerId: peerId, description: answer });
   }
 
   private closePeer(peerId: string): void {
-    const connection = this.peers.get(peerId);
-    if (!connection) {
+    const entry = this.peers.get(peerId);
+    if (!entry) {
       return;
     }
-    connection.close();
+    entry.connection.close();
     this.peers.delete(peerId);
     this.onPeerClosed(peerId);
   }
