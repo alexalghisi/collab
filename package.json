@@ -25,6 +25,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "babel-preset-expo": "~54.0.10",
     "cors": "^2.8.6",
     "expo": "~54.0.37",
