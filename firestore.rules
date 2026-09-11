@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Deploy from Firebase console > Firestore Database > Rules (or `firebase deploy --only firestore:rules`).
+// Every signed-in user may take part in any room; signaling data is short-lived.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rooms/{roomId}/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
