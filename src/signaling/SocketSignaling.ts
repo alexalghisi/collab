@@ -1,6 +1,11 @@
 import { io, type Socket } from 'socket.io-client';
-import type { ClientToServerEvents, PeerState, ServerToClientEvents } from './events';
-import type { SignalingChannel, SignalingFactory } from './SignalingChannel';
+import type { ClientToServerEvents, ServerToClientEvents } from './events';
+import {
+  AdmissionDeniedError,
+  type SignalingChannel,
+  type SignalingFactory,
+  type SignalingOptions,
+} from './SignalingChannel';
 
 type CollabSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -20,9 +25,7 @@ class SocketChannel implements SignalingChannel {
 
   constructor(
     url: string,
-    private readonly roomId: string,
-    private readonly displayName: string,
-    private readonly state: PeerState,
+    private readonly options: SignalingOptions,
   ) {
     this.socket = io(url, {
       transports: ['websocket'],
@@ -44,12 +47,10 @@ class SocketChannel implements SignalingChannel {
     return new Promise((resolve, reject) => {
       this.socket.once('connect_error', reject);
       this.socket.once('room:joined', () => resolve());
+      this.socket.once('room:denied', () => reject(new AdmissionDeniedError()));
       this.socket.once('connect', () => {
-        this.socket.emit('room:join', {
-          roomId: this.roomId,
-          displayName: this.displayName,
-          state: this.state,
-        });
+        const { sessionId, roomId, displayName, state, breakoutOf } = this.options;
+        this.socket.emit('room:join', { sessionId, roomId, displayName, state, breakoutOf });
       });
       this.socket.connect();
     });
@@ -61,5 +62,5 @@ class SocketChannel implements SignalingChannel {
 }
 
 export function createSocketSignaling(url: string): SignalingFactory {
-  return ({ roomId, displayName, state }) => new SocketChannel(url, roomId, displayName, state);
+  return (options) => new SocketChannel(url, options);
 }

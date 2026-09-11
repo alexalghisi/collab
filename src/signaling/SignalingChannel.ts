@@ -16,9 +16,21 @@ export interface SignalingChannel {
 }
 
 export interface SignalingOptions {
+  /** Identifies this participant across room changes (see JoinRoomPayload). */
+  readonly sessionId: string;
   readonly roomId: string;
   readonly displayName: string;
   readonly state: PeerState;
+  /** Main room id when joining one of its breakout rooms. */
+  readonly breakoutOf?: string;
+}
+
+/** `connect()` rejects with this when the host turns us away at the waiting room. */
+export class AdmissionDeniedError extends Error {
+  constructor() {
+    super('The host did not admit you to the meeting.');
+    this.name = 'AdmissionDeniedError';
+  }
 }
 
 export type SignalingFactory = (options: SignalingOptions) => SignalingChannel;
