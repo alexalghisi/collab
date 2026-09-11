@@ -180,8 +180,8 @@ By default the app connects to `http://localhost:4000`. Override it with the
 ### Social sign-in (Google / Facebook)
 
 Sign-in is optional: with no credentials configured the app runs as an open
-guest lobby. Provide the values below (e.g. in a local `.env`) to enable
-"Continue with Google" and "Continue with Facebook".
+guest lobby. Copy [`.env.example`](.env.example) to `.env` and fill in the
+values below to enable "Continue with Google" and "Continue with Facebook".
 
 - **Web** uses Firebase, so it reads the Firebase web config:
   - `EXPO_PUBLIC_FIREBASE_API_KEY`
