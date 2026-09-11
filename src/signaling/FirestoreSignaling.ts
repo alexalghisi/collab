@@ -15,13 +15,20 @@ import {
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
-import type { PeerInfo } from './events';
-import { SignalingEmitter, type SignalingChannel, type SignalingFactory } from './SignalingChannel';
+import type { ChatMessage, PeerInfo, PeerState } from './events';
+import {
+  SignalingEmitter,
+  type OutgoingEvent,
+  type OutgoingPayload,
+  type SignalingChannel,
+  type SignalingFactory,
+} from './SignalingChannel';
 
 interface ParticipantDoc {
   readonly displayName: string;
   readonly joinedAt: number;
   readonly lastSeen: number;
+  readonly state: PeerState;
 }
 
 interface RoomDoc {
@@ -37,6 +44,10 @@ interface SignalDoc {
   readonly createdAt: number;
 }
 
+type MessageDoc = Omit<ChatMessage, 'id'>;
+
+type Senders = { [E in OutgoingEvent]: (payload: OutgoingPayload<E>) => void };
+
 const HEARTBEAT_MS = 20_000;
 const STALE_AFTER_MS = 60_000;
 
@@ -47,7 +58,12 @@ function toPlain<T>(value: T): T {
 
 function toPeerInfo(snapshot: QueryDocumentSnapshot): PeerInfo {
   const data = snapshot.data() as ParticipantDoc;
-  return { peerId: snapshot.id, displayName: data.displayName, joinedAt: data.joinedAt };
+  return {
+    peerId: snapshot.id,
+    displayName: data.displayName,
+    joinedAt: data.joinedAt,
+    state: data.state,
+  };
 }
 
 class FirestoreChannel implements SignalingChannel {
@@ -55,6 +71,7 @@ class FirestoreChannel implements SignalingChannel {
   private readonly emitter = new SignalingEmitter();
   private readonly room: DocumentReference;
   private readonly participants: CollectionReference;
+  private readonly messages: CollectionReference;
   private readonly unsubscribers: Unsubscribe[] = [];
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private joinedAt = 0;
@@ -64,13 +81,35 @@ class FirestoreChannel implements SignalingChannel {
     detach: () => window.removeEventListener('pagehide', this.pageHide.handler),
   };
 
+  private readonly senders: Senders = {
+    'signal:offer': ({ targetPeerId, description }) =>
+      this.sendSignal(targetPeerId, 'offer', description),
+    'signal:answer': ({ targetPeerId, description }) =>
+      this.sendSignal(targetPeerId, 'answer', description),
+    'signal:ice': ({ targetPeerId, candidate }) => this.sendSignal(targetPeerId, 'ice', candidate),
+    'peer:state': (state) => {
+      void updateDoc(this.selfRef(), { state });
+    },
+    'chat:message': (text) => {
+      const message: MessageDoc = {
+        peerId: this.peerId,
+        displayName: this.displayName,
+        text,
+        sentAt: Date.now(),
+      };
+      void addDoc(this.messages, message);
+    },
+  };
+
   constructor(
     db: Firestore,
     roomId: string,
     private readonly displayName: string,
+    private readonly initialState: PeerState,
   ) {
     this.room = doc(db, 'rooms', roomId);
     this.participants = collection(this.room, 'participants');
+    this.messages = collection(this.room, 'messages');
   }
 
   on: SignalingChannel['on'] = (event, handler) => {
@@ -78,16 +117,7 @@ class FirestoreChannel implements SignalingChannel {
   };
 
   emit: SignalingChannel['emit'] = (event, payload) => {
-    const type: SignalType =
-      event === 'signal:offer' ? 'offer' : event === 'signal:answer' ? 'answer' : 'ice';
-    const body = 'description' in payload ? payload.description : payload.candidate;
-    const signal: SignalDoc = {
-      from: this.peerId,
-      type,
-      payload: toPlain(body),
-      createdAt: Date.now(),
-    };
-    void addDoc(this.inboxOf(payload.targetPeerId), signal);
+    this.senders[event](payload);
   };
 
   async connect(): Promise<void> {
@@ -96,6 +126,7 @@ class FirestoreChannel implements SignalingChannel {
       displayName: this.displayName,
       joinedAt: this.joinedAt,
       lastSeen: this.joinedAt,
+      state: this.initialState,
     };
     await setDoc(this.selfRef(), self);
     const hostPeerId = await this.claimHostIfVacant();
@@ -105,6 +136,7 @@ class FirestoreChannel implements SignalingChannel {
     }, HEARTBEAT_MS);
     this.subscribeInbox();
     this.subscribeHost();
+    this.subscribeMessages();
     this.pageHide.attach();
 
     await this.subscribeParticipants(hostPeerId);
@@ -130,6 +162,20 @@ class FirestoreChannel implements SignalingChannel {
 
   private inboxOf(peerId: string): CollectionReference {
     return collection(this.participants, peerId, 'inbox');
+  }
+
+  private sendSignal(
+    targetPeerId: string,
+    type: SignalType,
+    payload: RTCSessionDescriptionInit | RTCIceCandidateInit,
+  ): void {
+    const signal: SignalDoc = {
+      from: this.peerId,
+      type,
+      payload: toPlain(payload),
+      createdAt: Date.now(),
+    };
+    void addDoc(this.inboxOf(targetPeerId), signal);
   }
 
   private async claimHostIfVacant(): Promise<string> {
@@ -185,6 +231,9 @@ class FirestoreChannel implements SignalingChannel {
               this.emitter.dispatch('peer:joined', toPeerInfo(change.doc));
             } else if (change.type === 'removed') {
               this.emitter.dispatch('peer:left', change.doc.id);
+            } else {
+              const { state } = change.doc.data() as ParticipantDoc;
+              this.emitter.dispatch('peer:state', { peerId: change.doc.id, state });
             }
           }
         },
@@ -199,6 +248,19 @@ class FirestoreChannel implements SignalingChannel {
       const host = (snapshot.data() as RoomDoc | undefined)?.hostPeerId;
       if (host) {
         this.emitter.dispatch('room:host', host);
+      }
+    });
+    this.unsubscribers.push(unsubscribe);
+  }
+
+  private subscribeMessages(): void {
+    const ordered = query(this.messages, orderBy('sentAt'));
+    const unsubscribe = onSnapshot(ordered, (snapshot) => {
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'added') {
+          const data = change.doc.data() as MessageDoc;
+          this.emitter.dispatch('chat:message', { id: change.doc.id, ...data });
+        }
       }
     });
     this.unsubscribers.push(unsubscribe);
@@ -236,5 +298,5 @@ class FirestoreChannel implements SignalingChannel {
 }
 
 export function createFirestoreSignaling(db: Firestore): SignalingFactory {
-  return ({ roomId, displayName }) => new FirestoreChannel(db, roomId, displayName);
+  return ({ roomId, displayName, state }) => new FirestoreChannel(db, roomId, displayName, state);
 }
