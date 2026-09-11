@@ -54,6 +54,8 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - Multi-party video and voice calls over a mesh of WebRTC peer connections; join with video or audio only and turn the camera on later without renegotiation.
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs.
+- Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing) and **shared notes** that every participant can edit.
+- **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
 - Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
 - Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
@@ -69,8 +71,8 @@ Collab uses a **mesh topology**: each participant holds a direct `RTCPeerConnect
 
 Signaling is a small interface (`SignalingChannel`) with two transports:
 
-- **Firestore** (web, when Firebase is configured) — rooms, participants and per-peer signal inboxes live in Firestore, so the deployed web app needs no server at all.
-- **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`.
+- **Firestore** (web, when Firebase is configured) — rooms, participants, per-peer signal inboxes, chat, whiteboard strokes and notes live in Firestore, so the deployed web app needs no server at all.
+- **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`, which also keeps each room's whiteboard and notes in memory while the room is occupied.
 
 ```mermaid
 flowchart LR
@@ -150,8 +152,10 @@ Collab/
 │   │   ├── home/               # Dashboard (new / join / schedule, up next)
 │   │   ├── meetings/           # Upcoming & past lists, schedule form
 │   │   ├── calendar/           # Monthly calendar
-│   │   ├── meeting/            # In-call screen: toolbar, participants, chat
+│   │   ├── meeting/            # In-call screen: toolbar, participants, chat, whiteboard, notes
+│   │   ├── chat/               # Team channels screen and the shared message thread
 │   │   └── ui/                 # Shared buttons and icon types
+│   ├── chat/                   # Team chat channels (Firestore) and its hook
 │   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
 │   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links
@@ -159,7 +163,7 @@ Collab/
 │   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
 ├── server/
 │   └── src/                    # Express + Socket.IO signaling server
-├── firestore.rules             # Security rules for signaling rooms and per-user meetings
+├── firestore.rules             # Security rules for signaling rooms, channels and per-user meetings
 ├── desktop/                    # Electron shell + electron-builder config (.dmg / .exe)
 ├── scripts/                    # Build helpers
 └── .github/                    # CI, release workflow, issue & PR templates
