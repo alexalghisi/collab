@@ -6,6 +6,7 @@ import {
   type PeerInfo,
   type PeerState,
   type ServerToClientEvents,
+  type Stroke,
 } from '../../src/signaling/events';
 
 export interface SocketData {
@@ -29,7 +30,23 @@ type CollabServerSocket = Socket<
   SocketData
 >;
 
-const hosts = new Map<string, string>();
+/** Shared, non-media state of a room; dropped once the last participant leaves. */
+interface RoomState {
+  hostPeerId: string;
+  strokes: Stroke[];
+  notes: string;
+}
+
+const rooms = new Map<string, RoomState>();
+
+function roomOf(roomId: string, firstPeerId: string): RoomState {
+  let room = rooms.get(roomId);
+  if (!room) {
+    room = { hostPeerId: firstPeerId, strokes: [], notes: '' };
+    rooms.set(roomId, room);
+  }
+  return room;
+}
 
 async function listRoomPeers(
   io: CollabServer,
@@ -47,18 +64,24 @@ async function listRoomPeers(
     }));
 }
 
-async function reassignHost(io: CollabServer, roomId: string): Promise<void> {
-  const remaining = await listRoomPeers(io, roomId, '');
+async function handleLeave(io: CollabServer, roomId: string, peerId: string): Promise<void> {
+  const room = rooms.get(roomId);
+  const remaining = await listRoomPeers(io, roomId, peerId);
   if (remaining.length === 0) {
-    hosts.delete(roomId);
+    rooms.delete(roomId);
     return;
   }
-  const [next] = [...remaining].sort((a, b) => a.joinedAt - b.joinedAt);
-  hosts.set(roomId, next.peerId);
-  io.to(roomId).emit('room:host', next.peerId);
+  if (room && room.hostPeerId === peerId) {
+    const [next] = [...remaining].sort((a, b) => a.joinedAt - b.joinedAt);
+    room.hostPeerId = next.peerId;
+    io.to(roomId).emit('room:host', next.peerId);
+  }
 }
 
 function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
+  const currentRoom = (): RoomState | undefined =>
+    socket.data.roomId ? rooms.get(socket.data.roomId) : undefined;
+
   socket.on('room:join', async ({ roomId, displayName, state }) => {
     const joinedAt = Date.now();
     socket.data.roomId = roomId;
@@ -68,15 +91,15 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
 
     const peers = await listRoomPeers(io, roomId, socket.id);
     await socket.join(roomId);
-
-    const hostPeerId = hosts.get(roomId) ?? socket.id;
-    hosts.set(roomId, hostPeerId);
+    const room = roomOf(roomId, socket.id);
 
     socket.emit('room:joined', {
       selfPeerId: socket.id,
       selfJoinedAt: joinedAt,
-      hostPeerId,
+      hostPeerId: room.hostPeerId,
       peers,
+      strokes: room.strokes,
+      notes: room.notes,
     });
     socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
   });
@@ -102,6 +125,30 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
     }
   });
 
+  socket.on('board:stroke', (stroke) => {
+    const room = currentRoom();
+    if (room && socket.data.roomId) {
+      room.strokes.push(stroke);
+      socket.to(socket.data.roomId).emit('board:stroke', stroke);
+    }
+  });
+
+  socket.on('board:remove', (strokeIds) => {
+    const room = currentRoom();
+    if (room && socket.data.roomId) {
+      room.strokes = room.strokes.filter((stroke) => !strokeIds.includes(stroke.id));
+      socket.to(socket.data.roomId).emit('board:remove', strokeIds);
+    }
+  });
+
+  socket.on('notes:update', (text) => {
+    const room = currentRoom();
+    if (room && socket.data.roomId) {
+      room.notes = text;
+      socket.to(socket.data.roomId).emit('notes:update', text);
+    }
+  });
+
   socket.on('signal:offer', ({ targetPeerId, description }) => {
     io.to(targetPeerId).emit('signal:offer', { fromPeerId: socket.id, description });
   });
@@ -120,9 +167,7 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
       return;
     }
     socket.to(roomId).emit('peer:left', socket.id);
-    if (hosts.get(roomId) === socket.id) {
-      await reassignHost(io, roomId);
-    }
+    await handleLeave(io, roomId, socket.id);
   });
 }
 
