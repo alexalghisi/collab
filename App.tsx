@@ -11,14 +11,13 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useCollabSession } from './src/hooks/useCollabSession';
 import { useAuth } from './src/auth/useAuth';
+import { createSignaling } from './src/signaling';
 import { VideoTile } from './src/components/VideoTile';
 import { LoginScreen } from './src/components/LoginScreen';
 
-const SIGNALING_URL = process.env.EXPO_PUBLIC_SIGNALING_URL ?? 'http://localhost:4000';
-
 export default function App() {
   const auth = useAuth();
-  const session = useCollabSession(SIGNALING_URL);
+  const session = useCollabSession(createSignaling);
   const [roomId, setRoomId] = useState('demo-room');
   const [displayName, setDisplayName] = useState('');
 
