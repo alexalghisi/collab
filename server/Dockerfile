@@ -17,6 +17,8 @@ COPY src/code ./src/code
 COPY src/chat ./src/chat
 COPY src/files ./src/files
 COPY src/transcript ./src/transcript
+COPY src/search ./src/search
+COPY src/assistant ./src/assistant
 COPY server ./server
 
 EXPOSE 4000

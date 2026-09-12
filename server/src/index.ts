@@ -6,6 +6,9 @@ import cors from 'cors';
 import express from 'express';
 import { Server } from 'socket.io';
 import { MAX_CODE_BYTES, MAX_STDIN_BYTES } from '../../src/code/execution';
+import { assistantRouter } from './assistant/router';
+import { searchRouter } from './assistant/searchRouter';
+import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
 import { filesRouter } from './files/router';
@@ -21,11 +24,14 @@ app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: MAX_CODE_BYTES + MAX_STDIN_BYTES + 4096 }));
 
 const execution = new ExecutionService(createRunnerFromEnv());
+const assistant = createMeetingAssistant();
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
 });
 app.use(executionRouter(execution));
+app.use(assistantRouter(assistant));
+app.use(searchRouter(meetingIndexStore()));
 app.use(filesRouter({ store: files, membership: isAdmitted }));
 
 if (existsSync(WEB_ROOT)) {
@@ -44,7 +50,7 @@ const io: CollabServer = new Server(httpServer, {
   cors: { origin: CORS_ORIGIN },
 });
 
-registerSignalingHandlers(io, execution);
+registerSignalingHandlers(io, execution, assistant);
 
 httpServer.listen(PORT, () => {
   console.info(`Collab signaling server listening on port ${PORT}`);
