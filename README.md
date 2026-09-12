@@ -54,7 +54,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - Multi-party video and voice calls over a mesh of WebRTC peer connections; join with video or audio only and turn the camera on later without renegotiation.
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs.
-- Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing) and **shared notes** that every participant can edit.
+- Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared notes** that every participant can edit, and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in).
 - **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that executes the room's code — JavaScript, TypeScript, Python or Go — in a network-less, resource-capped, throwaway sandbox and streams the output to everyone.
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Local recording** (web): captures your video together with the mixed audio of every participant and downloads a `.webm` file when stopped.
@@ -74,8 +74,26 @@ Collab uses a **mesh topology**: each participant holds a direct `RTCPeerConnect
 
 Signaling is a small interface (`SignalingChannel`) with two transports:
 
-- **Firestore** (web, when Firebase is configured) — rooms, participants, per-peer signal inboxes, chat, whiteboard strokes, notes, room settings and the waiting list live in Firestore, so the deployed web app needs no server at all. Host commands (mute / remove / move) travel through the same per-peer inboxes as SDP and ICE.
-- **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`, which also keeps each room's whiteboard, notes, settings and waiting list in memory while the room is occupied, and only honours host commands coming from the current host.
+- **Firestore** (web, when Firebase is configured) — rooms, participants, per-peer signal inboxes, chat, whiteboard strokes, notes, captions, room settings and the waiting list live in Firestore, so the deployed web app needs no server at all. Host commands (mute / remove / move) travel through the same per-peer inboxes as SDP and ICE.
+- **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`, which also keeps each room's whiteboard, notes, captions, settings and waiting list in memory while the room is occupied, and only honours host commands coming from the current host.
+
+### Live captions
+
+Spoken turns travel over the same `SignalingChannel` as chat (`transcript:segment`).
+The browser's speech recognizer (Web Speech API) is the first caption source;
+`createSpeechCapture` is the swap point for a hosted recognizer later. The
+server stamps the speaker from the socket, so a client cannot put someone
+else's name on a turn. A participant the host removed cannot keep sending
+them. Late joiners get the log the same way they get whiteboard strokes:
+
+- **Socket.IO** — the room holds the turns in memory and includes them in
+  `room:joined`, then drops them when the room empties.
+- **Firestore** — turns are appended to `rooms/{id}/transcript` and streamed
+  to a joiner in start order.
+
+Phones have no Web Speech API, so they show the room's transcript but do not
+start a recognizer. That tradeoff is deliberate: a silent gap is worse than
+a documented one.
 
 ### Shared code document
 
@@ -222,6 +240,7 @@ Collab/
 │   ├── hooks/                  # useCollabSession orchestration hook
 │   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links, recording
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
+│   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
 │   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
 ├── server/
 │   └── src/                    # Express + Socket.IO signaling server
