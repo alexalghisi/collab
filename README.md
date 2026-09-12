@@ -210,21 +210,37 @@ git push origin v1.0.0
 
 The Releases tab includes an **unsigned** `Collab-unsigned.ipa` built by CI. Because Apple requires every iOS app to be signed, that file cannot be installed by simply downloading it — install it by sideloading with [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io), which re-sign it with your own Apple ID on device.
 
-For a signed, shareable build (recommended for reviewers), distribute through Expo Application Services (EAS) and TestFlight:
+For a signed, shareable build (recommended for reviewers), distribute through Expo Application Services (EAS) and TestFlight. This requires a paid **Apple Developer Program** membership.
+
+### One-time setup (local)
 
 ```bash
 npm install -g eas-cli
 eas login
-eas build:configure
+eas init                 # links the repo to an EAS project (writes extra.eas.projectId)
 
-# Build a signed iOS binary in the cloud
-eas build --platform ios --profile production
+# Configure Apple signing credentials on EAS (distribution cert + provisioning profile)
+eas credentials
 
-# Submit the build to App Store Connect / TestFlight
-eas submit --platform ios --latest
+# Store the App Store Connect API key EAS uses to submit non-interactively
+eas submit --platform ios --profile production   # run once, choose "API Key" and save it
 ```
 
-Once processed, invite reviewers as TestFlight testers to install the app on their devices. See the [EAS Build docs](https://docs.expo.dev/build/introduction/) for signing and provisioning details.
+### Build and submit
+
+Locally:
+
+```bash
+eas build --platform ios --profile production --auto-submit
+```
+
+Or from CI: run the **iOS TestFlight** workflow (`.github/workflows/ios-testflight.yml`) via _Actions → iOS TestFlight → Run workflow_. It builds the signed binary on EAS and submits it to TestFlight automatically. Add one repository secret first:
+
+| Secret       | Where to get it                                        |
+| ------------ | ------------------------------------------------------ |
+| `EXPO_TOKEN` | [expo.dev](https://expo.dev) → Account → Access tokens |
+
+The workflow is manual-only (`workflow_dispatch`), so it never runs — and never fails CI — until you trigger it. Once the build finishes processing in App Store Connect, invite reviewers as TestFlight testers. See the [EAS Build docs](https://docs.expo.dev/build/introduction/) for details.
 
 ---
 
