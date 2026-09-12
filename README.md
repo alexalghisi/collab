@@ -338,7 +338,14 @@ Every push and pull request runs `.github/workflows/ci.yml`:
 npm run format      # Prettier (check)
 npm run lint        # ESLint
 npm run type-check  # TypeScript (strict, no emit)
+npm test            # Vitest
 ```
+
+Tests run on Node against the real modules — the signaling suite starts the
+Socket.IO server on an ephemeral port and drives it through the client
+transport, so transport behaviour (host hand-over, waiting room, late-join
+state) is covered end to end rather than mocked. `npm run test:watch` reruns on
+change.
 
 Run `npm run format:fix` and `npm run lint:fix` locally to apply automatic fixes.
 
