@@ -8,6 +8,7 @@ import type {
 export interface SocketData {
   roomId?: string;
   displayName?: string;
+  joinedAt?: number;
 }
 
 export type CollabServer = Server<
@@ -24,6 +25,8 @@ type CollabServerSocket = Socket<
   SocketData
 >;
 
+const hosts = new Map<string, string>();
+
 async function listRoomPeers(
   io: CollabServer,
   roomId: string,
@@ -35,19 +38,41 @@ async function listRoomPeers(
     .map((peer) => ({
       peerId: peer.id,
       displayName: peer.data.displayName ?? 'Guest',
+      joinedAt: peer.data.joinedAt ?? 0,
     }));
+}
+
+async function reassignHost(io: CollabServer, roomId: string): Promise<void> {
+  const remaining = await listRoomPeers(io, roomId, '');
+  if (remaining.length === 0) {
+    hosts.delete(roomId);
+    return;
+  }
+  const [next] = [...remaining].sort((a, b) => a.joinedAt - b.joinedAt);
+  hosts.set(roomId, next.peerId);
+  io.to(roomId).emit('room:host', next.peerId);
 }
 
 function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
   socket.on('room:join', async ({ roomId, displayName }) => {
+    const joinedAt = Date.now();
     socket.data.roomId = roomId;
     socket.data.displayName = displayName;
+    socket.data.joinedAt = joinedAt;
 
-    const existingPeers = await listRoomPeers(io, roomId, socket.id);
+    const peers = await listRoomPeers(io, roomId, socket.id);
     await socket.join(roomId);
 
-    socket.emit('room:peers', existingPeers);
-    socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName });
+    const hostPeerId = hosts.get(roomId) ?? socket.id;
+    hosts.set(roomId, hostPeerId);
+
+    socket.emit('room:joined', {
+      selfPeerId: socket.id,
+      selfJoinedAt: joinedAt,
+      hostPeerId,
+      peers,
+    });
+    socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt });
   });
 
   socket.on('signal:offer', ({ targetPeerId, description }) => {
@@ -62,10 +87,14 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
     io.to(targetPeerId).emit('signal:ice', { fromPeerId: socket.id, candidate });
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     const { roomId } = socket.data;
-    if (roomId) {
-      socket.to(roomId).emit('peer:left', socket.id);
+    if (!roomId) {
+      return;
+    }
+    socket.to(roomId).emit('peer:left', socket.id);
+    if (hosts.get(roomId) === socket.id) {
+      await reassignHost(io, roomId);
     }
   });
 }

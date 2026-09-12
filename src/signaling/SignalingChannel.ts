@@ -1,0 +1,48 @@
+import type { ClientToServerEvents, ServerToClientEvents } from './events';
+
+/** Events a client may send once it is inside a room. */
+export type OutgoingEvent = Exclude<keyof ClientToServerEvents, 'room:join'>;
+
+/**
+ * Transport-agnostic signaling contract. Handlers are registered before
+ * `connect()`, which joins the room and resolves once the peer list arrived.
+ */
+export interface SignalingChannel {
+  on<E extends keyof ServerToClientEvents>(event: E, handler: ServerToClientEvents[E]): void;
+  emit<E extends OutgoingEvent>(event: E, payload: Parameters<ClientToServerEvents[E]>[0]): void;
+  connect(): Promise<void>;
+  disconnect(): void;
+}
+
+export interface SignalingOptions {
+  readonly roomId: string;
+  readonly displayName: string;
+}
+
+export type SignalingFactory = (options: SignalingOptions) => SignalingChannel;
+
+type Listener = (...args: unknown[]) => void;
+
+/** Minimal typed event dispatcher shared by transports that fan out locally. */
+export class SignalingEmitter {
+  private readonly listeners = new Map<keyof ServerToClientEvents, Listener[]>();
+
+  on<E extends keyof ServerToClientEvents>(event: E, handler: ServerToClientEvents[E]): void {
+    const list = this.listeners.get(event) ?? [];
+    list.push(handler as Listener);
+    this.listeners.set(event, list);
+  }
+
+  dispatch<E extends keyof ServerToClientEvents>(
+    event: E,
+    ...args: Parameters<ServerToClientEvents[E]>
+  ): void {
+    for (const listener of this.listeners.get(event) ?? []) {
+      (listener as (...params: Parameters<ServerToClientEvents[E]>) => void)(...args);
+    }
+  }
+
+  clear(): void {
+    this.listeners.clear();
+  }
+}

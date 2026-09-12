@@ -1,20 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { initializeApp } from 'firebase/app';
 import {
   FacebookAuthProvider,
   GoogleAuthProvider,
-  getAuth,
   onAuthStateChanged,
   signInWithPopup,
   signOut as firebaseSignOut,
-  type Auth,
   type User,
 } from 'firebase/auth';
-import { readFirebaseConfig } from './config';
+import { firebaseAuth as auth } from '../firebase/app';
 import type { AuthState, AuthUser, SocialProvider } from './types';
-
-const config = readFirebaseConfig();
-const auth: Auth | null = config ? getAuth(initializeApp(config)) : null;
 
 const providerFactories: Record<SocialProvider, () => GoogleAuthProvider | FacebookAuthProvider> = {
   google: () => new GoogleAuthProvider(),

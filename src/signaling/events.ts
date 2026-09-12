@@ -6,6 +6,15 @@ export interface JoinRoomPayload {
 export interface PeerInfo {
   readonly peerId: string;
   readonly displayName: string;
+  /** Epoch milliseconds; the later joiner initiates the WebRTC offer. */
+  readonly joinedAt: number;
+}
+
+export interface RoomJoinedPayload {
+  readonly selfPeerId: string;
+  readonly selfJoinedAt: number;
+  readonly hostPeerId: string;
+  readonly peers: PeerInfo[];
 }
 
 export interface OutgoingSdpPayload {
@@ -36,7 +45,8 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
-  'room:peers': (peers: PeerInfo[]) => void;
+  'room:joined': (payload: RoomJoinedPayload) => void;
+  'room:host': (hostPeerId: string) => void;
   'peer:joined': (peer: PeerInfo) => void;
   'peer:left': (peerId: string) => void;
   'signal:offer': (payload: IncomingSdpPayload) => void;
