@@ -12,6 +12,8 @@ import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
 import { filesRouter } from './files/router';
+import { inviteRouter } from './invite/router';
+import { transportFromEnv } from './invite/senders';
 import { files, isAdmitted, registerSignalingHandlers, type CollabServer } from './SignalingServer';
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -33,6 +35,7 @@ app.use(executionRouter(execution));
 app.use(assistantRouter(assistant));
 app.use(searchRouter(meetingIndexStore()));
 app.use(filesRouter({ store: files, membership: isAdmitted }));
+app.use(inviteRouter({ membership: isAdmitted, transport: transportFromEnv() }));
 
 if (existsSync(WEB_ROOT)) {
   app.use(express.static(WEB_ROOT));
