@@ -1,6 +1,6 @@
 {
   "name": "collab",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Cross-platform video conferencing built with React Native, Expo, WebRTC, and a Node.js signaling server.",
   "license": "MIT",
   "author": "Alex Alghisi",
