@@ -1,0 +1,55 @@
+{
+  "name": "collab",
+  "version": "1.0.0",
+  "description": "Cross-platform video conferencing built with React Native, Expo, WebRTC, and a Node.js signaling server.",
+  "license": "MIT",
+  "author": "Alex Alghisi",
+  "private": true,
+  "main": "index.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "export:web": "expo export --platform web --output-dir dist-web",
+    "desktop:web": "node scripts/prepare-desktop.mjs",
+    "server": "tsx watch server/src/index.ts",
+    "server:start": "tsx server/src/index.ts",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "expo": "^57.0.22",
+    "expo-status-bar": "^57.0.1",
+    "express": "^5.2.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.87.1",
+    "react-native-web": "^0.21.2",
+    "react-native-webrtc": "^124.0.8",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@config-plugins/react-native-webrtc": "^15.0.2",
+    "@eslint/js": "^10.0.1",
+    "@expo/metro-runtime": "^57.0.15",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.2",
+    "@types/react": "~19.3.0",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.13",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.0"
+  }
+}
