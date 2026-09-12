@@ -14,12 +14,19 @@ export interface CodeIdentity {
   readonly displayName: string;
 }
 
+/** Offsets into the shared text, so a selection survives being reindexed. */
+export interface CodeSelection {
+  readonly start: number;
+  readonly end: number;
+}
+
 /** A remote participant's cursor, as published through Yjs awareness. */
 export interface CodePresence {
   readonly clientId: number;
   readonly peerId: string;
   readonly displayName: string;
   readonly color: string;
+  readonly selection: CodeSelection | null;
 }
 
 interface AwarenessUser {
@@ -119,9 +126,20 @@ export class SharedCodeDocument {
         peerId: user.peerId,
         displayName: user.name,
         color: user.color,
+        selection: (state as { selection?: CodeSelection }).selection ?? null,
       });
     }
     return entries;
+  }
+
+  setSelection(selection: CodeSelection): void {
+    this.awareness.setLocalStateField('selection', selection);
+  }
+
+  /** Fires when a remote cursor moves, joins or goes away. */
+  onPresence(listener: () => void): () => void {
+    this.awareness.on('change', listener);
+    return () => this.awareness.off('change', listener);
   }
 
   encodeState(): string {
