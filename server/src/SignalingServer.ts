@@ -4,6 +4,7 @@ import * as Y from 'yjs';
 import { REJECTION_MESSAGES } from '../../src/code/execution';
 import { decodeUpdate, encodeUpdate } from '../../src/code/updates';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
+import { FileStore } from './files/FileStore';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -58,6 +59,22 @@ interface RoomState {
 }
 
 const rooms = new Map<string, RoomState>();
+
+/**
+ * Files shared in a room, owned here because they live and die with the room the
+ * same way its strokes and its editor document do.
+ */
+export const files = new FileStore();
+
+/**
+ * Whether a session may still act in a room. The upload endpoint has no socket
+ * to ask, and a participant the host removed must not be able to keep sending
+ * files through the door the socket no longer opens.
+ */
+export function isAdmitted(roomId: string, sessionId: string): boolean {
+  const room = rooms.get(roomId);
+  return room !== undefined && room.admitted.has(sessionId) && !room.removed.has(sessionId);
+}
 
 /** Socket.IO channel grouping the participants of a room's breakout rooms. */
 const breakoutChannel = (mainRoomId: string) => `${mainRoomId}:breakout`;
@@ -161,6 +178,7 @@ async function handleLeave(io: CollabServer, roomId: string, peerId: string): Pr
   if (remaining.length === 0) {
     room?.code.destroy();
     rooms.delete(roomId);
+    files.clearRoom(roomId);
     return;
   }
   if (room && room.hostPeerId === peerId) {
