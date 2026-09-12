@@ -87,6 +87,9 @@ export class SharedCodeDocument {
     // joiner is unknown to the peers already editing.
     channel.on('room:joined', this.onJoined);
     channel.on('peer:joined', this.onJoined);
+    // The panel may open long after the room was joined, in which case neither
+    // of those fires again.
+    this.announce();
   }
 
   get language(): CodeLanguage {
