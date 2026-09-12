@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
+import type { CodeLanguage } from '../code/languages';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -28,6 +29,20 @@ import {
 
 export type SessionStatus = 'idle' | 'connecting' | 'waiting' | 'connected' | 'error';
 
+/** One execution of the shared document, as the room sees it. */
+export interface CodeRun {
+  readonly runId: string;
+  readonly byPeerId: string;
+  readonly byDisplayName: string;
+  readonly language: CodeLanguage;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number | null;
+  readonly timedOut: boolean;
+  readonly error: string | null;
+  readonly running: boolean;
+}
+
 export interface RemoteParticipant {
   readonly peerId: string;
   readonly displayName: string;
@@ -52,6 +67,8 @@ export interface CollabSession {
   readonly notes: string;
   /** Shared code editor for this room; null outside a meeting. */
   readonly code: SharedCodeDocument | null;
+  /** Executions of the shared document, oldest first, including running ones. */
+  readonly runs: CodeRun[];
   readonly self: PeerState;
   readonly selfPeerId: string | null;
   readonly hostPeerId: string | null;
@@ -76,6 +93,8 @@ export interface CollabSession {
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
   updateNotes: (text: string) => void;
+  /** Runs the shared document in the sandbox; output reaches the whole room. */
+  runCode: (stdin: string) => void;
   // Host only.
   updateSettings: (patch: Partial<RoomSettings>) => void;
   admit: (peerId: string) => void;
@@ -120,6 +139,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [notes, setNotes] = useState('');
   const [code, setCode] = useState<SharedCodeDocument | null>(null);
+  const [runs, setRuns] = useState<CodeRun[]>([]);
   const [self, setSelf] = useState<PeerState>(INITIAL_PEER_STATE);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
@@ -200,6 +220,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     setMessages([]);
     setStrokes([]);
     setNotes('');
+    setRuns([]);
     setSelfPeerId(null);
     setHostPeerId(null);
     setSettings(DEFAULT_ROOM_SETTINGS);
@@ -302,6 +323,34 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
       });
       signaling.on('notes:update', setNotes);
+      signaling.on('code:run:started', (run) => {
+        setRuns((current) => [
+          ...current,
+          {
+            ...run,
+            stdout: '',
+            stderr: '',
+            exitCode: null,
+            timedOut: false,
+            error: null,
+            running: true,
+          },
+        ]);
+      });
+      signaling.on('code:output', ({ runId, stream, text }) => {
+        setRuns((current) =>
+          current.map((run) =>
+            run.runId === runId ? { ...run, [stream]: run[stream] + text } : run,
+          ),
+        );
+      });
+      signaling.on('code:run:finished', ({ runId, exitCode, timedOut, error }) => {
+        setRuns((current) =>
+          current.map((run) =>
+            run.runId === runId ? { ...run, exitCode, timedOut, error, running: false } : run,
+          ),
+        );
+      });
 
       const manager = new PeerConnectionManager({
         signaling,
@@ -471,6 +520,18 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     }, NOTES_SYNC_DELAY_MS);
   }, []);
 
+  const runCode = useCallback((stdin: string) => {
+    const document = codeRef.current;
+    if (!document) {
+      return;
+    }
+    signalingRef.current?.emit('code:run', {
+      language: document.language,
+      code: document.text.toString(),
+      stdin,
+    });
+  }, []);
+
   const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
     const next = { ...settingsRef.current, ...patch };
     settingsRef.current = next;
@@ -552,6 +613,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     strokes,
     notes,
     code,
+    runs,
     self,
     selfPeerId,
     hostPeerId,
@@ -572,6 +634,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     addStroke,
     removeStrokes,
     updateNotes,
+    runCode,
     updateSettings,
     admit,
     deny,
