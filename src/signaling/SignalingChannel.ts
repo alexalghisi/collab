@@ -1,3 +1,5 @@
+import type { FileAttachment } from '../files/attachments';
+import type { UploadableFile, UploadProgress } from '../files/upload';
 import type { ClientToServerEvents, PeerState, ServerToClientEvents } from './events';
 
 /** Events a client may send once it is inside a room. */
@@ -13,6 +15,13 @@ export interface SignalingChannel {
   emit<E extends OutgoingEvent>(event: E, payload: OutgoingPayload<E>): void;
   connect(): Promise<void>;
   disconnect(): void;
+  /**
+   * Puts a file where the room can reach it and describes it. Each transport
+   * uploads to whatever it already depends on - Storage for Firestore, the
+   * signaling server for Socket.IO - rather than the app growing a second
+   * backend of its own. Rejects with an AttachmentError the sender can be shown.
+   */
+  upload(file: UploadableFile, onProgress: UploadProgress): Promise<FileAttachment>;
 }
 
 export interface SignalingOptions {

@@ -18,10 +18,26 @@ import {
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
+import { randomUUID } from 'expo-crypto';
 import { EXECUTION_URL } from '../code/config';
+import type { ChatDraft } from '../chat/messages';
 import type { ExecutionRequest, ExecutionResult } from '../code/execution';
 import type { CodeLanguage } from '../code/languages';
 import { mergeEncodedUpdates } from '../code/updates';
+import {
+  ATTACHMENT_REJECTION_MESSAGES,
+  safeFileName,
+  type FileAttachment,
+} from '../files/attachments';
+import {
+  AttachmentError,
+  assertUploadable,
+  readBlob,
+  type UploadableFile,
+  type UploadProgress,
+} from '../files/upload';
+import { firebaseStorage } from '../firebase/app';
 import {
   DEFAULT_ROOM_SETTINGS,
   type ChatMessage,
@@ -165,11 +181,12 @@ class FirestoreChannel implements SignalingChannel {
     'peer:state': (state) => {
       void updateDoc(this.selfRef(), { state });
     },
-    'chat:message': (text) => {
+    'chat:message': ({ text, file }: ChatDraft) => {
       const message: MessageDoc = {
         peerId: this.peerId,
         displayName: this.options.displayName,
         text,
+        file,
         sentAt: Date.now(),
       };
       void addDoc(this.messages, message);
@@ -274,6 +291,43 @@ class FirestoreChannel implements SignalingChannel {
     this.subscribeStrokes();
     this.subscribeCodeUpdates();
     this.subscribeCodeRuns();
+  }
+
+  /**
+   * There is no server on this route, so the file goes to Storage and the rules
+   * are what enforce the size and the type. The bucket path carries the room, so
+   * a rule can say who may write where.
+   */
+  async upload(file: UploadableFile, onProgress: UploadProgress): Promise<FileAttachment> {
+    assertUploadable(file);
+    if (!firebaseStorage) {
+      throw new AttachmentError('File sharing is not enabled on this deployment.');
+    }
+    const id = randomUUID();
+    const name = safeFileName(file.name);
+    const target = storageRef(firebaseStorage, `rooms/${this.options.roomId}/${id}/${name}`);
+    const task = uploadBytesResumable(target, await readBlob(file), { contentType: file.mimeType });
+    task.on('state_changed', (snapshot) => {
+      onProgress(snapshot.totalBytes === 0 ? 0 : snapshot.bytesTransferred / snapshot.totalBytes);
+    });
+    try {
+      await task;
+    } catch (cause) {
+      // Storage refuses an oversized or disallowed file through its rules, which
+      // arrives here as an unauthorized error rather than a description.
+      throw new AttachmentError(
+        (cause as { code?: string }).code === 'storage/unauthorized'
+          ? ATTACHMENT_REJECTION_MESSAGES['unsupported-type']
+          : 'The file could not be shared.',
+      );
+    }
+    return {
+      id,
+      name,
+      mimeType: file.mimeType,
+      size: file.size,
+      url: await getDownloadURL(target),
+    };
   }
 
   disconnect(): void {
