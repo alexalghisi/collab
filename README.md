@@ -252,7 +252,9 @@ npm install
 npm run server
 ```
 
-The server listens on `http://localhost:4000` and exposes `GET /health`.
+The server listens on `http://localhost:4000` and exposes `GET /health`. After
+`npm run export:web` it also serves that build, so opening `http://localhost:4000`
+loads the app and the socket from the same origin — one port, one tunnel.
 
 Skip this step on web if Firebase is configured (see below): the web app then
 signals through Firestore. Publish [`firestore.rules`](firestore.rules) in the
@@ -267,8 +269,10 @@ npm run android  # Android device / emulator
 npm run ios      # iOS simulator
 ```
 
-By default the app connects to `http://localhost:4000`. Override it with the
-`EXPO_PUBLIC_SIGNALING_URL` environment variable.
+With no `EXPO_PUBLIC_SIGNALING_URL`, the client dials the page's own host on
+port 4000 (and `http://localhost:4000` from a loopback preview). A phone on
+the LAN therefore reaches the desktop running the server instead of its own
+loopback. Override the URL when the server lives somewhere else.
 
 ### Social sign-in (Google / Facebook)
 
