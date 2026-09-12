@@ -8,7 +8,7 @@ import type {
   RunStarted,
 } from '../../../src/code/execution';
 import { MAX_CODE_BYTES } from '../../../src/code/execution';
-import { settle, startRoomServer, type RoomServer } from '../../../src/testing/roomServer';
+import { settle, startRoomServer, until, type RoomServer } from '../../../src/testing/roomServer';
 import { ExecutionService } from './ExecutionService';
 import { RateLimiter } from './RateLimiter';
 import { SandboxUnavailableError, type SandboxRunner } from './SandboxRunner';
@@ -75,7 +75,7 @@ describe('running code from the meeting', () => {
     const running = record(ada.channel);
 
     ada.channel.emit('code:run', request);
-    await settle();
+    await until(() => watching.finished.length === 1 && running.started.length === 1);
 
     expect(watching.started).toHaveLength(1);
     expect(watching.started[0].byDisplayName).toBe('Ada');
@@ -89,7 +89,7 @@ describe('running code from the meeting', () => {
     const ada = await server.join('a', 'Ada');
 
     ada.channel.emit('code:run', { ...request, stdin: '41\n' });
-    await settle();
+    await until(() => runner.seen.length === 1);
 
     expect(runner.seen).toEqual([{ language: 'python', code: 'print(1)', stdin: '41\n' }]);
   });
@@ -100,7 +100,7 @@ describe('running code from the meeting', () => {
     runner.result = { exitCode: null, timedOut: true };
 
     ada.channel.emit('code:run', { ...request, code: 'while True: pass' });
-    await settle();
+    await until(() => recorder.finished.length === 1);
 
     expect(recorder.finished[0]).toMatchObject({ timedOut: true, exitCode: null, error: null });
   });
@@ -111,7 +111,7 @@ describe('running code from the meeting', () => {
     runner.failure = new SandboxUnavailableError('docker could not be started');
 
     ada.channel.emit('code:run', request);
-    await settle();
+    await until(() => recorder.finished.length === 1);
 
     expect(recorder.finished[0].error).toContain('docker could not be started');
   });
@@ -121,7 +121,7 @@ describe('running code from the meeting', () => {
     const recorder = record(ada.channel);
 
     ada.channel.emit('code:run', { ...request, code: 'x'.repeat(MAX_CODE_BYTES + 1) });
-    await settle();
+    await until(() => recorder.finished.length === 1);
 
     expect(runner.seen).toHaveLength(0);
     expect(recorder.finished[0].error).toContain('too large');
@@ -146,7 +146,7 @@ describe('running code from the meeting', () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       ada.channel.emit('code:run', request);
     }
-    await settle();
+    await until(() => recorder.finished.length === 3);
 
     expect(runner.seen).toHaveLength(2);
     expect(recorder.finished.map((entry) => entry.error)).toContain(
@@ -160,10 +160,10 @@ describe('running code from the meeting', () => {
     ada.channel.emit('code:run', request);
     ada.channel.emit('code:run', request);
     ada.channel.emit('code:run', request);
-    await settle();
+    await until(() => runner.seen.length === 2);
     clock.now = 2000;
     ada.channel.emit('code:run', request);
-    await settle();
+    await until(() => runner.seen.length === 3);
 
     expect(runner.seen).toHaveLength(3);
   });
@@ -179,7 +179,7 @@ describe('running code from the meeting', () => {
     await settle();
 
     guest.channel.emit('code:run', request);
-    await settle();
+    await until(() => recorder.finished.length === 1);
 
     expect(runner.seen).toHaveLength(0);
     expect(recorder.finished.at(-1)?.error).toContain('no longer in this meeting');
@@ -192,7 +192,7 @@ describe('running code from the meeting', () => {
     const recorder = record(ada.channel);
 
     ada.channel.emit('code:run', request);
-    await settle();
+    await until(() => recorder.finished.length === 1);
 
     expect(recorder.finished[0].error).toContain('not enabled');
   });
