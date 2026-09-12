@@ -52,6 +52,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 ## Features
 
 - Multi-party calls over a mesh of WebRTC peer connections.
+- Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
 - Real-time signaling over Socket.IO with strongly typed events shared between client and server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
 - Automated multi-platform release pipeline that publishes installable binaries to GitHub Releases.
@@ -175,6 +176,25 @@ npm run ios      # iOS simulator
 
 By default the app connects to `http://localhost:4000`. Override it with the
 `EXPO_PUBLIC_SIGNALING_URL` environment variable.
+
+### Social sign-in (Google / Facebook)
+
+Sign-in is optional: with no credentials configured the app runs as an open
+guest lobby. Provide the values below (e.g. in a local `.env`) to enable
+"Continue with Google" and "Continue with Facebook".
+
+- **Web** uses Firebase, so it reads the Firebase web config:
+  - `EXPO_PUBLIC_FIREBASE_API_KEY`
+  - `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
+  - `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
+  - `EXPO_PUBLIC_FIREBASE_APP_ID`
+- **Mobile (iOS / Android)** signs in through Expo AuthSession, so it reads the
+  OAuth client IDs directly:
+  - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`,
+    `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
+  - `EXPO_PUBLIC_FACEBOOK_APP_ID`
+
+Redirects use the app's `collab` scheme, which is already declared in `app.json`.
 
 ### 4. Run the desktop shell locally
 
