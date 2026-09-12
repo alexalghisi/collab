@@ -1,13 +1,21 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import {
+  DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
   type ChatMessage,
+  type HostCommand,
   type PeerInfo,
   type PeerState,
+  type RoomSettings,
   type Stroke,
+  type WaitingPeer,
 } from '../signaling/events';
-import type { SignalingChannel, SignalingFactory } from '../signaling/SignalingChannel';
+import {
+  AdmissionDeniedError,
+  type SignalingChannel,
+  type SignalingFactory,
+} from '../signaling/SignalingChannel';
 import { PeerConnectionManager } from '../webrtc/PeerConnectionManager';
 import {
   acquireCameraTrack,
@@ -16,7 +24,7 @@ import {
   toggleTrack,
 } from '../webrtc/media';
 
-export type SessionStatus = 'idle' | 'connecting' | 'connected' | 'error';
+export type SessionStatus = 'idle' | 'connecting' | 'waiting' | 'connected' | 'error';
 
 export interface RemoteParticipant {
   readonly peerId: string;
@@ -43,9 +51,18 @@ export interface CollabSession {
   readonly self: PeerState;
   readonly selfPeerId: string | null;
   readonly hostPeerId: string | null;
+  readonly isHost: boolean;
+  /** Room we are in (or moving to); null outside a meeting. */
+  readonly roomId: string | null;
+  /** Main room id while inside one of its breakout rooms. */
+  readonly breakoutOf: string | null;
+  readonly settings: RoomSettings;
+  /** People held at the waiting room; only populated for the host. */
+  readonly waiting: WaitingPeer[];
   /** Resolves to true once connected, false when media or signaling failed. */
   join: (options: JoinOptions) => Promise<boolean>;
   leave: () => void;
+  returnToMain: () => void;
   toggleMic: () => void;
   toggleCamera: () => Promise<void>;
   toggleScreenShare: () => Promise<void>;
@@ -55,12 +72,26 @@ export interface CollabSession {
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
   updateNotes: (text: string) => void;
+  // Host only.
+  updateSettings: (patch: Partial<RoomSettings>) => void;
+  admit: (peerId: string) => void;
+  deny: (peerId: string) => void;
+  /** null mutes everyone but the host. */
+  muteParticipant: (peerId: string | null) => void;
+  removeParticipant: (peerId: string) => void;
+  /** Spreads the other participants round-robin over `count` breakout rooms. */
+  openBreakoutRooms: (count: number) => void;
+  closeBreakoutRooms: () => void;
 }
 
 const REACTION_VISIBLE_MS = 4000;
 const NOTES_SYNC_DELAY_MS = 400;
 const MEDIA_ERROR = 'Camera or microphone access was denied.';
 const SIGNALING_ERROR = 'Unable to reach the signaling service.';
+const DENIED_ERROR = 'The host did not let you in.';
+const REMOVED_ERROR = 'You were removed from the meeting by the host.';
+
+const breakoutRoomId = (mainRoomId: string, index: number) => `${mainRoomId}-b${index + 1}`;
 
 function toParticipant(peer: PeerInfo): RemoteParticipant {
   return { peerId: peer.peerId, displayName: peer.displayName, state: peer.state };
@@ -77,11 +108,20 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [self, setSelf] = useState<PeerState>(INITIAL_PEER_STATE);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [breakoutOf, setBreakoutOf] = useState<string | null>(null);
+  const [settings, setSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
+  const [waiting, setWaiting] = useState<WaitingPeer[]>([]);
 
   const signalingRef = useRef<SignalingChannel | null>(null);
   const managerRef = useRef<PeerConnectionManager | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const selfRef = useRef<PeerState>(INITIAL_PEER_STATE);
+  const settingsRef = useRef<RoomSettings>(DEFAULT_ROOM_SETTINGS);
+  const displayNameRef = useRef('');
+  const sessionIdRef = useRef('');
+  /** Room handlers need APIs defined after them; the effect below keeps this current. */
+  const commandRef = useRef<(command: HostCommand) => void>(() => {});
   /** Camera track parked while the screen is being shared. */
   const parkedCameraRef = useRef<MediaStreamTrack | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -103,7 +143,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     );
   }, []);
 
-  const removeParticipant = useCallback((peerId: string) => {
+  const dropParticipant = useCallback((peerId: string) => {
     setParticipants((current) => current.filter((participant) => participant.peerId !== peerId));
   }, []);
 
@@ -122,18 +162,36 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     await managerRef.current?.replaceVideoTrack(track);
   }, []);
 
-  const leave = useCallback(() => {
+  /** Leaves the current room but keeps local media, so we can enter another room. */
+  const disconnectRoom = useCallback(() => {
     managerRef.current?.close();
     managerRef.current = null;
 
     signalingRef.current?.disconnect();
     signalingRef.current = null;
 
-    for (const timer of [reactionTimerRef, notesTimerRef]) {
-      if (timer.current) {
-        clearTimeout(timer.current);
-        timer.current = null;
-      }
+    if (notesTimerRef.current) {
+      clearTimeout(notesTimerRef.current);
+      notesTimerRef.current = null;
+    }
+
+    settingsRef.current = DEFAULT_ROOM_SETTINGS;
+    setParticipants([]);
+    setMessages([]);
+    setStrokes([]);
+    setNotes('');
+    setSelfPeerId(null);
+    setHostPeerId(null);
+    setSettings(DEFAULT_ROOM_SETTINGS);
+    setWaiting([]);
+  }, []);
+
+  const leave = useCallback(() => {
+    disconnectRoom();
+
+    if (reactionTimerRef.current) {
+      clearTimeout(reactionTimerRef.current);
+      reactionTimerRef.current = null;
     }
 
     for (const track of [
@@ -149,54 +207,57 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     selfRef.current = INITIAL_PEER_STATE;
 
     setLocalStream(null);
-    setParticipants([]);
-    setMessages([]);
-    setStrokes([]);
-    setNotes('');
     setSelf(INITIAL_PEER_STATE);
-    setSelfPeerId(null);
-    setHostPeerId(null);
+    setRoomId(null);
+    setBreakoutOf(null);
     setStatus('idle');
-  }, []);
+  }, [disconnectRoom]);
 
-  const join = useCallback(
-    async ({ roomId, displayName, video }: JoinOptions) => {
+  /** Connects the already acquired local media to `nextRoomId`. */
+  const connectRoom = useCallback(
+    async (nextRoomId: string, mainRoomId?: string) => {
+      const stream = streamRef.current;
+      if (!stream) {
+        return false;
+      }
       setStatus('connecting');
       setError(null);
 
-      let stream: MediaStream;
-      try {
-        stream = await acquireLocalStream({ video, audio: true });
-      } catch {
-        setError(MEDIA_ERROR);
-        setStatus('error');
-        return false;
-      }
-      streamRef.current = stream;
-      setLocalStream(stream);
-
-      const initialState: PeerState = { ...INITIAL_PEER_STATE, videoOff: !video };
-      selfRef.current = initialState;
-      setSelf(initialState);
-
-      const signaling = createSignaling({ roomId, displayName, state: initialState });
+      const signaling = createSignaling({
+        sessionId: sessionIdRef.current,
+        roomId: nextRoomId,
+        displayName: displayNameRef.current,
+        state: selfRef.current,
+        breakoutOf: mainRoomId,
+      });
       signalingRef.current = signaling;
 
+      signaling.on('room:waiting', () => setStatus('waiting'));
       signaling.on('room:joined', (room) => {
+        settingsRef.current = room.settings;
         setSelfPeerId(room.selfPeerId);
         setHostPeerId(room.hostPeerId);
         setParticipants(room.peers.map(toParticipant));
         setStrokes(room.strokes);
         setNotes(room.notes);
+        setSettings(room.settings);
+        setRoomId(nextRoomId);
+        setBreakoutOf(mainRoomId ?? null);
       });
       signaling.on('room:host', setHostPeerId);
+      signaling.on('room:settings', (next) => {
+        settingsRef.current = next;
+        setSettings(next);
+      });
+      signaling.on('waiting:update', setWaiting);
+      signaling.on('host:command', (command) => commandRef.current(command));
       signaling.on('peer:joined', (peer) => {
         setParticipants((current) => [
           ...current.filter((participant) => participant.peerId !== peer.peerId),
           toParticipant(peer),
         ]);
       });
-      signaling.on('peer:left', removeParticipant);
+      signaling.on('peer:left', dropParticipant);
       signaling.on('peer:state', ({ peerId, state }) => patchParticipant(peerId, { state }));
       signaling.on('chat:message', (message) => {
         setMessages((current) => [...current, message]);
@@ -217,7 +278,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         localStream: stream,
         onRemoteStream: (peerId, remoteStream) =>
           patchParticipant(peerId, { stream: remoteStream }),
-        onPeerClosed: removeParticipant,
+        onPeerClosed: dropParticipant,
       });
       manager.start();
       managerRef.current = manager;
@@ -226,15 +287,56 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         await signaling.connect();
         setStatus('connected');
         return true;
-      } catch {
+      } catch (cause) {
         leave();
-        setError(SIGNALING_ERROR);
+        setError(cause instanceof AdmissionDeniedError ? DENIED_ERROR : SIGNALING_ERROR);
         setStatus('error');
         return false;
       }
     },
-    [createSignaling, patchParticipant, removeParticipant, leave],
+    [createSignaling, patchParticipant, dropParticipant, leave],
   );
+
+  const join = useCallback(
+    async ({ roomId: nextRoomId, displayName, video }: JoinOptions) => {
+      setStatus('connecting');
+      setError(null);
+
+      let stream: MediaStream;
+      try {
+        stream = await acquireLocalStream({ video, audio: true });
+      } catch {
+        setError(MEDIA_ERROR);
+        setStatus('error');
+        return false;
+      }
+      streamRef.current = stream;
+      setLocalStream(stream);
+
+      const initialState: PeerState = { ...INITIAL_PEER_STATE, videoOff: !video };
+      selfRef.current = initialState;
+      setSelf(initialState);
+      displayNameRef.current = displayName;
+      sessionIdRef.current = randomUUID();
+
+      return connectRoom(nextRoomId);
+    },
+    [connectRoom],
+  );
+
+  const switchRoom = useCallback(
+    (nextRoomId: string, mainRoomId?: string) => {
+      disconnectRoom();
+      void connectRoom(nextRoomId, mainRoomId);
+    },
+    [disconnectRoom, connectRoom],
+  );
+
+  const returnToMain = useCallback(() => {
+    if (breakoutOf) {
+      switchRoom(breakoutOf);
+    }
+  }, [breakoutOf, switchRoom]);
 
   const toggleMic = useCallback(() => {
     const stream = streamRef.current;
@@ -339,6 +441,78 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     }, NOTES_SYNC_DELAY_MS);
   }, []);
 
+  const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next;
+    setSettings(next);
+    signalingRef.current?.emit('room:settings', next);
+  }, []);
+
+  const admit = useCallback((peerId: string) => {
+    signalingRef.current?.emit('waiting:decide', { peerId, admit: true });
+  }, []);
+
+  const deny = useCallback((peerId: string) => {
+    signalingRef.current?.emit('waiting:decide', { peerId, admit: false });
+  }, []);
+
+  const muteParticipant = useCallback((peerId: string | null) => {
+    signalingRef.current?.emit('host:command', {
+      targetPeerId: peerId,
+      command: { action: 'mute' },
+    });
+  }, []);
+
+  const removeParticipant = useCallback((peerId: string) => {
+    signalingRef.current?.emit('host:command', {
+      targetPeerId: peerId,
+      command: { action: 'remove' },
+    });
+  }, []);
+
+  const openBreakoutRooms = useCallback(
+    (count: number) => {
+      if (!roomId) {
+        return;
+      }
+      updateSettings({ breakoutOpen: true });
+      participants.forEach((participant, index) => {
+        signalingRef.current?.emit('host:command', {
+          targetPeerId: participant.peerId,
+          command: {
+            action: 'move',
+            roomId: breakoutRoomId(roomId, index % count),
+            breakoutOf: roomId,
+          },
+        });
+      });
+    },
+    [roomId, participants, updateSettings],
+  );
+
+  const closeBreakoutRooms = useCallback(() => {
+    updateSettings({ breakoutOpen: false });
+  }, [updateSettings]);
+
+  useEffect(() => {
+    commandRef.current = (command) => {
+      switch (command.action) {
+        case 'mute':
+          if (!selfRef.current.audioMuted) {
+            toggleMic();
+          }
+          return;
+        case 'remove':
+          leave();
+          setError(REMOVED_ERROR);
+          setStatus('error');
+          return;
+        case 'move':
+          switchRoom(command.roomId, command.breakoutOf);
+      }
+    };
+  }, [toggleMic, leave, switchRoom]);
+
   return {
     status,
     error,
@@ -350,8 +524,14 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     self,
     selfPeerId,
     hostPeerId,
+    isHost: selfPeerId !== null && selfPeerId === hostPeerId,
+    roomId,
+    breakoutOf,
+    settings,
+    waiting,
     join,
     leave,
+    returnToMain,
     toggleMic,
     toggleCamera,
     toggleScreenShare,
@@ -361,5 +541,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     addStroke,
     removeStrokes,
     updateNotes,
+    updateSettings,
+    admit,
+    deny,
+    muteParticipant,
+    removeParticipant,
+    openBreakoutRooms,
+    closeBreakoutRooms,
   };
 }

@@ -17,9 +17,42 @@ export const INITIAL_PEER_STATE: PeerState = {
 };
 
 export interface JoinRoomPayload {
+  /** Stable for the whole meeting, across breakout moves; an admitted session is not held again. */
+  readonly sessionId: string;
   readonly roomId: string;
   readonly displayName: string;
   readonly state: PeerState;
+  /** Set when `roomId` is a breakout room; the main room's id, so "close rooms" can bring us back. */
+  readonly breakoutOf?: string;
+}
+
+/** Room-wide options only the host may change. */
+export interface RoomSettings {
+  readonly waitingRoom: boolean;
+  readonly breakoutOpen: boolean;
+}
+
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = { waitingRoom: false, breakoutOpen: false };
+
+export type HostCommand =
+  | { readonly action: 'mute' }
+  | { readonly action: 'remove' }
+  | { readonly action: 'move'; readonly roomId: string; readonly breakoutOf?: string };
+
+export interface HostCommandPayload {
+  /** null addresses everyone in the room except the host. */
+  readonly targetPeerId: string | null;
+  readonly command: HostCommand;
+}
+
+export interface WaitingPeer {
+  readonly peerId: string;
+  readonly displayName: string;
+}
+
+export interface WaitingDecision {
+  readonly peerId: string;
+  readonly admit: boolean;
 }
 
 export interface PeerInfo {
@@ -61,6 +94,7 @@ export interface RoomJoinedPayload {
   /** Whiteboard content so far; transports that stream strokes send an empty list here. */
   readonly strokes: Stroke[];
   readonly notes: string;
+  readonly settings: RoomSettings;
 }
 
 export interface OutgoingSdpPayload {
@@ -93,6 +127,9 @@ export interface ClientToServerEvents {
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
   'notes:update': (text: string) => void;
+  'room:settings': (settings: RoomSettings) => void;
+  'host:command': (payload: HostCommandPayload) => void;
+  'waiting:decide': (decision: WaitingDecision) => void;
 }
 
 export interface ServerToClientEvents {
@@ -108,4 +145,11 @@ export interface ServerToClientEvents {
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
   'notes:update': (text: string) => void;
+  'room:settings': (settings: RoomSettings) => void;
+  /** The room has a waiting room; the host has been asked to let us in. */
+  'room:waiting': () => void;
+  'room:denied': () => void;
+  /** Sent to the host whenever the waiting list changes. */
+  'waiting:update': (peers: WaitingPeer[]) => void;
+  'host:command': (command: HostCommand) => void;
 }
