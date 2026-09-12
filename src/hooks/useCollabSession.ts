@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
+import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -49,6 +50,8 @@ export interface CollabSession {
   readonly messages: ChatMessage[];
   readonly strokes: Stroke[];
   readonly notes: string;
+  /** Shared code editor for this room; null outside a meeting. */
+  readonly code: SharedCodeDocument | null;
   readonly self: PeerState;
   readonly selfPeerId: string | null;
   readonly hostPeerId: string | null;
@@ -116,6 +119,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [notes, setNotes] = useState('');
+  const [code, setCode] = useState<SharedCodeDocument | null>(null);
   const [self, setSelf] = useState<PeerState>(INITIAL_PEER_STATE);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
@@ -125,6 +129,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [waiting, setWaiting] = useState<WaitingPeer[]>([]);
 
   const signalingRef = useRef<SignalingChannel | null>(null);
+  const codeRef = useRef<SharedCodeDocument | null>(null);
   const managerRef = useRef<PeerConnectionManager | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const selfRef = useRef<PeerState>(INITIAL_PEER_STATE);
@@ -177,6 +182,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const disconnectRoom = useCallback(() => {
     managerRef.current?.close();
     managerRef.current = null;
+
+    codeRef.current?.destroy();
+    codeRef.current = null;
+    setCode(null);
 
     signalingRef.current?.disconnect();
     signalingRef.current = null;
@@ -243,6 +252,13 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       });
       signalingRef.current = signaling;
 
+      const sharedCode = new SharedCodeDocument(signaling, {
+        peerId: sessionIdRef.current,
+        displayName: displayNameRef.current,
+      });
+      codeRef.current = sharedCode;
+      setCode(sharedCode);
+
       signaling.on('room:waiting', () => setStatus('waiting'));
       signaling.on('room:joined', (room) => {
         settingsRef.current = room.settings;
@@ -251,6 +267,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setParticipants(room.peers.map(toParticipant));
         setStrokes(room.strokes);
         setNotes(room.notes);
+        if (room.code) {
+          sharedCode.applyState(room.code);
+        }
         setSettings(room.settings);
         setRoomId(nextRoomId);
         setBreakoutOf(mainRoomId ?? null);
@@ -532,6 +551,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     messages,
     strokes,
     notes,
+    code,
     self,
     selfPeerId,
     hostPeerId,

@@ -76,6 +76,25 @@ Signaling is a small interface (`SignalingChannel`) with two transports:
 - **Firestore** (web, when Firebase is configured) — rooms, participants, per-peer signal inboxes, chat, whiteboard strokes, notes, room settings and the waiting list live in Firestore, so the deployed web app needs no server at all. Host commands (mute / remove / move) travel through the same per-peer inboxes as SDP and ICE.
 - **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`, which also keeps each room's whiteboard, notes, settings and waiting list in memory while the room is occupied, and only honours host commands coming from the current host.
 
+### Shared code document
+
+The collaborative editor is a [Yjs](https://yjs.dev) document that travels over
+the same `SignalingChannel` as everything else — there is no `y-websocket`
+server to deploy. Two message types carry it: `code:update` for document
+updates and `code:awareness` for cursors and selections, both base64-encoded
+because both transports are JSON.
+
+Late joiners are served the same way whiteboard strokes are, per transport:
+
+- **Socket.IO** — the server merges updates into one `Y.Doc` per room and hands
+  the merged state to a joiner in `room:joined`, then drops it when the room
+  empties. Awareness is relayed and never stored.
+- **Firestore** — updates are appended to `rooms/{id}/codeUpdates` and replayed
+  to a joiner in order; the host squashes the log into a single update once it
+  grows past a threshold, which bounds both storage and replay cost. Awareness
+  rides on the author's participant document, throttled, since cursor moves are
+  continuous.
+
 ```mermaid
 flowchart LR
   subgraph Clients
