@@ -7,6 +7,7 @@ import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionServ
 import { attachmentPath, FileStore } from './files/FileStore';
 import { normalizeChatDraft } from '../../src/chat/messages';
 import type { FileAttachment } from '../../src/files/attachments';
+import { normalizeTranscriptSegment, type TranscriptSegment } from '../../src/transcript/segments';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -49,6 +50,8 @@ interface RoomState {
   hostPeerId: string;
   strokes: Stroke[];
   notes: string;
+  /** Spoken turns so far; a late joiner gets the same log as everyone else. */
+  transcript: TranscriptSegment[];
   /** Merged shared editor document, so a late joiner gets the current code. */
   code: Y.Doc;
   codeEdited: boolean;
@@ -88,6 +91,7 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
       hostPeerId: firstPeerId,
       strokes: [],
       notes: '',
+      transcript: [],
       code: new Y.Doc(),
       codeEdited: false,
       settings: DEFAULT_ROOM_SETTINGS,
@@ -143,6 +147,7 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     notes: room.notes,
     settings: room.settings,
     code: room.codeEdited ? encodeUpdate(Y.encodeStateAsUpdate(room.code)) : null,
+    transcript: room.transcript,
   });
   socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
 }
@@ -401,6 +406,21 @@ function registerSocket(
       room.notes = text;
       socket.to(socket.data.roomId).emit('notes:update', text);
     }
+  });
+
+  socket.on('transcript:segment', (payload) => {
+    const room = currentRoom();
+    const draft = (payload ?? {}) as Partial<TranscriptSegment>;
+    const segment = normalizeTranscriptSegment({
+      ...draft,
+      peerId: socket.id,
+      displayName: socket.data.displayName ?? 'Guest',
+    });
+    if (!room || !socket.data.roomId || !segment) {
+      return;
+    }
+    room.transcript.push(segment);
+    io.to(socket.data.roomId).emit('transcript:segment', segment);
   });
 
   socket.on('signal:offer', ({ targetPeerId, description }) => {

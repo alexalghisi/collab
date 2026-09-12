@@ -5,6 +5,8 @@ import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
 import { AttachmentError, type UploadableFile, type UploadProgress } from '../files/upload';
+import { createSpeechCapture } from '../transcript/speech';
+import type { TranscriptSegment } from '../transcript/segments';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -68,6 +70,11 @@ export interface CollabSession {
   readonly messages: ChatMessage[];
   readonly strokes: Stroke[];
   readonly notes: string;
+  /** Spoken turns in this room, oldest first. */
+  readonly transcript: TranscriptSegment[];
+  /** True while this participant's recognizer is running. */
+  readonly captionsOn: boolean;
+  readonly captionError: string | null;
   /** Shared code editor for this room; null outside a meeting. */
   readonly code: SharedCodeDocument | null;
   /** Executions of the shared document, oldest first, including running ones. */
@@ -98,6 +105,8 @@ export interface CollabSession {
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
   updateNotes: (text: string) => void;
+  /** Starts or stops live captions for this participant. */
+  toggleCaptions: () => void;
   /** Runs the shared document in the sandbox; output reaches the whole room. */
   runCode: (stdin: string) => void;
   // Host only.
@@ -143,6 +152,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [notes, setNotes] = useState('');
+  const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
+  const [captionsOn, setCaptionsOn] = useState(false);
+  const [captionError, setCaptionError] = useState<string | null>(null);
   const [code, setCode] = useState<SharedCodeDocument | null>(null);
   const [runs, setRuns] = useState<CodeRun[]>([]);
   const [self, setSelf] = useState<PeerState>(INITIAL_PEER_STATE);
@@ -168,6 +180,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechRef = useRef(createSpeechCapture());
+  const selfPeerIdRef = useRef<string | null>(null);
 
   const updateSelf = useCallback((patch: Partial<PeerState>) => {
     const next = { ...selfRef.current, ...patch };
@@ -225,11 +239,43 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     setMessages([]);
     setStrokes([]);
     setNotes('');
+    setTranscript([]);
+    setCaptionError(null);
+    speechRef.current.stop();
+    setCaptionsOn(false);
     setRuns([]);
     setSelfPeerId(null);
     setHostPeerId(null);
     setSettings(DEFAULT_ROOM_SETTINGS);
     setWaiting([]);
+    selfPeerIdRef.current = null;
+  }, []);
+
+  const beginCaptions = useCallback(() => {
+    const capture = speechRef.current;
+    if (!capture.available) {
+      setCaptionError('Live captions are not available in this browser.');
+      setCaptionsOn(false);
+      return;
+    }
+    setCaptionError(null);
+    capture.start(
+      (text, span) => {
+        signalingRef.current?.emit('transcript:segment', {
+          id: randomUUID(),
+          peerId: selfPeerIdRef.current ?? sessionIdRef.current,
+          displayName: displayNameRef.current,
+          text,
+          startedAt: span.startedAt,
+          endedAt: span.endedAt,
+        });
+      },
+      (message) => {
+        setCaptionError(message);
+        setCaptionsOn(false);
+      },
+    );
+    setCaptionsOn(true);
   }, []);
 
   const leave = useCallback(() => {
@@ -288,11 +334,13 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('room:waiting', () => setStatus('waiting'));
       signaling.on('room:joined', (room) => {
         settingsRef.current = room.settings;
+        selfPeerIdRef.current = room.selfPeerId;
         setSelfPeerId(room.selfPeerId);
         setHostPeerId(room.hostPeerId);
         setParticipants(room.peers.map(toParticipant));
         setStrokes(room.strokes);
         setNotes(room.notes);
+        setTranscript(room.transcript);
         if (room.code) {
           sharedCode.applyState(room.code);
         }
@@ -328,6 +376,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
       });
       signaling.on('notes:update', setNotes);
+      signaling.on('transcript:segment', (segment) => {
+        setTranscript((current) =>
+          current.some((existing) => existing.id === segment.id) ? current : [...current, segment],
+        );
+      });
       signaling.on('code:run:started', (run) => {
         setRuns((current) => [
           ...current,
@@ -370,6 +423,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       try {
         await signaling.connect();
         setStatus('connected');
+        beginCaptions();
         return true;
       } catch (cause) {
         leave();
@@ -378,7 +432,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         return false;
       }
     },
-    [createSignaling, patchParticipant, dropParticipant, leave],
+    [createSignaling, patchParticipant, dropParticipant, leave, beginCaptions],
   );
 
   const join = useCallback(
@@ -536,6 +590,15 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     }, NOTES_SYNC_DELAY_MS);
   }, []);
 
+  const toggleCaptions = useCallback(() => {
+    if (captionsOn) {
+      speechRef.current.stop();
+      setCaptionsOn(false);
+      return;
+    }
+    beginCaptions();
+  }, [captionsOn, beginCaptions]);
+
   const runCode = useCallback((stdin: string) => {
     const document = codeRef.current;
     if (!document) {
@@ -628,6 +691,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     messages,
     strokes,
     notes,
+    transcript,
+    captionsOn,
+    captionError,
     code,
     runs,
     self,
@@ -651,6 +717,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     addStroke,
     removeStrokes,
     updateNotes,
+    toggleCaptions,
     runCode,
     updateSettings,
     admit,
