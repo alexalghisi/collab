@@ -39,7 +39,8 @@ export interface CollabSession {
   readonly self: PeerState;
   readonly selfPeerId: string | null;
   readonly hostPeerId: string | null;
-  join: (options: JoinOptions) => Promise<void>;
+  /** Resolves to true once connected, false when media or signaling failed. */
+  join: (options: JoinOptions) => Promise<boolean>;
   leave: () => void;
   toggleMic: () => void;
   toggleCamera: () => Promise<void>;
@@ -154,7 +155,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       } catch {
         setError(MEDIA_ERROR);
         setStatus('error');
-        return;
+        return false;
       }
       streamRef.current = stream;
       setLocalStream(stream);
@@ -197,10 +198,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       try {
         await signaling.connect();
         setStatus('connected');
+        return true;
       } catch {
         leave();
         setError(SIGNALING_ERROR);
         setStatus('error');
+        return false;
       }
     },
     [createSignaling, patchParticipant, removeParticipant, leave],
