@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { ExecutionChunk } from '../../../src/code/execution';
 import { MAX_OUTPUT_BYTES } from '../../../src/code/execution';
 import { CODE_LANGUAGES } from '../../../src/code/languages';
-import { DEFAULT_LIMITS, DockerRunner, dockerArgs, type Spawn } from './DockerRunner';
+import { DEFAULT_LIMITS, DockerRunner, dockerCreateArgs, type Spawn } from './DockerRunner';
 import { SandboxUnavailableError } from './SandboxRunner';
 
 class FakeProcess extends EventEmitter {
@@ -27,74 +27,99 @@ interface Invocation {
   readonly args: string[];
 }
 
-function fakeSpawn(): { spawn: Spawn; calls: Invocation[]; runs: FakeProcess[] } {
+interface Docker {
+  readonly spawn: Spawn;
+  readonly calls: Invocation[];
+  /** The attached run, which stays open until the test closes it. */
+  readonly runs: FakeProcess[];
+}
+
+/** `fails` makes one docker subcommand behave like a daemon that is not there. */
+function fakeDocker(fails?: { command: string; stderr?: string; error?: Error }): Docker {
   const calls: Invocation[] = [];
   const runs: FakeProcess[] = [];
   const spawn: Spawn = (command, args) => {
     calls.push({ command, args });
-    const process = new FakeProcess();
-    if (args[0] === 'run') {
-      runs.push(process);
+    const child = new FakeProcess();
+    if (fails?.command === args[0]) {
+      setImmediate(() => {
+        if (fails.error) {
+          child.emit('error', fails.error);
+          return;
+        }
+        child.stderr.write(fails.stderr ?? 'boom');
+        child.emit('close', 1);
+      });
+    } else if (args[0] === 'start') {
+      runs.push(child);
     } else {
-      setImmediate(() => process.emit('close', 0));
+      setImmediate(() => child.emit('close', 0));
     }
-    return process as unknown as ChildProcess;
+    return child as unknown as ChildProcess;
   };
   return { spawn, calls, runs };
 }
 
 const request = { language: 'python', code: 'print(1)', stdin: '' } as const;
 
-/** run() writes the submission to a temporary file before it spawns anything. */
-async function spawned(runs: FakeProcess[]): Promise<FakeProcess> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const process = runs.at(-1);
-    if (process) {
-      return process;
+/** run() writes a file and creates the container before the run itself starts. */
+async function started(runs: FakeProcess[]): Promise<FakeProcess> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const child = runs.at(-1);
+    if (child) {
+      return child;
     }
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
-  throw new Error('docker was never spawned');
+  throw new Error('the container was never started');
 }
 
-describe('dockerArgs', () => {
-  it('isolates the container from the network and the host filesystem', () => {
-    const args = dockerArgs('python', '/tmp/run', 'run-1', DEFAULT_LIMITS);
-    const pairs = args.map((arg, index) => `${arg} ${args[index + 1] ?? ''}`.trim());
+describe('dockerCreateArgs', () => {
+  const pairsOf = (args: string[]) =>
+    args.map((arg, index) => `${arg} ${args[index + 1] ?? ''}`.trim());
 
-    expect(args).toContain('--rm');
+  it('isolates the container from the network and the host', () => {
+    const args = dockerCreateArgs('python', 'run-1', DEFAULT_LIMITS);
+
     expect(args).toContain('--read-only');
-    expect(pairs).toContain('--network none');
-    expect(pairs).toContain('--cap-drop ALL');
-    expect(pairs).toContain('--security-opt no-new-privileges');
-    expect(pairs).toContain('--user 65534:65534');
-    expect(pairs).toContain('--volume /tmp/run:/sandbox:ro');
+    expect(pairsOf(args)).toContain('--network none');
+    expect(pairsOf(args)).toContain('--cap-drop ALL');
+    expect(pairsOf(args)).toContain('--security-opt no-new-privileges');
+    expect(pairsOf(args)).toContain('--user 65534:65534');
   });
 
   it('caps memory, swap, cpu and process count', () => {
-    const args = dockerArgs('go', '/tmp/run', 'run-1', {
+    const args = dockerCreateArgs('go', 'run-1', {
       ...DEFAULT_LIMITS,
       memoryMb: 128,
       cpus: 0.25,
       pids: 32,
     });
-    const pairs = args.map((arg, index) => `${arg} ${args[index + 1] ?? ''}`.trim());
 
-    expect(pairs).toContain('--memory 128m');
-    expect(pairs).toContain('--memory-swap 128m');
-    expect(pairs).toContain('--cpus 0.25');
-    expect(pairs).toContain('--pids-limit 32');
+    expect(pairsOf(args)).toContain('--memory 128m');
+    expect(pairsOf(args)).toContain('--memory-swap 128m');
+    expect(pairsOf(args)).toContain('--cpus 0.25');
+    expect(pairsOf(args)).toContain('--pids-limit 32');
+  });
+
+  it('carries the submission in a volume rather than a bind mount', () => {
+    const args = dockerCreateArgs('python', 'run-1', DEFAULT_LIMITS);
+
+    // A bind mount needs the daemon to share a host path; not every host does,
+    // and it fails by arriving empty rather than by refusing.
+    expect(args[args.indexOf('--volume') + 1]).toBe('/sandbox');
+    expect(args.some((arg) => arg.includes(':/sandbox'))).toBe(false);
   });
 
   it('names the container so a timeout can kill it by name', () => {
-    const args = dockerArgs('javascript', '/tmp/run', 'run-42', DEFAULT_LIMITS);
+    const args = dockerCreateArgs('javascript', 'run-42', DEFAULT_LIMITS);
 
     expect(args[args.indexOf('--name') + 1]).toBe('run-42');
   });
 
-  it('runs the mounted file rather than passing code as an argument', () => {
+  it('names the copied file as the program to run, never a shell', () => {
     for (const language of CODE_LANGUAGES) {
-      const args = dockerArgs(language, '/tmp/run', 'run-1', DEFAULT_LIMITS);
+      const args = dockerCreateArgs(language, 'run-1', DEFAULT_LIMITS);
 
       expect(args.some((arg) => arg.startsWith('/sandbox/main.'))).toBe(true);
       expect(args).not.toContain('sh');
@@ -104,16 +129,30 @@ describe('dockerArgs', () => {
 });
 
 describe('DockerRunner', () => {
+  it('creates, copies the submission in, runs it and cleans up', async () => {
+    const docker = fakeDocker();
+    const runner = new DockerRunner(DEFAULT_LIMITS, docker.spawn);
+
+    const running = runner.run(request, () => {});
+    (await started(docker.runs)).emit('close', 0);
+    await running;
+
+    expect(docker.calls.map((call) => call.args[0])).toEqual(['create', 'cp', 'start', 'rm']);
+    const container = docker.calls[0].args[docker.calls[0].args.indexOf('--name') + 1];
+    expect(docker.calls[1].args[2]).toBe(`${container}:/sandbox/main.py`);
+    expect(docker.calls[3].args).toEqual(['rm', '--force', '--volumes', container]);
+  });
+
   it('streams stdout and stderr as they arrive and reports the exit code', async () => {
-    const { spawn, runs } = fakeSpawn();
+    const docker = fakeDocker();
     const chunks: ExecutionChunk[] = [];
-    const runner = new DockerRunner(DEFAULT_LIMITS, spawn);
+    const runner = new DockerRunner(DEFAULT_LIMITS, docker.spawn);
 
     const running = runner.run(request, (chunk) => chunks.push(chunk));
-    const process = await spawned(runs);
-    process.stdout.write('1\n');
-    process.stderr.write('a warning\n');
-    process.emit('close', 3);
+    const child = await started(docker.runs);
+    child.stdout.write('1\n');
+    child.stderr.write('a warning\n');
+    child.emit('close', 3);
 
     expect(await running).toEqual({ exitCode: 3, timedOut: false });
     expect(chunks).toEqual([
@@ -123,59 +162,73 @@ describe('DockerRunner', () => {
   });
 
   it('feeds the submitted input to the program', async () => {
-    const { spawn, runs } = fakeSpawn();
-    const runner = new DockerRunner(DEFAULT_LIMITS, spawn);
+    const docker = fakeDocker();
+    const runner = new DockerRunner(DEFAULT_LIMITS, docker.spawn);
 
     const running = runner.run({ ...request, stdin: '7\n' }, () => {});
-    const process = await spawned(runs);
-    const received = process.stdin.read() as Buffer | null;
-    process.emit('close', 0);
+    const child = await started(docker.runs);
+    const received = child.stdin.read() as Buffer | null;
+    child.emit('close', 0);
     await running;
 
     expect(received?.toString()).toBe('7\n');
   });
 
   it('kills the container by name and reports a timeout', async () => {
-    const { spawn, calls, runs } = fakeSpawn();
-    const runner = new DockerRunner({ ...DEFAULT_LIMITS, timeoutMs: 20 }, spawn);
+    const docker = fakeDocker();
+    const runner = new DockerRunner({ ...DEFAULT_LIMITS, timeoutMs: 20 }, docker.spawn);
 
     const running = runner.run({ ...request, code: 'while True: pass' }, () => {});
-    const process = await spawned(runs);
+    const child = await started(docker.runs);
     // A killed container closes its stream; the runner reports the timeout.
-    setTimeout(() => process.emit('close', null), 60);
+    setTimeout(() => child.emit('close', null), 60);
 
     expect(await running).toEqual({ exitCode: null, timedOut: true });
-    expect(process.killed).toBe('SIGKILL');
-    const name = calls[0].args[calls[0].args.indexOf('--name') + 1];
-    expect(calls.slice(1)).toEqual([{ command: 'docker', args: ['kill', name] }]);
+    const container = docker.calls[0].args[docker.calls[0].args.indexOf('--name') + 1];
+    expect(docker.calls.filter((call) => call.args[0] === 'kill')).toEqual([
+      { command: 'docker', args: ['kill', container] },
+    ]);
   });
 
   it('truncates a flood of output instead of relaying all of it', async () => {
-    const { spawn, runs } = fakeSpawn();
+    const docker = fakeDocker();
     const chunks: ExecutionChunk[] = [];
-    const runner = new DockerRunner(DEFAULT_LIMITS, spawn);
+    const runner = new DockerRunner(DEFAULT_LIMITS, docker.spawn);
 
     const running = runner.run(request, (chunk) => chunks.push(chunk));
-    const process = await spawned(runs);
+    const child = await started(docker.runs);
     for (let written = 0; written <= MAX_OUTPUT_BYTES; written += 8192) {
-      process.stdout.write('x'.repeat(8192));
+      child.stdout.write('x'.repeat(8192));
     }
-    process.emit('close', 0);
+    child.emit('close', 0);
     await running;
 
     const relayed = chunks.reduce((total, chunk) => total + chunk.text.length, 0);
     expect(relayed).toBeLessThanOrEqual(MAX_OUTPUT_BYTES + '\n[output truncated]\n'.length);
     expect(chunks.at(-1)?.text).toContain('output truncated');
-    expect(process.killed).toBe('SIGKILL');
+    expect(docker.calls.some((call) => call.args[0] === 'kill')).toBe(true);
   });
 
-  it('surfaces a missing docker as an unavailable sandbox', async () => {
-    const { spawn, runs } = fakeSpawn();
-    const runner = new DockerRunner(DEFAULT_LIMITS, spawn);
+  it('reports a missing docker as an unavailable sandbox', async () => {
+    const docker = fakeDocker({ command: 'create', error: new Error('spawn docker ENOENT') });
+    const runner = new DockerRunner(DEFAULT_LIMITS, docker.spawn);
 
-    const running = runner.run(request, () => {});
-    (await spawned(runs)).emit('error', new Error('spawn docker ENOENT'));
+    await expect(runner.run(request, () => {})).rejects.toBeInstanceOf(SandboxUnavailableError);
+  });
 
-    await expect(running).rejects.toBeInstanceOf(SandboxUnavailableError);
+  it('reports why the daemon refused, and still cleans up', async () => {
+    const docker = fakeDocker({ command: 'create', stderr: 'no such image: python:3.12-alpine' });
+    const runner = new DockerRunner(DEFAULT_LIMITS, docker.spawn);
+
+    await expect(runner.run(request, () => {})).rejects.toThrow(/no such image/);
+    expect(docker.calls.at(-1)?.args[0]).toBe('rm');
+  });
+
+  it('does not start a container it could not copy the submission into', async () => {
+    const docker = fakeDocker({ command: 'cp', stderr: 'container rootfs is marked read-only' });
+    const runner = new DockerRunner(DEFAULT_LIMITS, docker.spawn);
+
+    await expect(runner.run(request, () => {})).rejects.toThrow(/read-only/);
+    expect(docker.calls.map((call) => call.args[0])).toEqual(['create', 'cp', 'rm']);
   });
 });
