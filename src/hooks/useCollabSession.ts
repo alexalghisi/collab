@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
+import type { StructuredAction } from '../assistant/types';
 import type { ChatDraft } from '../chat/messages';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
@@ -35,6 +36,15 @@ import {
 export type SessionStatus = 'idle' | 'connecting' | 'waiting' | 'connected' | 'error';
 
 /** One execution of the shared document, as the room sees it. */
+export interface AssistantThread {
+  readonly requestId: string;
+  readonly question: string;
+  readonly text: string;
+  readonly actions: StructuredAction[];
+  readonly error: string | null;
+  readonly pending: boolean;
+}
+
 export interface CodeRun {
   readonly runId: string;
   readonly byPeerId: string;
@@ -75,6 +85,7 @@ export interface CollabSession {
   /** True while this participant's recognizer is running. */
   readonly captionsOn: boolean;
   readonly captionError: string | null;
+  readonly assistantTurns: AssistantThread[];
   /** Shared code editor for this room; null outside a meeting. */
   readonly code: SharedCodeDocument | null;
   /** Executions of the shared document, oldest first, including running ones. */
@@ -107,6 +118,7 @@ export interface CollabSession {
   updateNotes: (text: string) => void;
   /** Starts or stops live captions for this participant. */
   toggleCaptions: () => void;
+  askAssistant: (question: string) => void;
   /** Runs the shared document in the sandbox; output reaches the whole room. */
   runCode: (stdin: string) => void;
   // Host only.
@@ -155,6 +167,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [captionsOn, setCaptionsOn] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
+  const [assistantTurns, setAssistantTurns] = useState<AssistantThread[]>([]);
   const [code, setCode] = useState<SharedCodeDocument | null>(null);
   const [runs, setRuns] = useState<CodeRun[]>([]);
   const [self, setSelf] = useState<PeerState>(INITIAL_PEER_STATE);
@@ -241,6 +254,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     setNotes('');
     setTranscript([]);
     setCaptionError(null);
+    setAssistantTurns([]);
     speechRef.current.stop();
     setCaptionsOn(false);
     setRuns([]);
@@ -379,6 +393,27 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('transcript:segment', (segment) => {
         setTranscript((current) =>
           current.some((existing) => existing.id === segment.id) ? current : [...current, segment],
+        );
+      });
+      signaling.on('assistant:token', ({ requestId, text }) => {
+        setAssistantTurns((current) =>
+          current.map((turn) =>
+            turn.requestId === requestId ? { ...turn, text: turn.text + text } : turn,
+          ),
+        );
+      });
+      signaling.on('assistant:done', ({ requestId, actions }) => {
+        setAssistantTurns((current) =>
+          current.map((turn) =>
+            turn.requestId === requestId ? { ...turn, actions, pending: false } : turn,
+          ),
+        );
+      });
+      signaling.on('assistant:error', ({ requestId, error }) => {
+        setAssistantTurns((current) =>
+          current.map((turn) =>
+            turn.requestId === requestId ? { ...turn, error, pending: false } : turn,
+          ),
         );
       });
       signaling.on('code:run:started', (run) => {
@@ -590,6 +625,19 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     }, NOTES_SYNC_DELAY_MS);
   }, []);
 
+  const askAssistant = useCallback((question: string) => {
+    const text = question.trim();
+    if (!text) {
+      return;
+    }
+    const requestId = randomUUID();
+    setAssistantTurns((current) => [
+      ...current,
+      { requestId, question: text, text: '', actions: [], error: null, pending: true },
+    ]);
+    signalingRef.current?.emit('assistant:ask', { requestId, question: text });
+  }, []);
+
   const toggleCaptions = useCallback(() => {
     if (captionsOn) {
       speechRef.current.stop();
@@ -694,6 +742,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     transcript,
     captionsOn,
     captionError,
+    assistantTurns,
     code,
     runs,
     self,
@@ -718,6 +767,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     removeStrokes,
     updateNotes,
     toggleCaptions,
+    askAssistant,
     runCode,
     updateSettings,
     admit,

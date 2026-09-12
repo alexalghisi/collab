@@ -9,6 +9,7 @@ import { nextHalfHour } from './src/meeting/calendar';
 import { readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
 import { useMeetings } from './src/meeting/useMeetings';
+import { useMeetingSearch } from './src/search/useMeetingSearch';
 import { CalendarScreen } from './src/components/calendar/CalendarScreen';
 import { TeamChatScreen } from './src/components/chat/TeamChatScreen';
 import { HomeScreen } from './src/components/home/HomeScreen';
@@ -17,6 +18,7 @@ import { MeetingScreen } from './src/components/meeting/MeetingScreen';
 import { WaitingScreen } from './src/components/meeting/WaitingScreen';
 import { MeetingsScreen } from './src/components/meetings/MeetingsScreen';
 import { ScheduleMeetingScreen } from './src/components/meetings/ScheduleMeetingScreen';
+import { SearchScreen } from './src/components/search/SearchScreen';
 import { AppShell } from './src/components/shell/AppShell';
 import type { Section } from './src/components/shell/sections';
 import { colors } from './src/theme';
@@ -27,6 +29,7 @@ export default function App() {
   const auth = useAuth();
   const session = useCollabSession(createSignaling);
   const meetings = useMeetings(auth.user?.uid ?? 'guest');
+  const meetingSearch = useMeetingSearch();
   const teamChat = useTeamChat(auth.user);
   const [view, setView] = useState<View>('home');
   const [scheduleStart, setScheduleStart] = useState(() => nextHalfHour());
@@ -149,6 +152,7 @@ export default function App() {
           />
         )}
         {view === 'chat' && <TeamChatScreen chat={teamChat} selfId={auth.user?.uid ?? null} />}
+        {view === 'search' && <SearchScreen search={meetingSearch} />}
         {view === 'schedule' && (
           <ScheduleMeetingScreen
             initialStart={scheduleStart}

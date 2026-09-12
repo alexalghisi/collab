@@ -18,6 +18,7 @@ import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
 import { CodePanel } from './CodePanel';
+import { AssistantPanel } from './AssistantPanel';
 import { NotesPanel } from './NotesPanel';
 import { TranscriptPanel } from './TranscriptPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
@@ -32,7 +33,7 @@ export interface MeetingScreenProps {
   displayName: string;
 }
 
-type Panel = 'participants' | 'chat' | 'notes' | 'transcript' | null;
+type Panel = 'participants' | 'chat' | 'notes' | 'transcript' | 'assistant' | null;
 /** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
 type Stage = 'grid' | 'whiteboard' | 'code';
 
@@ -229,6 +230,13 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
                 onClose={() => setPanel(null)}
               />
             )}
+            {panel === 'assistant' && (
+              <AssistantPanel
+                turns={session.assistantTurns}
+                onAsk={session.askAssistant}
+                onClose={() => setPanel(null)}
+              />
+            )}
           </View>
         )}
       </View>
@@ -313,6 +321,12 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
           label="Transcript"
           active={panel === 'transcript'}
           onPress={() => togglePanel('transcript')}
+        />
+        <ToolbarButton
+          icon="sparkles-outline"
+          label="Assistant"
+          active={panel === 'assistant'}
+          onPress={() => togglePanel('assistant')}
         />
         <ToolbarButton
           icon="people"
