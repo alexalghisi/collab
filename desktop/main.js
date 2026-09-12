@@ -1,5 +1,19 @@
 const path = require('node:path');
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, protocol, session } = require('electron');
+
+const webDir = path.join(__dirname, 'web');
+
+/**
+ * The web export references its bundle and assets with root-absolute paths
+ * (/_expo/..., /assets/...). Over file:// those would point at the filesystem
+ * root, so anything outside the web folder is remapped into it.
+ */
+function serveWebFolder() {
+  protocol.interceptFileProtocol('file', (request, callback) => {
+    const requested = decodeURIComponent(new URL(request.url).pathname);
+    callback({ path: requested.startsWith(webDir) ? requested : path.join(webDir, requested) });
+  });
+}
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -14,10 +28,11 @@ function createWindow() {
     },
   });
 
-  window.loadFile(path.join(__dirname, 'web', 'index.html'));
+  window.loadFile(path.join(webDir, 'index.html'));
 }
 
 app.whenReady().then(() => {
+  serveWebFolder();
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media');
   });
