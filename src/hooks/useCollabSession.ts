@@ -1,9 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
+import { randomUUID } from 'expo-crypto';
 import {
   INITIAL_PEER_STATE,
   type ChatMessage,
   type PeerInfo,
   type PeerState,
+  type Stroke,
 } from '../signaling/events';
 import type { SignalingChannel, SignalingFactory } from '../signaling/SignalingChannel';
 import { PeerConnectionManager } from '../webrtc/PeerConnectionManager';
@@ -36,6 +38,8 @@ export interface CollabSession {
   readonly localStream: MediaStream | null;
   readonly participants: RemoteParticipant[];
   readonly messages: ChatMessage[];
+  readonly strokes: Stroke[];
+  readonly notes: string;
   readonly self: PeerState;
   readonly selfPeerId: string | null;
   readonly hostPeerId: string | null;
@@ -48,9 +52,13 @@ export interface CollabSession {
   toggleHand: () => void;
   sendReaction: (emoji: string) => void;
   sendMessage: (text: string) => void;
+  addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
+  removeStrokes: (strokeIds: string[]) => void;
+  updateNotes: (text: string) => void;
 }
 
 const REACTION_VISIBLE_MS = 4000;
+const NOTES_SYNC_DELAY_MS = 400;
 const MEDIA_ERROR = 'Camera or microphone access was denied.';
 const SIGNALING_ERROR = 'Unable to reach the signaling service.';
 
@@ -64,6 +72,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [notes, setNotes] = useState('');
   const [self, setSelf] = useState<PeerState>(INITIAL_PEER_STATE);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
@@ -76,6 +86,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const parkedCameraRef = useRef<MediaStreamTrack | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const updateSelf = useCallback((patch: Partial<PeerState>) => {
     const next = { ...selfRef.current, ...patch };
@@ -118,9 +129,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.disconnect();
     signalingRef.current = null;
 
-    if (reactionTimerRef.current) {
-      clearTimeout(reactionTimerRef.current);
-      reactionTimerRef.current = null;
+    for (const timer of [reactionTimerRef, notesTimerRef]) {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
     }
 
     for (const track of [
@@ -138,6 +151,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     setLocalStream(null);
     setParticipants([]);
     setMessages([]);
+    setStrokes([]);
+    setNotes('');
     setSelf(INITIAL_PEER_STATE);
     setSelfPeerId(null);
     setHostPeerId(null);
@@ -171,6 +186,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setSelfPeerId(room.selfPeerId);
         setHostPeerId(room.hostPeerId);
         setParticipants(room.peers.map(toParticipant));
+        setStrokes(room.strokes);
+        setNotes(room.notes);
       });
       signaling.on('room:host', setHostPeerId);
       signaling.on('peer:joined', (peer) => {
@@ -184,6 +201,16 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('chat:message', (message) => {
         setMessages((current) => [...current, message]);
       });
+      // Firestore echoes our own strokes back, so adding is keyed by id.
+      signaling.on('board:stroke', (stroke) => {
+        setStrokes((current) =>
+          current.some((existing) => existing.id === stroke.id) ? current : [...current, stroke],
+        );
+      });
+      signaling.on('board:remove', (strokeIds) => {
+        setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
+      });
+      signaling.on('notes:update', setNotes);
 
       const manager = new PeerConnectionManager({
         signaling,
@@ -286,12 +313,40 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.emit('chat:message', text);
   }, []);
 
+  const addStroke = useCallback(
+    (draft: Omit<Stroke, 'id' | 'peerId'>) => {
+      const stroke: Stroke = { ...draft, id: randomUUID(), peerId: selfPeerId ?? 'self' };
+      setStrokes((current) => [...current, stroke]);
+      signalingRef.current?.emit('board:stroke', stroke);
+    },
+    [selfPeerId],
+  );
+
+  const removeStrokes = useCallback((strokeIds: string[]) => {
+    setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
+    signalingRef.current?.emit('board:remove', strokeIds);
+  }, []);
+
+  /** Shows the change at once and sends it after a short pause in typing. */
+  const updateNotes = useCallback((text: string) => {
+    setNotes(text);
+    if (notesTimerRef.current) {
+      clearTimeout(notesTimerRef.current);
+    }
+    notesTimerRef.current = setTimeout(() => {
+      notesTimerRef.current = null;
+      signalingRef.current?.emit('notes:update', text);
+    }, NOTES_SYNC_DELAY_MS);
+  }, []);
+
   return {
     status,
     error,
     localStream,
     participants,
     messages,
+    strokes,
+    notes,
     self,
     selfPeerId,
     hostPeerId,
@@ -303,5 +358,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     toggleHand,
     sendReaction,
     sendMessage,
+    addStroke,
+    removeStrokes,
+    updateNotes,
   };
 }
