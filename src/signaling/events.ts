@@ -1,3 +1,5 @@
+import type { ExecutionRequest, RunFinished, RunOutput, RunStarted } from '../code/execution';
+
 /** Presence flags every participant broadcasts to the room. */
 export interface PeerState {
   readonly audioMuted: boolean;
@@ -136,6 +138,8 @@ export interface ClientToServerEvents {
   'code:update': (update: string) => void;
   /** Base64-encoded Yjs awareness update: cursors, selections and editor presence. */
   'code:awareness': (update: string) => void;
+  /** Runs the submitted code in the sandbox and reports back to the whole room. */
+  'code:run': (request: ExecutionRequest) => void;
   'room:settings': (settings: RoomSettings) => void;
   'host:command': (payload: HostCommandPayload) => void;
   'waiting:decide': (decision: WaitingDecision) => void;
@@ -156,6 +160,9 @@ export interface ServerToClientEvents {
   'notes:update': (text: string) => void;
   'code:update': (update: string) => void;
   'code:awareness': (update: string) => void;
+  'code:run:started': (payload: RunStarted) => void;
+  'code:output': (payload: RunOutput) => void;
+  'code:run:finished': (payload: RunFinished) => void;
   'room:settings': (settings: RoomSettings) => void;
   /** The room has a waiting room; the host has been asked to let us in. */
   'room:waiting': () => void;
