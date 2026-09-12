@@ -13,6 +13,7 @@ import {
 } from '../signaling/events';
 import {
   AdmissionDeniedError,
+  SignalingUnavailableError,
   type SignalingChannel,
   type SignalingFactory,
 } from '../signaling/SignalingChannel';
@@ -92,6 +93,16 @@ const DENIED_ERROR = 'The host did not let you in.';
 const REMOVED_ERROR = 'You were removed from the meeting by the host.';
 
 const breakoutRoomId = (mainRoomId: string, index: number) => `${mainRoomId}-b${index + 1}`;
+
+function joinErrorMessage(cause: unknown): string {
+  if (cause instanceof AdmissionDeniedError) {
+    return DENIED_ERROR;
+  }
+  if (cause instanceof SignalingUnavailableError) {
+    return `${SIGNALING_ERROR} Tried ${cause.url}.`;
+  }
+  return SIGNALING_ERROR;
+}
 
 function toParticipant(peer: PeerInfo): RemoteParticipant {
   return { peerId: peer.peerId, displayName: peer.displayName, state: peer.state };
@@ -289,7 +300,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         return true;
       } catch (cause) {
         leave();
-        setError(cause instanceof AdmissionDeniedError ? DENIED_ERROR : SIGNALING_ERROR);
+        setError(joinErrorMessage(cause));
         setStatus('error');
         return false;
       }
