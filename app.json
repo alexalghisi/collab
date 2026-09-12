@@ -37,9 +37,6 @@
       "favicon": "./assets/icon.png"
     },
     "plugins": ["@config-plugins/react-native-webrtc", "expo-web-browser"],
-    "experiments": {
-      "baseUrl": "/collab"
-    },
     "extra": {
       "signalingUrl": "http://localhost:4000"
     }
