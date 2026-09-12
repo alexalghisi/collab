@@ -95,6 +95,34 @@ Late joiners are served the same way whiteboard strokes are, per transport:
   rides on the author's participant document, throttled, since cursor moves are
   continuous.
 
+### Running code
+
+Running a submission is off unless a sandbox is configured, because it executes
+whatever a participant typed. Set `EXECUTION_BACKEND` on the server:
+
+| Value    | Sandbox                                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _unset_  | Disabled. The Run button reports that execution is not enabled on this deployment.                                                                                                    |
+| `docker` | One throwaway container per run, for a host that can reach a Docker daemon.                                                                                                           |
+| `piston` | A [Piston](https://github.com/engineer-man/piston) deployment, for hosts that cannot. Set `EXECUTION_PISTON_URL` to your own instance to keep submissions inside your infrastructure. |
+
+The Docker sandbox runs each submission with no network (`--network none`), a
+read-only root filesystem with the code mounted read-only, capped memory, swap,
+CPU and process count, all capabilities dropped, no privilege escalation, as an
+unprivileged user, and a wall clock it cannot outlive — the container is killed
+by name on timeout. The code is written to a file and mounted rather than
+interpolated into a command, so there is no shell to escape. Output is truncated
+past 128 KB so a runaway loop cannot fill the room's screens. Runs are rate
+limited per room and per participant on the server, and a participant the host
+removed cannot run anything at all.
+
+Both transports use the same service: the Socket.IO path relays `code:run` and
+streams `code:output` to everyone in the room, and the Firestore path posts to
+`POST /execute` on the same server and publishes the run as a document the room
+watches. `EXPO_PUBLIC_EXECUTION_URL` overrides where the client posts, which is
+what a Firestore deployment needs since it has no signaling URL of its own.
+`GET /execute` reports whether execution is enabled and which sandbox is in use.
+
 ```mermaid
 flowchart LR
   subgraph Clients
