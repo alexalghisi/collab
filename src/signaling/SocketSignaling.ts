@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import type { ClientToServerEvents, ServerToClientEvents } from './events';
+import type { ClientToServerEvents, PeerState, ServerToClientEvents } from './events';
 import type { SignalingChannel, SignalingFactory } from './SignalingChannel';
 
 type CollabSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -22,6 +22,7 @@ class SocketChannel implements SignalingChannel {
     url: string,
     private readonly roomId: string,
     private readonly displayName: string,
+    private readonly state: PeerState,
   ) {
     this.socket = io(url, {
       transports: ['websocket'],
@@ -44,7 +45,11 @@ class SocketChannel implements SignalingChannel {
       this.socket.once('connect_error', reject);
       this.socket.once('room:joined', () => resolve());
       this.socket.once('connect', () => {
-        this.socket.emit('room:join', { roomId: this.roomId, displayName: this.displayName });
+        this.socket.emit('room:join', {
+          roomId: this.roomId,
+          displayName: this.displayName,
+          state: this.state,
+        });
       });
       this.socket.connect();
     });
@@ -56,5 +61,5 @@ class SocketChannel implements SignalingChannel {
 }
 
 export function createSocketSignaling(url: string): SignalingFactory {
-  return ({ roomId, displayName }) => new SocketChannel(url, roomId, displayName);
+  return ({ roomId, displayName, state }) => new SocketChannel(url, roomId, displayName, state);
 }
