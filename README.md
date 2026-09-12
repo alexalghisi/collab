@@ -240,6 +240,38 @@ cd desktop && npm install && npm start
 
 ---
 
+## Deploying the web app
+
+`.github/workflows/pages.yml` exports the web build and publishes it to GitHub
+Pages. The export is static, so it carries no signaling backend of its own — the
+deployed app has to be told at build time how rooms are coordinated. Pick one:
+
+**Firestore (no server).** Add the Firebase web config as repository secrets
+(_Settings → Secrets and variables → Actions → Secrets_) and publish
+[`firestore.rules`](firestore.rules) in the Firebase console:
+
+`EXPO_PUBLIC_FIREBASE_API_KEY`, `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`,
+`EXPO_PUBLIC_FIREBASE_PROJECT_ID`, `EXPO_PUBLIC_FIREBASE_APP_ID`
+
+**Socket.IO server.** Deploy [`server/`](server) anywhere that can run a Node
+process and hold a WebSocket open. [`render.yaml`](render.yaml) is a Render
+blueprint for exactly that (_New → Blueprint_, point it at this repository); it
+builds [`server/Dockerfile`](server/Dockerfile) and health-checks `/health`.
+Then add the public URL as the repository **variable**
+`EXPO_PUBLIC_SIGNALING_URL` (for example `https://collab-signaling.onrender.com`)
+and re-run the workflow. Restrict the server to your own origin with the
+`CORS_ORIGIN` environment variable; it defaults to `*`.
+
+With neither configured, the build falls back to `http://localhost:4000` and
+joining a meeting fails with `Unable to reach the signaling service at
+http://localhost:4000.` — the error names the URL it tried so a missing
+deployment variable is obvious.
+
+> Render's free instances sleep when idle, so the first join after a quiet
+> period waits for a cold start.
+
+---
+
 ## Building release binaries
 
 Releases are fully automated. Pushing a version tag triggers `.github/workflows/release.yml`, which builds every platform in parallel and uploads the assets to a GitHub Release.
