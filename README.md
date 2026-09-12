@@ -51,7 +51,9 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 
 ## Features
 
-- Multi-party calls over a mesh of WebRTC peer connections.
+- Multi-party video and voice calls over a mesh of WebRTC peer connections; join with video or audio only and turn the camera on later without renegotiation.
+- In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
+- Shareable invite links (`?room=…`) with human-friendly meeting IDs.
 - Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
