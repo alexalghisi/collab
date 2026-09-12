@@ -1,6 +1,6 @@
 {
   "name": "collab-desktop",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Electron desktop shell that packages the Collab web build into native macOS, Windows, and Linux binaries.",
   "license": "MIT",
   "author": {
