@@ -18,6 +18,7 @@ import {
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
+import { mergeEncodedUpdates } from '../code/updates';
 import {
   DEFAULT_ROOM_SETTINGS,
   type ChatMessage,
@@ -43,6 +44,13 @@ interface ParticipantDoc {
   readonly joinedAt: number;
   readonly lastSeen: number;
   readonly state: PeerState;
+  /** Latest editor awareness of this participant; presence, so it is not kept. */
+  readonly codeAwareness?: string;
+}
+
+interface CodeUpdateDoc {
+  readonly update: string;
+  readonly createdAt: number;
 }
 
 interface RoomDoc {
@@ -78,6 +86,10 @@ type Senders = { [E in OutgoingEvent]: (payload: OutgoingPayload<E>) => void };
 
 const HEARTBEAT_MS = 20_000;
 const STALE_AFTER_MS = 60_000;
+/** Cursor moves are continuous; participant documents are not free to write. */
+const AWARENESS_THROTTLE_MS = 200;
+/** Above this, the host squashes the update log so late joiners replay less. */
+const COMPACT_UPDATES_AT = 120;
 
 /** Firestore rejects `undefined` fields; WebRTC dictionaries may contain them. */
 function toPlain<T>(value: T): T {
@@ -105,10 +117,15 @@ class FirestoreChannel implements SignalingChannel {
   private readonly participants: CollectionReference;
   private readonly messages: CollectionReference;
   private readonly strokes: CollectionReference;
+  private readonly codeUpdates: CollectionReference;
   private readonly waiting: CollectionReference;
   private readonly unsubscribers: Unsubscribe[] = [];
   private unsubscribeWaiting: Unsubscribe | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private awarenessTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingAwareness: string | null = null;
+  private isHost = false;
+  private compacting = false;
   private joinedAt = 0;
   private lastSettings = DEFAULT_ROOM_SETTINGS;
   /** Our own notes writes echo back through the room snapshot; they must not overwrite newer typing. */
@@ -151,6 +168,11 @@ class FirestoreChannel implements SignalingChannel {
       this.lastSentNotes = notes;
       void setDoc(this.room, { notes }, { merge: true });
     },
+    'code:update': (update) => {
+      const entry: CodeUpdateDoc = { update, createdAt: Date.now() };
+      void addDoc(this.codeUpdates, entry);
+    },
+    'code:awareness': (update) => this.sendAwareness(update),
     'room:settings': (settings) => {
       this.lastSettings = settings;
       void setDoc(this.room, { settings }, { merge: true });
@@ -182,6 +204,7 @@ class FirestoreChannel implements SignalingChannel {
     this.participants = collection(this.room, 'participants');
     this.messages = collection(this.room, 'messages');
     this.strokes = collection(this.room, 'strokes');
+    this.codeUpdates = collection(this.room, 'codeUpdates');
     this.waiting = collection(this.room, 'waiting');
   }
 
@@ -225,6 +248,7 @@ class FirestoreChannel implements SignalingChannel {
     await this.subscribeParticipants(room);
     // After room:joined, so the existing drawing streams in as board:stroke events.
     this.subscribeStrokes();
+    this.subscribeCodeUpdates();
   }
 
   disconnect(): void {
@@ -233,6 +257,11 @@ class FirestoreChannel implements SignalingChannel {
       clearInterval(this.heartbeat);
       this.heartbeat = null;
     }
+    if (this.awarenessTimer) {
+      clearTimeout(this.awarenessTimer);
+      this.awarenessTimer = null;
+    }
+    this.pendingAwareness = null;
     for (const unsubscribe of this.unsubscribers) {
       unsubscribe();
     }
@@ -362,6 +391,7 @@ class FirestoreChannel implements SignalingChannel {
               strokes: [],
               notes,
               settings,
+              code: null,
             });
             resolve();
             return;
@@ -370,13 +400,16 @@ class FirestoreChannel implements SignalingChannel {
             if (change.doc.id === this.peerId) {
               continue;
             }
+            const data = change.doc.data() as ParticipantDoc;
             if (change.type === 'added') {
               this.emitter.dispatch('peer:joined', toPeerInfo(change.doc));
             } else if (change.type === 'removed') {
               this.emitter.dispatch('peer:left', change.doc.id);
             } else {
-              const { state } = change.doc.data() as ParticipantDoc;
-              this.emitter.dispatch('peer:state', { peerId: change.doc.id, state });
+              this.emitter.dispatch('peer:state', { peerId: change.doc.id, state: data.state });
+            }
+            if (change.type !== 'removed' && data.codeAwareness) {
+              this.emitter.dispatch('code:awareness', data.codeAwareness);
             }
           }
         },
@@ -390,8 +423,9 @@ class FirestoreChannel implements SignalingChannel {
     const unsubscribe = onSnapshot(this.room, (snapshot) => {
       const data = snapshot.data() as RoomDoc | undefined;
       if (data?.hostPeerId) {
+        this.isHost = data.hostPeerId === this.peerId;
         this.emitter.dispatch('room:host', data.hostPeerId);
-        this.syncWaitingSubscription(data.hostPeerId === this.peerId);
+        this.syncWaitingSubscription(this.isHost);
       }
       const notes = data?.notes ?? '';
       if (notes !== this.lastSentNotes) {
@@ -457,6 +491,60 @@ class FirestoreChannel implements SignalingChannel {
       }
     });
     this.unsubscribers.push(unsubscribe);
+  }
+
+  /**
+   * Editor updates are stored one document at a time, the way strokes are, so a
+   * late joiner replays them and converges. The host squashes the log once it
+   * grows past `COMPACT_UPDATES_AT`, which bounds both storage and replay cost.
+   */
+  private subscribeCodeUpdates(): void {
+    const ordered = query(this.codeUpdates, orderBy('createdAt'));
+    const unsubscribe = onSnapshot(ordered, (snapshot) => {
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'added') {
+          this.emitter.dispatch('code:update', (change.doc.data() as CodeUpdateDoc).update);
+        }
+      }
+      if (this.isHost && !this.compacting && snapshot.size > COMPACT_UPDATES_AT) {
+        void this.compactCodeUpdates(snapshot.docs);
+      }
+    });
+    this.unsubscribers.push(unsubscribe);
+  }
+
+  private async compactCodeUpdates(entries: QueryDocumentSnapshot[]): Promise<void> {
+    this.compacting = true;
+    try {
+      const merged = mergeEncodedUpdates(
+        entries.map((entry) => (entry.data() as CodeUpdateDoc).update),
+      );
+      const batch = writeBatch(this.room.firestore);
+      for (const entry of entries) {
+        batch.delete(entry.ref);
+      }
+      const squashed: CodeUpdateDoc = { update: merged, createdAt: Date.now() };
+      batch.set(doc(this.codeUpdates), squashed);
+      await batch.commit();
+    } finally {
+      this.compacting = false;
+    }
+  }
+
+  /** Keeps the newest cursor position and writes at most one document per tick. */
+  private sendAwareness(update: string): void {
+    this.pendingAwareness = update;
+    if (this.awarenessTimer) {
+      return;
+    }
+    this.awarenessTimer = setTimeout(() => {
+      this.awarenessTimer = null;
+      const pending = this.pendingAwareness;
+      this.pendingAwareness = null;
+      if (pending) {
+        void updateDoc(this.selfRef(), { codeAwareness: pending });
+      }
+    }, AWARENESS_THROTTLE_MS);
   }
 
   private subscribeMessages(): void {
