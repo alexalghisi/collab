@@ -3,12 +3,14 @@ import { SafeAreaView, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useCollabSession } from './src/hooks/useCollabSession';
 import { useAuth } from './src/auth/useAuth';
+import { useTeamChat } from './src/chat/useTeamChat';
 import { createSignaling } from './src/signaling';
 import { nextHalfHour } from './src/meeting/calendar';
 import { readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
 import { useMeetings } from './src/meeting/useMeetings';
 import { CalendarScreen } from './src/components/calendar/CalendarScreen';
+import { TeamChatScreen } from './src/components/chat/TeamChatScreen';
 import { HomeScreen } from './src/components/home/HomeScreen';
 import { LoginScreen } from './src/components/LoginScreen';
 import { MeetingScreen } from './src/components/meeting/MeetingScreen';
@@ -24,6 +26,7 @@ export default function App() {
   const auth = useAuth();
   const session = useCollabSession(createSignaling);
   const meetings = useMeetings(auth.user?.uid ?? 'guest');
+  const teamChat = useTeamChat(auth.user);
   const [view, setView] = useState<View>('home');
   const [scheduleStart, setScheduleStart] = useState(() => nextHalfHour());
   const [roomId, setRoomId] = useState(() => readRoomFromLink() ?? '');
@@ -134,6 +137,7 @@ export default function App() {
             onSchedule={openSchedule}
           />
         )}
+        {view === 'chat' && <TeamChatScreen chat={teamChat} selfId={auth.user?.uid ?? null} />}
         {view === 'schedule' && (
           <ScheduleMeetingScreen
             initialStart={scheduleStart}
