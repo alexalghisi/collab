@@ -73,3 +73,20 @@ export const settle = (): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, 60);
   });
+
+/**
+ * Waits for the room to reach a state instead of assuming a delay was long
+ * enough. Anything that has to happen before the next step is written this way:
+ * a fixed wait passes on a quiet machine and fails on a busy one.
+ */
+export async function until(condition: () => boolean, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) {
+      throw new Error('the room never reached the state the test was waiting for');
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
+}

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { settle, startRoomServer, type RoomServer } from '../testing/roomServer';
+import { settle, startRoomServer, until, type RoomServer } from '../testing/roomServer';
 import { SharedCodeDocument } from './SharedCodeDocument';
 
 /** The document rides the same channel the call does, so it is tested that way. */
@@ -33,9 +33,11 @@ describe('shared code over the Socket.IO transport', () => {
     const linus = await join('b', 'Linus');
 
     ada.document.text.insert(0, 'print("hello")');
-    await settle();
+    // The second edit is only sequential if the first one arrived; without this
+    // the two inserts race and the merge is free to order them either way.
+    await until(() => linus.document.text.toString() === 'print("hello")');
     linus.document.text.insert(0, '# ');
-    await settle();
+    await until(() => ada.document.text.toString() === '# print("hello")');
 
     expect(linus.document.text.toString()).toBe('# print("hello")');
     expect(ada.document.text.toString()).toBe('# print("hello")');
