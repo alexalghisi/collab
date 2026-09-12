@@ -1,3 +1,4 @@
+import type { ChatDraft } from '../../chat/messages';
 import type { ChatMessage } from '../../signaling/events';
 import { MessageThread } from '../chat/MessageThread';
 import { SidePanel } from './SidePanel';
@@ -5,7 +6,7 @@ import { SidePanel } from './SidePanel';
 export interface ChatPanelProps {
   messages: ChatMessage[];
   selfPeerId: string | null;
-  onSend: (text: string) => void;
+  onSend: (draft: ChatDraft) => void;
   onClose: () => void;
 }
 
@@ -15,7 +16,7 @@ export function ChatPanel({ messages, selfPeerId, onSend, onClose }: ChatPanelPr
       <MessageThread
         messages={messages}
         selfId={selfPeerId}
-        onSend={onSend}
+        onSend={(text) => onSend({ text, file: null })}
         placeholder="Message everyone"
         emptyText="No messages yet. Say hello to everyone."
       />

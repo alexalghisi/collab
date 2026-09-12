@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
+import type { ChatDraft } from '../chat/messages';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
+import type { FileAttachment } from '../files/attachments';
+import { AttachmentError, type UploadableFile, type UploadProgress } from '../files/upload';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -89,7 +92,9 @@ export interface CollabSession {
   toggleScreenShare: () => Promise<void>;
   toggleHand: () => void;
   sendReaction: (emoji: string) => void;
-  sendMessage: (text: string) => void;
+  sendMessage: (draft: ChatDraft) => void;
+  /** Uploads a picked file through the transport and describes where it landed. */
+  shareFile: (file: UploadableFile, onProgress: UploadProgress) => Promise<FileAttachment>;
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
   updateNotes: (text: string) => void;
@@ -490,9 +495,20 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     [updateSelf],
   );
 
-  const sendMessage = useCallback((text: string) => {
-    signalingRef.current?.emit('chat:message', text);
+  const sendMessage = useCallback((draft: ChatDraft) => {
+    signalingRef.current?.emit('chat:message', draft);
   }, []);
+
+  const shareFile = useCallback(
+    (file: UploadableFile, onProgress: UploadProgress): Promise<FileAttachment> => {
+      const signaling = signalingRef.current;
+      if (!signaling) {
+        return Promise.reject(new AttachmentError('You are no longer in this meeting.'));
+      }
+      return signaling.upload(file, onProgress);
+    },
+    [],
+  );
 
   const addStroke = useCallback(
     (draft: Omit<Stroke, 'id' | 'peerId'>) => {
@@ -631,6 +647,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     toggleHand,
     sendReaction,
     sendMessage,
+    shareFile,
     addStroke,
     removeStrokes,
     updateNotes,

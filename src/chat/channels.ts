@@ -56,6 +56,7 @@ export function sendMessage(
     peerId: user.uid,
     displayName: user.displayName,
     text,
+    file: null,
     sentAt: Date.now(),
   };
   return addDoc(collection(db, 'channels', channelId, 'messages'), message);
