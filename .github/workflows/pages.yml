@@ -33,6 +33,9 @@ jobs:
 
       - name: Export web build
         run: npm run export:web
+        env:
+          # Project pages are served from https://<user>.github.io/collab/
+          WEB_BASE_URL: /collab
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
