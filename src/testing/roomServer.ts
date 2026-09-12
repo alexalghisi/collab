@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { Server } from 'socket.io';
+import type { MeetingAssistant } from '../assistant/MeetingAssistant';
 import type { ExecutionService } from '../../server/src/execution/ExecutionService';
 import { filesRouter } from '../../server/src/files/router';
 import {
@@ -34,12 +35,15 @@ export interface RoomServer {
  * rather than through a stand-in. The HTTP endpoints are mounted alongside it the
  * way the deployed server mounts them.
  */
-export async function startRoomServer(execution?: ExecutionService): Promise<RoomServer> {
+export async function startRoomServer(
+  execution?: ExecutionService,
+  assistant?: MeetingAssistant,
+): Promise<RoomServer> {
   const app = express();
   app.use(filesRouter({ store: files, membership: isAdmitted }));
   const httpServer = createServer(app);
   const io: CollabServer = new Server(httpServer);
-  registerSignalingHandlers(io, execution);
+  registerSignalingHandlers(io, execution, assistant);
   httpServer.listen(0);
   await once(httpServer, 'listening');
   const url = `http://localhost:${(httpServer.address() as AddressInfo).port}`;
