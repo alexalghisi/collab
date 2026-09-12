@@ -3,6 +3,8 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -16,13 +18,24 @@ import {
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
-import type { ChatMessage, PeerInfo, PeerState, Stroke } from './events';
 import {
+  DEFAULT_ROOM_SETTINGS,
+  type ChatMessage,
+  type HostCommand,
+  type PeerInfo,
+  type PeerState,
+  type RoomSettings,
+  type Stroke,
+  type WaitingPeer,
+} from './events';
+import {
+  AdmissionDeniedError,
   SignalingEmitter,
   type OutgoingEvent,
   type OutgoingPayload,
   type SignalingChannel,
   type SignalingFactory,
+  type SignalingOptions,
 } from './SignalingChannel';
 
 interface ParticipantDoc {
@@ -35,14 +48,27 @@ interface ParticipantDoc {
 interface RoomDoc {
   readonly hostPeerId: string;
   readonly notes?: string;
+  readonly settings?: RoomSettings;
 }
 
-type SignalType = 'offer' | 'answer' | 'ice';
+/** Room state as seen by a joiner, with defaults filled in. */
+interface RoomSnapshot {
+  readonly hostPeerId: string;
+  readonly notes: string;
+  readonly settings: RoomSettings;
+}
+
+interface WaitingDoc {
+  readonly displayName: string;
+  readonly decision?: 'admitted' | 'denied';
+}
+
+type SignalType = 'offer' | 'answer' | 'ice' | 'command';
 
 interface SignalDoc {
   readonly from: string;
   readonly type: SignalType;
-  readonly payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
+  readonly payload: RTCSessionDescriptionInit | RTCIceCandidateInit | HostCommand;
   readonly createdAt: number;
 }
 
@@ -68,16 +94,25 @@ function toPeerInfo(snapshot: QueryDocumentSnapshot): PeerInfo {
   };
 }
 
+function sameSettings(a: RoomSettings, b: RoomSettings): boolean {
+  return a.waitingRoom === b.waitingRoom && a.breakoutOpen === b.breakoutOpen;
+}
+
 class FirestoreChannel implements SignalingChannel {
-  private readonly peerId = crypto.randomUUID();
+  private readonly peerId: string;
   private readonly emitter = new SignalingEmitter();
   private readonly room: DocumentReference;
   private readonly participants: CollectionReference;
   private readonly messages: CollectionReference;
   private readonly strokes: CollectionReference;
+  private readonly waiting: CollectionReference;
   private readonly unsubscribers: Unsubscribe[] = [];
+  private unsubscribeWaiting: Unsubscribe | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private joinedAt = 0;
+  private lastSettings = DEFAULT_ROOM_SETTINGS;
+  /** Our own notes writes echo back through the room snapshot; they must not overwrite newer typing. */
+  private lastSentNotes: string | null = null;
   private readonly pageHide = {
     handler: () => this.disconnect(),
     attach: () => window.addEventListener('pagehide', this.pageHide.handler),
@@ -96,7 +131,7 @@ class FirestoreChannel implements SignalingChannel {
     'chat:message': (text) => {
       const message: MessageDoc = {
         peerId: this.peerId,
-        displayName: this.displayName,
+        displayName: this.options.displayName,
         text,
         sentAt: Date.now(),
       };
@@ -116,20 +151,38 @@ class FirestoreChannel implements SignalingChannel {
       this.lastSentNotes = notes;
       void setDoc(this.room, { notes }, { merge: true });
     },
+    'room:settings': (settings) => {
+      this.lastSettings = settings;
+      void setDoc(this.room, { settings }, { merge: true });
+    },
+    'host:command': ({ targetPeerId, command }) => {
+      if (targetPeerId !== null) {
+        this.sendSignal(targetPeerId, 'command', command);
+        return;
+      }
+      void getDocs(this.participants).then((snapshot) => {
+        for (const participant of snapshot.docs) {
+          if (participant.id !== this.peerId) {
+            this.sendSignal(participant.id, 'command', command);
+          }
+        }
+      });
+    },
+    'waiting:decide': ({ peerId, admit }) => {
+      void updateDoc(doc(this.waiting, peerId), { decision: admit ? 'admitted' : 'denied' });
+    },
   };
-  /** Our own notes writes echo back through the room snapshot; they must not overwrite newer typing. */
-  private lastSentNotes: string | null = null;
 
   constructor(
     db: Firestore,
-    roomId: string,
-    private readonly displayName: string,
-    private readonly initialState: PeerState,
+    private readonly options: SignalingOptions,
   ) {
-    this.room = doc(db, 'rooms', roomId);
+    this.peerId = options.sessionId;
+    this.room = doc(db, 'rooms', options.roomId);
     this.participants = collection(this.room, 'participants');
     this.messages = collection(this.room, 'messages');
     this.strokes = collection(this.room, 'strokes');
+    this.waiting = collection(this.room, 'waiting');
   }
 
   on: SignalingChannel['on'] = (event, handler) => {
@@ -141,15 +194,22 @@ class FirestoreChannel implements SignalingChannel {
   };
 
   async connect(): Promise<void> {
+    const current = await this.syncRoom(false);
+    // Without a live host nobody could admit us, so the waiting room only applies when one exists.
+    if (current.settings.waitingRoom && current.hostPeerId) {
+      await this.waitForAdmission();
+    }
+
     this.joinedAt = Date.now();
     const self: ParticipantDoc = {
-      displayName: this.displayName,
+      displayName: this.options.displayName,
       joinedAt: this.joinedAt,
       lastSeen: this.joinedAt,
-      state: this.initialState,
+      state: this.options.state,
     };
     await setDoc(this.selfRef(), self);
-    const room = await this.claimHostIfVacant();
+    const room = await this.syncRoom(true);
+    this.lastSettings = room.settings;
 
     this.heartbeat = setInterval(() => {
       void updateDoc(this.selfRef(), { lastSeen: Date.now() });
@@ -157,6 +217,9 @@ class FirestoreChannel implements SignalingChannel {
     this.subscribeInbox();
     this.subscribeRoom();
     this.subscribeMessages();
+    if (this.options.breakoutOf) {
+      this.subscribeMainRoom(this.options.breakoutOf);
+    }
     this.pageHide.attach();
 
     await this.subscribeParticipants(room);
@@ -174,8 +237,14 @@ class FirestoreChannel implements SignalingChannel {
       unsubscribe();
     }
     this.unsubscribers.length = 0;
+    this.unsubscribeWaiting?.();
+    this.unsubscribeWaiting = null;
     this.emitter.clear();
     void deleteDoc(this.selfRef());
+    if (this.joinedAt === 0) {
+      // Left while still waiting: take the ticket out of the host's list.
+      void deleteDoc(doc(this.waiting, this.peerId));
+    }
   }
 
   private selfRef(): DocumentReference {
@@ -186,11 +255,7 @@ class FirestoreChannel implements SignalingChannel {
     return collection(this.participants, peerId, 'inbox');
   }
 
-  private sendSignal(
-    targetPeerId: string,
-    type: SignalType,
-    payload: RTCSessionDescriptionInit | RTCIceCandidateInit,
-  ): void {
+  private sendSignal(targetPeerId: string, type: SignalType, payload: SignalDoc['payload']): void {
     const signal: SignalDoc = {
       from: this.peerId,
       type,
@@ -200,24 +265,75 @@ class FirestoreChannel implements SignalingChannel {
     void addDoc(this.inboxOf(targetPeerId), signal);
   }
 
-  /** Returns the room document as it stands after joining: current host and shared notes. */
-  private async claimHostIfVacant(): Promise<Required<RoomDoc>> {
+  /**
+   * Reads the room inside a transaction. With `claim`, takes the host seat atomically
+   * when the recorded host has left, so two simultaneous joiners cannot both become host.
+   */
+  private syncRoom(claim: boolean): Promise<RoomSnapshot> {
     return runTransaction(this.room.firestore, async (transaction) => {
-      const room = await transaction.get(this.room);
-      const data = room.data() as RoomDoc | undefined;
+      const data = (await transaction.get(this.room)).data() as RoomDoc | undefined;
       const notes = data?.notes ?? '';
+      const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
       if (data?.hostPeerId) {
         const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
-          return { hostPeerId: data.hostPeerId, notes };
+          return { hostPeerId: data.hostPeerId, notes, settings };
         }
       }
+      if (!claim) {
+        return { hostPeerId: '', notes, settings };
+      }
       transaction.set(this.room, { hostPeerId: this.peerId }, { merge: true });
-      return { hostPeerId: this.peerId, notes };
+      return { hostPeerId: this.peerId, notes, settings };
     });
   }
 
-  private subscribeParticipants({ hostPeerId, notes }: Required<RoomDoc>): Promise<void> {
+  /**
+   * Parks us in rooms/{id}/waiting until the host admits (resolves) or denies (rejects).
+   * An admitted ticket is kept, so coming back from a breakout room skips the queue.
+   */
+  private async waitForAdmission(): Promise<void> {
+    const ticket = doc(this.waiting, this.peerId);
+    const existing = (await getDoc(ticket)).data() as WaitingDoc | undefined;
+    if (existing?.decision === 'admitted') {
+      return;
+    }
+    const entry: WaitingDoc = { displayName: this.options.displayName };
+    await setDoc(ticket, entry);
+    this.pageHide.attach();
+    this.emitter.dispatch('room:waiting');
+    let admitted = false;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const unsubscribe = onSnapshot(
+          ticket,
+          (snapshot) => {
+            const decision = (snapshot.data() as WaitingDoc | undefined)?.decision;
+            if (!decision) {
+              return;
+            }
+            unsubscribe();
+            if (decision === 'admitted') {
+              admitted = true;
+              resolve();
+            } else {
+              reject(new AdmissionDeniedError());
+            }
+          },
+          reject,
+        );
+        // Leaving while still waiting must also stop listening.
+        this.unsubscribers.push(unsubscribe);
+      });
+    } finally {
+      this.pageHide.detach();
+      if (!admitted) {
+        void deleteDoc(ticket);
+      }
+    }
+  }
+
+  private subscribeParticipants({ hostPeerId, notes, settings }: RoomSnapshot): Promise<void> {
     return new Promise((resolve, reject) => {
       let initial = true;
       const unsubscribe = onSnapshot(
@@ -245,6 +361,7 @@ class FirestoreChannel implements SignalingChannel {
               peers,
               strokes: [],
               notes,
+              settings,
             });
             resolve();
             return;
@@ -274,10 +391,52 @@ class FirestoreChannel implements SignalingChannel {
       const data = snapshot.data() as RoomDoc | undefined;
       if (data?.hostPeerId) {
         this.emitter.dispatch('room:host', data.hostPeerId);
+        this.syncWaitingSubscription(data.hostPeerId === this.peerId);
       }
       const notes = data?.notes ?? '';
       if (notes !== this.lastSentNotes) {
         this.emitter.dispatch('notes:update', notes);
+      }
+      const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
+      if (!sameSettings(settings, this.lastSettings)) {
+        this.lastSettings = settings;
+        this.emitter.dispatch('room:settings', settings);
+      }
+    });
+    this.unsubscribers.push(unsubscribe);
+  }
+
+  /** Only the host watches the waiting list; hand-over starts or stops the subscription. */
+  private syncWaitingSubscription(isHost: boolean): void {
+    if (isHost === (this.unsubscribeWaiting !== null)) {
+      return;
+    }
+    if (!isHost) {
+      this.unsubscribeWaiting?.();
+      this.unsubscribeWaiting = null;
+      return;
+    }
+    this.unsubscribeWaiting = onSnapshot(this.waiting, (snapshot) => {
+      const peers: WaitingPeer[] = snapshot.docs
+        .filter((entry) => !(entry.data() as WaitingDoc).decision)
+        .map((entry) => ({
+          peerId: entry.id,
+          displayName: (entry.data() as WaitingDoc).displayName,
+        }));
+      this.emitter.dispatch('waiting:update', peers);
+    });
+  }
+
+  /** In a breakout room: the host closing the rooms on the main room sends everyone back. */
+  private subscribeMainRoom(mainRoomId: string): void {
+    const mainRoom = doc(this.room.firestore, 'rooms', mainRoomId);
+    let seenOpen = false;
+    const unsubscribe = onSnapshot(mainRoom, (snapshot) => {
+      const open = (snapshot.data() as RoomDoc | undefined)?.settings?.breakoutOpen ?? false;
+      if (open) {
+        seenOpen = true;
+      } else if (seenOpen) {
+        this.emitter.dispatch('host:command', { action: 'move', roomId: mainRoomId });
       }
     });
     this.unsubscribers.push(unsubscribe);
@@ -329,21 +488,25 @@ class FirestoreChannel implements SignalingChannel {
   }
 
   private deliver({ from, type, payload }: SignalDoc): void {
-    if (type === 'ice') {
-      this.emitter.dispatch('signal:ice', {
-        fromPeerId: from,
-        candidate: payload as RTCIceCandidateInit,
-      });
-      return;
+    switch (type) {
+      case 'command':
+        this.emitter.dispatch('host:command', payload as HostCommand);
+        return;
+      case 'ice':
+        this.emitter.dispatch('signal:ice', {
+          fromPeerId: from,
+          candidate: payload as RTCIceCandidateInit,
+        });
+        return;
+      default:
+        this.emitter.dispatch(type === 'offer' ? 'signal:offer' : 'signal:answer', {
+          fromPeerId: from,
+          description: payload as RTCSessionDescriptionInit,
+        });
     }
-    const description = payload as RTCSessionDescriptionInit;
-    this.emitter.dispatch(type === 'offer' ? 'signal:offer' : 'signal:answer', {
-      fromPeerId: from,
-      description,
-    });
   }
 }
 
 export function createFirestoreSignaling(db: Firestore): SignalingFactory {
-  return ({ roomId, displayName, state }) => new FirestoreChannel(db, roomId, displayName, state);
+  return (options) => new FirestoreChannel(db, options);
 }
