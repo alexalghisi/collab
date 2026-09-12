@@ -10,8 +10,15 @@ export interface PeerConnectionManagerOptions {
   readonly onPeerClosed: (peerId: string) => void;
 }
 
+type MediaKind = 'audio' | 'video';
+
+const MEDIA_KINDS: readonly MediaKind[] = ['audio', 'video'];
+
 interface PeerEntry {
   readonly connection: RTCPeerConnection;
+  /** One sender per kind, created up front so tracks can be swapped later. */
+  readonly senders: Record<MediaKind, RTCRtpSender>;
+  readonly remoteStream: MediaStream;
   /** Candidates that arrived before the remote description was applied. */
   readonly pendingCandidates: RTCIceCandidateInit[];
 }
@@ -19,6 +26,11 @@ interface PeerEntry {
 /**
  * Maintains one RTCPeerConnection per remote peer (full mesh). Offers are
  * glare-free: for any pair, only the peer that joined later initiates.
+ *
+ * Every connection negotiates an audio and a video sender even when the local
+ * stream lacks a track for that kind (audio-only join, camera off). Turning the
+ * camera on or sharing the screen is then a plain `replaceTrack` with no
+ * renegotiation round trip.
  */
 export class PeerConnectionManager {
   private readonly signaling: SignalingChannel;
@@ -89,6 +101,13 @@ export class PeerConnectionManager {
     }
   }
 
+  /** Swaps the outgoing video (camera, screen, or nothing) on every connection. */
+  async replaceVideoTrack(track: MediaStreamTrack | null): Promise<void> {
+    await Promise.all(
+      [...this.peers.values()].map((entry) => entry.senders.video.replaceTrack(track)),
+    );
+  }
+
   private shouldInitiate(peer: PeerInfo): boolean {
     if (peer.joinedAt === this.selfJoinedAt) {
       return peer.peerId < this.selfPeerId;
@@ -98,10 +117,18 @@ export class PeerConnectionManager {
 
   private createEntry(peerId: string): PeerEntry {
     const connection = new RTCPeerConnection(this.configuration);
+    const remoteStream = new MediaStream();
 
-    for (const track of this.localStream.getTracks()) {
-      connection.addTrack(track, this.localStream);
-    }
+    const senders = Object.fromEntries(
+      MEDIA_KINDS.map((kind) => {
+        const track = this.localStream.getTracks().find((candidate) => candidate.kind === kind);
+        const sender = track
+          ? connection.addTrack(track, this.localStream)
+          : connection.addTransceiver(kind, { direction: 'sendrecv', streams: [this.localStream] })
+              .sender;
+        return [kind, sender];
+      }),
+    ) as Record<MediaKind, RTCRtpSender>;
 
     connection.addEventListener('icecandidate', (event) => {
       if (event.candidate) {
@@ -113,10 +140,8 @@ export class PeerConnectionManager {
     });
 
     connection.addEventListener('track', (event) => {
-      const stream = event.streams[0];
-      if (stream) {
-        this.onRemoteStream(peerId, stream);
-      }
+      remoteStream.addTrack(event.track);
+      this.onRemoteStream(peerId, remoteStream);
     });
 
     connection.addEventListener('connectionstatechange', () => {
@@ -125,7 +150,7 @@ export class PeerConnectionManager {
       }
     });
 
-    const entry: PeerEntry = { connection, pendingCandidates: [] };
+    const entry: PeerEntry = { connection, senders, remoteStream, pendingCandidates: [] };
     this.peers.set(peerId, entry);
     return entry;
   }
