@@ -148,6 +148,7 @@ Collab/
 ├── App.tsx                     # Root component: auth gate, app shell, meeting screen
 ├── index.ts                    # Expo entry point; registers WebRTC globals
 ├── app.json                    # Expo configuration
+├── app.config.js               # Applies the GitHub Pages sub-path only when WEB_BASE_URL is set
 ├── src/
 │   ├── components/
 │   │   ├── shell/              # Sidebar / tab-bar navigation
