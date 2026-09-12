@@ -56,6 +56,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs.
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared notes** that every participant can edit, and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in).
 - **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that executes the room's code — JavaScript, TypeScript, Python or Go — in a network-less, resource-capped, throwaway sandbox and streams the output to everyone.
+- **Meeting assistant**: an in-call panel that answers questions from the live transcript, notes and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Local recording** (web): captures your video together with the mixed audio of every participant and downloads a `.webm` file when stopped.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
@@ -110,6 +111,22 @@ same way signaling is chosen:
 The embedder is a local hashing vector when no key is set, and OpenAI
 `text-embedding-3-small` when `OPENAI_API_KEY` is present. Callers only see
 `Embedder`; swapping the model does not touch the store.
+
+### Meeting assistant
+
+The in-call assistant and the dashboard search share that index. A question
+is `assistant:ask` on the signaling channel (or `POST /assistant` on the
+Firestore path, the same split as code execution). The reply is streamed to
+the whole room as `assistant:token` / `assistant:done`, or `assistant:error`
+when the model is missing or refuses. Structured actions (action items,
+decisions) come back as schema-checked JSON; conversational answers stay
+plain text.
+
+`ASSISTANT_PROVIDER` selects OpenAI, Claude or Gemini. The calling code
+imports none of those packages — only `AssistantModel`. A removed
+participant cannot keep asking. The eval harness in `src/assistant/evals/`
+runs in CI against a fixed transcript fixture and the properties a good
+summary of that fixture must have.
 
 ### Shared code document
 
@@ -258,6 +275,7 @@ Collab/
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
 │   ├── search/                 # VectorStore (memory / pgvector / Pinecone) and meeting chunking
+│   ├── assistant/              # Meeting assistant tools, providers, and the CI eval harness
 │   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
 ├── server/
 │   └── src/                    # Express + Socket.IO signaling server

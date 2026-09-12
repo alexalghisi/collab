@@ -27,8 +27,12 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.53",
+    "@ai-sdk/google": "^4.0.69",
+    "@ai-sdk/openai": "^4.0.66",
     "@expo/vector-icons": "^15.0.3",
     "@monaco-editor/react": "^4.7.0",
+    "ai": "^7.0.99",
     "babel-preset-expo": "~54.0.10",
     "cors": "^2.8.6",
     "expo": "~54.0.37",
@@ -48,7 +52,8 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "y-protocols": "^1.0.7",
-    "yjs": "^13.6.32"
+    "yjs": "^13.6.32",
+    "zod": "^4.6.4"
   },
   "devDependencies": {
     "@config-plugins/react-native-webrtc": "^13.0.0",
