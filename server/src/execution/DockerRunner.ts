@@ -22,7 +22,8 @@ export interface DockerLimits {
 }
 
 export const DEFAULT_LIMITS: DockerLimits = {
-  timeoutMs: 8000,
+  // Compiling and running has to fit inside this; Go needs a few seconds of it.
+  timeoutMs: 10_000,
   memoryMb: 256,
   cpus: 0.5,
   pids: 96,
@@ -33,48 +34,57 @@ interface LanguageImage {
   readonly image: string;
   readonly file: string;
   readonly command: string[];
+  /**
+   * Paths that need to be writable while the root filesystem is not. Mounted as
+   * anonymous volumes, which Docker seeds from the image — that is how the Go
+   * build cache survives into a run without the compiler recompiling the
+   * standard library every time.
+   */
+  readonly writable?: string[];
 }
+
+/** Where the submission is copied to; a volume, so the root can stay read-only. */
+const SANDBOX_DIR = '/sandbox';
 
 const IMAGES: Record<CodeLanguage, LanguageImage> = {
   javascript: {
     image: 'node:22-alpine',
     file: 'main.js',
-    command: ['node', '/sandbox/main.js'],
+    command: ['node', `${SANDBOX_DIR}/main.js`],
   },
   typescript: {
     image: 'node:22-alpine',
     file: 'main.ts',
-    command: ['node', '--experimental-strip-types', '/sandbox/main.ts'],
+    command: ['node', '--experimental-strip-types', `${SANDBOX_DIR}/main.ts`],
   },
   python: {
     image: 'python:3.12-alpine',
     file: 'main.py',
-    command: ['python3', '/sandbox/main.py'],
+    command: ['python3', `${SANDBOX_DIR}/main.py`],
   },
   go: {
-    image: 'golang:1.23-alpine',
+    image: 'collab-sandbox-go',
     file: 'main.go',
-    command: ['go', 'run', '/sandbox/main.go'],
+    command: ['go', 'run', `${SANDBOX_DIR}/main.go`],
+    writable: ['/gocache', '/gopath'],
   },
 };
 
 export type Spawn = (command: string, args: string[]) => ChildProcess;
 
 /**
- * Builds the `docker run` arguments. Kept separate so the isolation flags are
+ * Builds the `docker create` arguments. Kept separate so the isolation flags are
  * asserted in tests: every one of them is load-bearing, and losing one silently
  * would hand untrusted code the host.
  */
-export function dockerArgs(
+export function dockerCreateArgs(
   language: CodeLanguage,
-  mountDir: string,
   containerName: string,
   limits: DockerLimits,
 ): string[] {
-  const { image, command } = IMAGES[language];
+  const { image, command, writable = [] } = IMAGES[language];
   return [
-    'run',
-    '--rm',
+    'create',
     '--interactive',
     '--name',
     containerName,
@@ -90,6 +100,12 @@ export function dockerArgs(
     '--pids-limit',
     String(limits.pids),
     '--read-only',
+    // The submission is copied into a volume rather than bind-mounted from the
+    // host: a bind mount needs the daemon to be allowed to share that path,
+    // which is not true of every host and fails by arriving empty.
+    '--volume',
+    SANDBOX_DIR,
+    ...writable.flatMap((path) => ['--volume', path]),
     '--tmpfs',
     `/tmp:rw,exec,size=${limits.tmpfsMb}m`,
     '--cap-drop',
@@ -98,16 +114,10 @@ export function dockerArgs(
     'no-new-privileges',
     '--user',
     '65534:65534',
-    '--volume',
-    `${mountDir}:/sandbox:ro`,
     '--workdir',
     '/tmp',
     '--env',
     'HOME=/tmp',
-    '--env',
-    'GOCACHE=/tmp/go-build',
-    '--env',
-    'GOPATH=/tmp/go',
     '--env',
     'GOFLAGS=-mod=mod',
     image,
@@ -117,9 +127,9 @@ export function dockerArgs(
 
 /**
  * Runs a submission in a throwaway container: no network, capped memory, CPU and
- * process count, a read-only root with the code mounted read-only, and a wall
- * clock the container cannot outlive. The code is written to a file and mounted
- * rather than interpolated into a command, so there is no shell to escape.
+ * process count, a read-only root, and a wall clock it cannot outlive. The code
+ * is copied in as a file and named as the program to run, so it never passes
+ * through a shell.
  */
 export class DockerRunner implements SandboxRunner {
   readonly name = 'docker';
@@ -133,34 +143,56 @@ export class DockerRunner implements SandboxRunner {
     request: ExecutionRequest,
     onChunk: (chunk: ExecutionChunk) => void,
   ): Promise<ExecutionResult> {
+    const { file } = IMAGES[request.language];
     const dir = await mkdtemp(join(tmpdir(), 'collab-run-'));
-    const containerName = `collab-run-${randomUUID()}`;
+    const source = join(dir, file);
+    const container = `collab-run-${randomUUID()}`;
     try {
-      await writeFile(join(dir, IMAGES[request.language].file), request.code, 'utf8');
-      return await this.execute(request, containerName, dir, onChunk);
+      await writeFile(source, request.code, 'utf8');
+      await this.docker(dockerCreateArgs(request.language, container, this.limits));
+      await this.docker(['cp', source, `${container}:${SANDBOX_DIR}/${file}`]);
+      return await this.start(container, request.stdin, onChunk);
     } finally {
       await rm(dir, { recursive: true, force: true });
+      // -v also drops the volume the submission was copied into.
+      this.spawn('docker', ['rm', '--force', '--volumes', container]).unref?.();
     }
   }
 
-  private execute(
-    request: ExecutionRequest,
-    containerName: string,
-    dir: string,
+  /** Runs a short docker command, rejecting when the daemon is not usable. */
+  private docker(args: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const child = this.spawn('docker', args);
+      let stderr = '';
+      child.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString('utf8');
+      });
+      child.on('error', (cause: Error) =>
+        reject(new SandboxUnavailableError(`docker could not be started: ${cause.message}`)),
+      );
+      child.on('close', (exitCode) => {
+        if (exitCode === 0) {
+          resolve();
+        } else {
+          reject(new SandboxUnavailableError(`docker ${args[0]} failed: ${stderr.trim()}`));
+        }
+      });
+    });
+  }
+
+  private start(
+    container: string,
+    stdin: string,
     onChunk: (chunk: ExecutionChunk) => void,
   ): Promise<ExecutionResult> {
     return new Promise((resolve, reject) => {
-      const child = this.spawn(
-        'docker',
-        dockerArgs(request.language, dir, containerName, this.limits),
-      );
+      const child = this.spawn('docker', ['start', '--attach', '--interactive', container]);
       let timedOut = false;
       let written = 0;
       let settled = false;
 
       const kill = (): void => {
-        this.spawn('docker', ['kill', containerName]).unref?.();
-        child.kill('SIGKILL');
+        this.spawn('docker', ['kill', container]).unref?.();
       };
 
       const timer = setTimeout(() => {
@@ -172,8 +204,7 @@ export class DockerRunner implements SandboxRunner {
         if (written >= MAX_OUTPUT_BYTES) {
           return;
         }
-        const room = MAX_OUTPUT_BYTES - written;
-        const text = data.toString('utf8').slice(0, room);
+        const text = data.toString('utf8').slice(0, MAX_OUTPUT_BYTES - written);
         written += Buffer.byteLength(text, 'utf8');
         onChunk({ stream, text });
         if (written >= MAX_OUTPUT_BYTES) {
@@ -184,10 +215,9 @@ export class DockerRunner implements SandboxRunner {
 
       child.stdout?.on('data', forward('stdout'));
       child.stderr?.on('data', forward('stderr'));
-      child.stdin?.on('error', () => {
-        // The program may exit without reading its input.
-      });
-      child.stdin?.end(request.stdin);
+      // A program is free to exit without reading its input.
+      child.stdin?.on('error', () => {});
+      child.stdin?.end(stdin);
 
       child.on('error', (cause: Error) => {
         clearTimeout(timer);
