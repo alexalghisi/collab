@@ -6,6 +6,8 @@ import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
 import { AttachmentError, type UploadableFile, type UploadProgress } from '../files/upload';
+import { InviteError, type ParsedContact } from '../meeting/contact';
+import { buildInviteLink } from '../meeting/invite';
 import { createSpeechCapture } from '../transcript/speech';
 import type { TranscriptSegment } from '../transcript/segments';
 import {
@@ -113,6 +115,8 @@ export interface CollabSession {
   sendMessage: (draft: ChatDraft) => void;
   /** Uploads a picked file through the transport and describes where it landed. */
   shareFile: (file: UploadableFile, onProgress: UploadProgress) => Promise<FileAttachment>;
+  /** Delivers an email or SMS invite for this meeting. */
+  sendInvite: (input: string) => Promise<ParsedContact>;
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
   updateNotes: (text: string) => void;
@@ -599,6 +603,23 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     [],
   );
 
+  const sendInvite = useCallback(
+    (input: string): Promise<ParsedContact> => {
+      const signaling = signalingRef.current;
+      const inviteRoomId = breakoutOf ?? roomId;
+      if (!signaling || !inviteRoomId) {
+        return Promise.reject(new InviteError('You are no longer in this meeting.'));
+      }
+      return signaling.sendInvite(
+        input,
+        displayNameRef.current,
+        buildInviteLink(inviteRoomId),
+        inviteRoomId,
+      );
+    },
+    [breakoutOf, roomId],
+  );
+
   const addStroke = useCallback(
     (draft: Omit<Stroke, 'id' | 'peerId'>) => {
       const stroke: Stroke = { ...draft, id: randomUUID(), peerId: selfPeerId ?? 'self' };
@@ -763,6 +784,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     sendReaction,
     sendMessage,
     shareFile,
+    sendInvite,
     addStroke,
     removeStrokes,
     updateNotes,
