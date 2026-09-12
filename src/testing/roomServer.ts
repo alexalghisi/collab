@@ -1,9 +1,16 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
+import express from 'express';
 import { Server } from 'socket.io';
 import type { ExecutionService } from '../../server/src/execution/ExecutionService';
-import { registerSignalingHandlers, type CollabServer } from '../../server/src/SignalingServer';
+import { filesRouter } from '../../server/src/files/router';
+import {
+  files,
+  isAdmitted,
+  registerSignalingHandlers,
+  type CollabServer,
+} from '../../server/src/SignalingServer';
 import { INITIAL_PEER_STATE, type RoomJoinedPayload } from '../signaling/events';
 import type { SignalingChannel, SignalingFactory } from '../signaling/SignalingChannel';
 import { createSocketSignaling } from '../signaling/SocketSignaling';
@@ -24,10 +31,13 @@ export interface RoomServer {
 /**
  * Runs the signaling server on an ephemeral port and hands out real client
  * channels, so server behaviour is asserted through the transport the app uses
- * rather than through a stand-in.
+ * rather than through a stand-in. The HTTP endpoints are mounted alongside it the
+ * way the deployed server mounts them.
  */
 export async function startRoomServer(execution?: ExecutionService): Promise<RoomServer> {
-  const httpServer = createServer();
+  const app = express();
+  app.use(filesRouter({ store: files, membership: isAdmitted }));
+  const httpServer = createServer(app);
   const io: CollabServer = new Server(httpServer);
   registerSignalingHandlers(io, execution);
   httpServer.listen(0);
