@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import type { FileAttachment } from '../files/attachments';
 import { postFile, type UploadableFile, type UploadProgress } from '../files/upload';
+import { sendContactInvite } from '../meeting/sendInvite';
 import type { ClientToServerEvents, ServerToClientEvents } from './events';
 import {
   AdmissionDeniedError,
@@ -96,6 +97,17 @@ class SocketChannel implements SignalingChannel {
   upload(file: UploadableFile, onProgress: UploadProgress): Promise<FileAttachment> {
     const { roomId, sessionId } = this.options;
     return postFile(`${this.url}/files`, file, { roomId, sessionId }, onProgress);
+  }
+
+  sendInvite(input: string, hostName: string, link: string, inviteRoomId?: string) {
+    const { sessionId } = this.options;
+    return sendContactInvite(this.url, {
+      contact: input,
+      roomId: inviteRoomId ?? this.options.roomId,
+      sessionId,
+      hostName,
+      link,
+    });
   }
 
   disconnect(): void {

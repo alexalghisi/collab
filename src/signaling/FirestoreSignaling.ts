@@ -39,6 +39,7 @@ import {
   type UploadProgress,
 } from '../files/upload';
 import { firebaseStorage } from '../firebase/app';
+import { sendContactInvite } from '../meeting/sendInvite';
 import { normalizeTranscriptSegment } from '../transcript/segments';
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -349,6 +350,17 @@ class FirestoreChannel implements SignalingChannel {
       size: file.size,
       url: await getDownloadURL(target),
     };
+  }
+
+  sendInvite(input: string, hostName: string, link: string, inviteRoomId?: string) {
+    const { sessionId } = this.options;
+    return sendContactInvite(EXECUTION_URL, {
+      contact: input,
+      roomId: inviteRoomId ?? this.options.roomId,
+      sessionId,
+      hostName,
+      link,
+    });
   }
 
   disconnect(): void {
