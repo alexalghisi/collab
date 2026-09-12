@@ -1,6 +1,7 @@
 import type { ChatDraft } from '../chat/messages';
 import type { ExecutionRequest, RunFinished, RunOutput, RunStarted } from '../code/execution';
 import type { FileAttachment } from '../files/attachments';
+import type { TranscriptSegment } from '../transcript/segments';
 
 /** Presence flags every participant broadcasts to the room. */
 export interface PeerState {
@@ -106,6 +107,11 @@ export interface RoomJoinedPayload {
    * room has none yet. Transports that stream updates instead send null.
    */
   readonly code: string | null;
+  /**
+   * Spoken turns so far; transports that stream segments send an empty list
+   * here, the way they do for whiteboard strokes.
+   */
+  readonly transcript: TranscriptSegment[];
 }
 
 export interface OutgoingSdpPayload {
@@ -144,6 +150,8 @@ export interface ClientToServerEvents {
   'code:awareness': (update: string) => void;
   /** Runs the submitted code in the sandbox and reports back to the whole room. */
   'code:run': (request: ExecutionRequest) => void;
+  /** One final spoken turn from this participant. */
+  'transcript:segment': (segment: TranscriptSegment) => void;
   'room:settings': (settings: RoomSettings) => void;
   'host:command': (payload: HostCommandPayload) => void;
   'waiting:decide': (decision: WaitingDecision) => void;
@@ -167,6 +175,7 @@ export interface ServerToClientEvents {
   'code:run:started': (payload: RunStarted) => void;
   'code:output': (payload: RunOutput) => void;
   'code:run:finished': (payload: RunFinished) => void;
+  'transcript:segment': (segment: TranscriptSegment) => void;
   'room:settings': (settings: RoomSettings) => void;
   /** The room has a waiting room; the host has been asked to let us in. */
   'room:waiting': () => void;

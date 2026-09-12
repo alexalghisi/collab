@@ -14,6 +14,9 @@ ENV NODE_ENV=production
 COPY tsconfig.json ./
 COPY src/signaling ./src/signaling
 COPY src/code ./src/code
+COPY src/chat ./src/chat
+COPY src/files ./src/files
+COPY src/transcript ./src/transcript
 COPY server ./server
 
 EXPOSE 4000

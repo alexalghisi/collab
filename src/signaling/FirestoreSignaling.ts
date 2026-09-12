@@ -38,6 +38,7 @@ import {
   type UploadProgress,
 } from '../files/upload';
 import { firebaseStorage } from '../firebase/app';
+import { normalizeTranscriptSegment } from '../transcript/segments';
 import {
   DEFAULT_ROOM_SETTINGS,
   type ChatMessage,
@@ -152,6 +153,7 @@ class FirestoreChannel implements SignalingChannel {
   private readonly strokes: CollectionReference;
   private readonly codeUpdates: CollectionReference;
   private readonly codeRuns: CollectionReference;
+  private readonly transcript: CollectionReference;
   private readonly waiting: CollectionReference;
   private readonly unsubscribers: Unsubscribe[] = [];
   private unsubscribeWaiting: Unsubscribe | null = null;
@@ -213,6 +215,16 @@ class FirestoreChannel implements SignalingChannel {
     'code:run': (request) => {
       void this.runCode(request);
     },
+    'transcript:segment': (segment) => {
+      const entry = normalizeTranscriptSegment({
+        ...segment,
+        peerId: this.peerId,
+        displayName: this.options.displayName,
+      });
+      if (entry) {
+        void setDoc(doc(this.transcript, entry.id), entry);
+      }
+    },
     'room:settings': (settings) => {
       this.lastSettings = settings;
       void setDoc(this.room, { settings }, { merge: true });
@@ -246,6 +258,7 @@ class FirestoreChannel implements SignalingChannel {
     this.strokes = collection(this.room, 'strokes');
     this.codeUpdates = collection(this.room, 'codeUpdates');
     this.codeRuns = collection(this.room, 'runs');
+    this.transcript = collection(this.room, 'transcript');
     this.waiting = collection(this.room, 'waiting');
   }
 
@@ -291,6 +304,7 @@ class FirestoreChannel implements SignalingChannel {
     this.subscribeStrokes();
     this.subscribeCodeUpdates();
     this.subscribeCodeRuns();
+    this.subscribeTranscript();
   }
 
   /**
@@ -471,6 +485,7 @@ class FirestoreChannel implements SignalingChannel {
               notes,
               settings,
               code: null,
+              transcript: [],
             });
             resolve();
             return;
@@ -723,6 +738,22 @@ class FirestoreChannel implements SignalingChannel {
         void updateDoc(this.selfRef(), { codeAwareness: pending });
       }
     }, AWARENESS_THROTTLE_MS);
+  }
+
+  private subscribeTranscript(): void {
+    const ordered = query(this.transcript, orderBy('startedAt'));
+    const unsubscribe = onSnapshot(ordered, (snapshot) => {
+      for (const change of snapshot.docChanges()) {
+        if (change.type !== 'added') {
+          continue;
+        }
+        const segment = normalizeTranscriptSegment(change.doc.data());
+        if (segment) {
+          this.emitter.dispatch('transcript:segment', segment);
+        }
+      }
+    });
+    this.unsubscribers.push(unsubscribe);
   }
 
   private subscribeMessages(): void {

@@ -8,7 +8,7 @@ import type {
   RunStarted,
 } from '../../../src/code/execution';
 import { MAX_CODE_BYTES } from '../../../src/code/execution';
-import { settle, startRoomServer, type RoomServer } from '../../../src/testing/roomServer';
+import { settle, startRoomServer, until, type RoomServer } from '../../../src/testing/roomServer';
 import { ExecutionService } from './ExecutionService';
 import { RateLimiter } from './RateLimiter';
 import { SandboxUnavailableError, type SandboxRunner } from './SandboxRunner';
@@ -75,7 +75,7 @@ describe('running code from the meeting', () => {
     const running = record(ada.channel);
 
     ada.channel.emit('code:run', request);
-    await settle();
+    await until(() => watching.finished.length === 1 && running.started.length === 1);
 
     expect(watching.started).toHaveLength(1);
     expect(watching.started[0].byDisplayName).toBe('Ada');
