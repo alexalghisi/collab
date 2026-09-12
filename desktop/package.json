@@ -13,7 +13,8 @@
   "scripts": {
     "start": "electron .",
     "dist:mac": "electron-builder --mac --publish never",
-    "dist:win": "electron-builder --win nsis --publish never"
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
   },
   "devDependencies": {
     "electron": "^44.3.0",
@@ -47,6 +48,13 @@
     "win": {
       "target": [
         "nsis"
+      ]
+    },
+    "linux": {
+      "category": "Network",
+      "target": [
+        "AppImage",
+        "deb"
       ]
     },
     "nsis": {
