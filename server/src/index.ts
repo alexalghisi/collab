@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import express from 'express';
 import { Server } from 'socket.io';
@@ -10,6 +13,7 @@ import { files, isAdmitted, registerSignalingHandlers, type CollabServer } from 
 
 const PORT = Number(process.env.PORT ?? 4000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '*';
+const WEB_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../dist-web');
 
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN }));
@@ -23,6 +27,17 @@ app.get('/health', (_req, res) => {
 });
 app.use(executionRouter(execution));
 app.use(filesRouter({ store: files, membership: isAdmitted }));
+
+if (existsSync(WEB_ROOT)) {
+  app.use(express.static(WEB_ROOT));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/socket.io')) {
+      next();
+      return;
+    }
+    res.sendFile(join(WEB_ROOT, 'index.html'));
+  });
+}
 
 const httpServer = createServer(app);
 const io: CollabServer = new Server(httpServer, {

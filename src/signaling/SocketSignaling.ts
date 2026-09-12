@@ -22,6 +22,16 @@ interface RawSocket {
   emit(event: string, ...args: unknown[]): unknown;
 }
 
+/** Loopback is either up or forgotten; a remote host may still be waking. */
+function isLoopbackUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
 class SocketChannel implements SignalingChannel {
   private readonly socket: CollabSocket;
   private readonly raw: RawSocket;
@@ -31,9 +41,12 @@ class SocketChannel implements SignalingChannel {
     private readonly options: SignalingOptions,
   ) {
     this.socket = io(url, {
-      transports: ['websocket'],
+      // Polling is the fallback when the first websocket upgrade is refused —
+      // a preview, a proxy, or a browser that cannot hold a raw WS open.
+      transports: ['websocket', 'polling'],
       autoConnect: false,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 8,
+      reconnectionDelay: 750,
     });
     this.raw = this.socket as unknown as RawSocket;
   }
@@ -48,9 +61,30 @@ class SocketChannel implements SignalingChannel {
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.socket.once('connect_error', () => reject(new SignalingUnavailableError(this.url)));
-      this.socket.once('room:joined', () => resolve());
-      this.socket.once('room:denied', () => reject(new AdmissionDeniedError()));
+      let settled = false;
+      const finish = (error?: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.socket.off('connect_error', onError);
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+      const onError = () => {
+        // A first refused upgrade is not the end on a remote host: Render's
+        // free instances sleep, and the next attempt is the one that lands.
+        // Loopback has no cold start — if nothing is listening, say so now.
+        if (isLoopbackUrl(this.url) || !this.socket.active) {
+          finish(new SignalingUnavailableError(this.url));
+        }
+      };
+      this.socket.on('connect_error', onError);
+      this.socket.once('room:joined', () => finish());
+      this.socket.once('room:denied', () => finish(new AdmissionDeniedError()));
       this.socket.once('connect', () => {
         const { sessionId, roomId, displayName, state, breakoutOf } = this.options;
         this.socket.emit('room:join', { sessionId, roomId, displayName, state, breakoutOf });
