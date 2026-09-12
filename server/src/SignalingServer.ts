@@ -50,6 +50,8 @@ interface RoomState {
   waiting: Map<string, WaitingPeer>;
   /** Sessions that passed the waiting room (or joined before it was enabled). */
   admitted: Set<string>;
+  /** Sessions the host removed; they are out of the room and may not come back. */
+  removed: Set<string>;
 }
 
 const rooms = new Map<string, RoomState>();
@@ -69,6 +71,7 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
       settings: DEFAULT_ROOM_SETTINGS,
       waiting: new Map(),
       admitted: new Set(),
+      removed: new Set(),
     };
     rooms.set(roomId, room);
   }
@@ -122,6 +125,33 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
   socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
 }
 
+/**
+ * Takes a participant out of the room rather than trusting them to leave when
+ * told to: without this a removed client could keep sending chat, editor updates
+ * or execution requests, since nothing but its own good manners stopped it.
+ */
+async function evict(
+  io: CollabServer,
+  room: RoomState,
+  roomId: string,
+  targetPeerId: string,
+): Promise<void> {
+  const target = io.sockets.sockets.get(targetPeerId);
+  if (target?.data.roomId !== roomId) {
+    return;
+  }
+  const { sessionId } = target.data;
+  if (sessionId) {
+    room.admitted.delete(sessionId);
+    room.removed.add(sessionId);
+  }
+  target.emit('host:command', { action: 'remove' });
+  target.data.roomId = undefined;
+  await target.leave(roomId);
+  io.to(roomId).emit('peer:left', targetPeerId);
+  await handleLeave(io, roomId, targetPeerId);
+}
+
 async function handleLeave(io: CollabServer, roomId: string, peerId: string): Promise<void> {
   const room = rooms.get(roomId);
   const remaining = await listRoomPeers(io, roomId, peerId);
@@ -155,6 +185,10 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
     }
 
     const room = rooms.get(roomId);
+    if (room?.removed.has(sessionId)) {
+      socket.emit('room:denied');
+      return;
+    }
     if (room && room.settings.waitingRoom && !room.admitted.has(sessionId)) {
       socket.data.waitingFor = roomId;
       room.waiting.set(socket.id, { peerId: socket.id, displayName });
@@ -194,16 +228,21 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
     }
   });
 
-  socket.on('host:command', ({ targetPeerId, command }) => {
+  socket.on('host:command', async ({ targetPeerId, command }) => {
+    const room = hostedRoom();
     const roomId = socket.data.roomId;
-    if (!hostedRoom() || !roomId) {
+    if (!room || !roomId) {
       return;
     }
     if (targetPeerId === null) {
       socket.to(roomId).emit('host:command', command);
-    } else {
-      io.to(targetPeerId).emit('host:command', command);
+      return;
     }
+    if (command.action === 'remove') {
+      await evict(io, room, roomId, targetPeerId);
+      return;
+    }
+    io.to(targetPeerId).emit('host:command', command);
   });
 
   socket.on('peer:state', (state) => {
