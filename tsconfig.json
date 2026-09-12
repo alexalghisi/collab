@@ -20,6 +20,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "server", "App.tsx", "index.ts"],
+  "include": ["src", "server", "App.tsx", "index.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "dist-web", "desktop", "**/*.config.js"]
 }
