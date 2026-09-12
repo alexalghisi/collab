@@ -4,7 +4,9 @@ import * as Y from 'yjs';
 import { REJECTION_MESSAGES } from '../../src/code/execution';
 import { decodeUpdate, encodeUpdate } from '../../src/code/updates';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
-import { FileStore } from './files/FileStore';
+import { attachmentPath, FileStore } from './files/FileStore';
+import { normalizeChatDraft } from '../../src/chat/messages';
+import type { FileAttachment } from '../../src/files/attachments';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -278,17 +280,37 @@ function registerSocket(
     }
   });
 
-  socket.on('chat:message', (text) => {
-    const { roomId, displayName } = socket.data;
-    if (roomId) {
-      io.to(roomId).emit('chat:message', {
-        id: randomUUID(),
-        peerId: socket.id,
-        displayName: displayName ?? 'Guest',
-        text,
-        sentAt: Date.now(),
-      });
+  socket.on('chat:message', (draft) => {
+    const { roomId, displayName, sessionId } = socket.data;
+    const message = normalizeChatDraft(draft);
+    if (!roomId || !message) {
+      return;
     }
+    // The sender describes its own attachment, so the description is replaced
+    // with the store's: a client could otherwise put any name, size or url on
+    // somebody else's file, or on a file from another room.
+    let file: FileAttachment | null = null;
+    if (message.file) {
+      const stored = files.get(message.file.id);
+      if (!stored || stored.roomId !== roomId || stored.uploadedBy !== sessionId) {
+        return;
+      }
+      file = {
+        id: stored.id,
+        name: stored.name,
+        mimeType: stored.mimeType,
+        size: stored.bytes.byteLength,
+        url: attachmentPath(stored.id),
+      };
+    }
+    io.to(roomId).emit('chat:message', {
+      id: randomUUID(),
+      peerId: socket.id,
+      displayName: displayName ?? 'Guest',
+      text: message.text,
+      file,
+      sentAt: Date.now(),
+    });
   });
 
   socket.on('board:stroke', (stroke) => {

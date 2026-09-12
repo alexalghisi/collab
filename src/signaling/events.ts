@@ -1,4 +1,6 @@
+import type { ChatDraft } from '../chat/messages';
 import type { ExecutionRequest, RunFinished, RunOutput, RunStarted } from '../code/execution';
+import type { FileAttachment } from '../files/attachments';
 
 /** Presence flags every participant broadcasts to the room. */
 export interface PeerState {
@@ -76,6 +78,8 @@ export interface ChatMessage {
   readonly displayName: string;
   readonly text: string;
   readonly sentAt: number;
+  /** A file the sender shared with the room, alongside the text or on its own. */
+  readonly file: FileAttachment | null;
 }
 
 /** One freehand line on the shared whiteboard. */
@@ -130,7 +134,7 @@ export interface ClientToServerEvents {
   'signal:answer': (payload: OutgoingSdpPayload) => void;
   'signal:ice': (payload: OutgoingIcePayload) => void;
   'peer:state': (state: PeerState) => void;
-  'chat:message': (text: string) => void;
+  'chat:message': (draft: ChatDraft) => void;
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
   'notes:update': (text: string) => void;
