@@ -18,6 +18,9 @@ import {
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
+import { EXECUTION_URL } from '../code/config';
+import type { ExecutionRequest, ExecutionResult } from '../code/execution';
+import type { CodeLanguage } from '../code/languages';
 import { mergeEncodedUpdates } from '../code/updates';
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -51,6 +54,20 @@ interface ParticipantDoc {
 interface CodeUpdateDoc {
   readonly update: string;
   readonly createdAt: number;
+}
+
+/** One execution, from the click on Run to the sandbox's verdict. */
+interface CodeRunDoc {
+  readonly byPeerId: string;
+  readonly byDisplayName: string;
+  readonly language: CodeLanguage;
+  readonly startedAt: number;
+  readonly stdout?: string;
+  readonly stderr?: string;
+  readonly exitCode?: number | null;
+  readonly timedOut?: boolean;
+  readonly error?: string | null;
+  readonly finished?: boolean;
 }
 
 interface RoomDoc {
@@ -118,6 +135,7 @@ class FirestoreChannel implements SignalingChannel {
   private readonly messages: CollectionReference;
   private readonly strokes: CollectionReference;
   private readonly codeUpdates: CollectionReference;
+  private readonly codeRuns: CollectionReference;
   private readonly waiting: CollectionReference;
   private readonly unsubscribers: Unsubscribe[] = [];
   private unsubscribeWaiting: Unsubscribe | null = null;
@@ -125,6 +143,8 @@ class FirestoreChannel implements SignalingChannel {
   private awarenessTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingAwareness: string | null = null;
   private isHost = false;
+  /** Output already dispatched per run, so a growing document yields deltas. */
+  private readonly runOutput = new Map<string, { stdout: number; stderr: number }>();
   private compacting = false;
   private joinedAt = 0;
   private lastSettings = DEFAULT_ROOM_SETTINGS;
@@ -173,6 +193,9 @@ class FirestoreChannel implements SignalingChannel {
       void addDoc(this.codeUpdates, entry);
     },
     'code:awareness': (update) => this.sendAwareness(update),
+    'code:run': (request) => {
+      void this.runCode(request);
+    },
     'room:settings': (settings) => {
       this.lastSettings = settings;
       void setDoc(this.room, { settings }, { merge: true });
@@ -205,6 +228,7 @@ class FirestoreChannel implements SignalingChannel {
     this.messages = collection(this.room, 'messages');
     this.strokes = collection(this.room, 'strokes');
     this.codeUpdates = collection(this.room, 'codeUpdates');
+    this.codeRuns = collection(this.room, 'runs');
     this.waiting = collection(this.room, 'waiting');
   }
 
@@ -249,6 +273,7 @@ class FirestoreChannel implements SignalingChannel {
     // After room:joined, so the existing drawing streams in as board:stroke events.
     this.subscribeStrokes();
     this.subscribeCodeUpdates();
+    this.subscribeCodeRuns();
   }
 
   disconnect(): void {
@@ -529,6 +554,105 @@ class FirestoreChannel implements SignalingChannel {
     } finally {
       this.compacting = false;
     }
+  }
+
+  /**
+   * Firestore has no server to run anything, so the sandbox is called over HTTP
+   * and the run is published as a document: the room watches it the way it
+   * watches strokes, and everyone sees the output, not just whoever pressed Run.
+   */
+  private async runCode(request: ExecutionRequest): Promise<void> {
+    const entry = doc(this.codeRuns);
+    const started: CodeRunDoc = {
+      byPeerId: this.peerId,
+      byDisplayName: this.options.displayName,
+      language: request.language,
+      startedAt: Date.now(),
+    };
+    await setDoc(entry, started);
+    try {
+      const response = await fetch(`${EXECUTION_URL}/execute`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...request, roomId: this.options.roomId }),
+      });
+      const body = (await response.json()) as ExecutionResult & {
+        stdout?: string;
+        stderr?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error ?? `The sandbox answered ${response.status}.`);
+      }
+      await setDoc(
+        entry,
+        {
+          stdout: body.stdout ?? '',
+          stderr: body.stderr ?? '',
+          exitCode: body.exitCode ?? null,
+          timedOut: body.timedOut ?? false,
+          error: null,
+          finished: true,
+        },
+        { merge: true },
+      );
+    } catch (cause) {
+      await setDoc(
+        entry,
+        { error: (cause as Error).message, exitCode: null, timedOut: false, finished: true },
+        { merge: true },
+      );
+    }
+  }
+
+  private subscribeCodeRuns(): void {
+    const ordered = query(this.codeRuns, orderBy('startedAt'));
+    const unsubscribe = onSnapshot(ordered, (snapshot) => {
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'removed') {
+          this.runOutput.delete(change.doc.id);
+          continue;
+        }
+        const runId = change.doc.id;
+        const run = change.doc.data() as CodeRunDoc;
+        if (change.type === 'added') {
+          this.runOutput.set(runId, { stdout: 0, stderr: 0 });
+          this.emitter.dispatch('code:run:started', {
+            runId,
+            byPeerId: run.byPeerId,
+            byDisplayName: run.byDisplayName,
+            language: run.language,
+          });
+        }
+        this.dispatchRunOutput(runId, run);
+        if (run.finished) {
+          this.runOutput.delete(runId);
+          this.emitter.dispatch('code:run:finished', {
+            runId,
+            exitCode: run.exitCode ?? null,
+            timedOut: run.timedOut ?? false,
+            error: run.error ?? null,
+          });
+        }
+      }
+    });
+    this.unsubscribers.push(unsubscribe);
+  }
+
+  private dispatchRunOutput(runId: string, run: CodeRunDoc): void {
+    const seen = this.runOutput.get(runId) ?? { stdout: 0, stderr: 0 };
+    for (const stream of ['stdout', 'stderr'] as const) {
+      const text = run[stream] ?? '';
+      if (text.length > seen[stream]) {
+        this.emitter.dispatch('code:output', {
+          runId,
+          stream,
+          text: text.slice(seen[stream]),
+        });
+        seen[stream] = text.length;
+      }
+    }
+    this.runOutput.set(runId, seen);
   }
 
   /** Keeps the newest cursor position and writes at most one document per tick. */
