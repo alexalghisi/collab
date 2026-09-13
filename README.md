@@ -95,6 +95,22 @@ Phones have no Web Speech API, so they show the room's transcript but do not
 start a recognizer. That tradeoff is deliberate: a silent gap is worse than
 a documented one.
 
+### Meeting search index
+
+Transcripts, shared notes and chat are chunked and embedded behind one
+`VectorStore` interface with three backends, chosen by `VECTOR_STORE` the
+same way signaling is chosen:
+
+| Value              | Store                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| _unset_ / `memory` | In-process. Default for local development and CI.                                                 |
+| `postgres`         | Self-hosted Postgres with [pgvector](https://github.com/pgvector/pgvector). Needs `DATABASE_URL`. |
+| `pinecone`         | [Pinecone](https://www.pinecone.io). Needs `PINECONE_API_KEY` and `PINECONE_INDEX`.               |
+
+The embedder is a local hashing vector when no key is set, and OpenAI
+`text-embedding-3-small` when `OPENAI_API_KEY` is present. Callers only see
+`Embedder`; swapping the model does not touch the store.
+
 ### Shared code document
 
 The collaborative editor is a [Yjs](https://yjs.dev) document that travels over
@@ -241,6 +257,7 @@ Collab/
 │   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links, recording
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
+│   ├── search/                 # VectorStore (memory / pgvector / Pinecone) and meeting chunking
 │   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
 ├── server/
 │   └── src/                    # Express + Socket.IO signaling server
