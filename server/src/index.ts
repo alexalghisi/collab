@@ -5,7 +5,8 @@ import { Server } from 'socket.io';
 import { MAX_CODE_BYTES, MAX_STDIN_BYTES } from '../../src/code/execution';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
-import { registerSignalingHandlers, type CollabServer } from './SignalingServer';
+import { filesRouter } from './files/router';
+import { files, isAdmitted, registerSignalingHandlers, type CollabServer } from './SignalingServer';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '*';
@@ -21,6 +22,7 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
 });
 app.use(executionRouter(execution));
+app.use(filesRouter({ store: files, membership: isAdmitted }));
 
 const httpServer = createServer(app);
 const io: CollabServer = new Server(httpServer, {
