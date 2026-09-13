@@ -3,7 +3,9 @@ import type { Server, Socket } from 'socket.io';
 import * as Y from 'yjs';
 import { REJECTION_MESSAGES } from '../../src/code/execution';
 import { decodeUpdate, encodeUpdate } from '../../src/code/updates';
+import type { MeetingAssistant } from '../../src/assistant/MeetingAssistant';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
+import { acceptAssistantAsk, createMeetingAssistant, runAssistant } from './assistant/service';
 import { attachmentPath, FileStore } from './files/FileStore';
 import { normalizeChatDraft } from '../../src/chat/messages';
 import type { FileAttachment } from '../../src/files/attachments';
@@ -11,6 +13,7 @@ import { normalizeTranscriptSegment, type TranscriptSegment } from '../../src/tr
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
+  type ChatMessage,
   type ClientToServerEvents,
   type PeerInfo,
   type PeerState,
@@ -50,6 +53,8 @@ interface RoomState {
   hostPeerId: string;
   strokes: Stroke[];
   notes: string;
+  /** Recent chat, kept so the assistant can read what the room said. */
+  messages: ChatMessage[];
   /** Spoken turns so far; a late joiner gets the same log as everyone else. */
   transcript: TranscriptSegment[];
   /** Merged shared editor document, so a late joiner gets the current code. */
@@ -91,6 +96,7 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
       hostPeerId: firstPeerId,
       strokes: [],
       notes: '',
+      messages: [],
       transcript: [],
       code: new Y.Doc(),
       codeEdited: false,
@@ -200,6 +206,7 @@ function registerSocket(
   io: CollabServer,
   socket: CollabServerSocket,
   execution: ExecutionService,
+  assistant: MeetingAssistant,
 ): void {
   const currentRoom = (): RoomState | undefined =>
     socket.data.roomId ? rooms.get(socket.data.roomId) : undefined;
@@ -308,14 +315,22 @@ function registerSocket(
         url: attachmentPath(stored.id),
       };
     }
-    io.to(roomId).emit('chat:message', {
+    const entry: ChatMessage = {
       id: randomUUID(),
       peerId: socket.id,
       displayName: displayName ?? 'Guest',
       text: message.text,
       file,
       sentAt: Date.now(),
-    });
+    };
+    const room = currentRoom();
+    if (room) {
+      room.messages.push(entry);
+      if (room.messages.length > 200) {
+        room.messages.splice(0, room.messages.length - 200);
+      }
+    }
+    io.to(roomId).emit('chat:message', entry);
   });
 
   socket.on('board:stroke', (stroke) => {
@@ -400,6 +415,45 @@ function registerSocket(
     }
   });
 
+  socket.on('assistant:ask', async ({ requestId, question }) => {
+    const roomId = socket.data.roomId;
+    const room = currentRoom();
+    const context = {
+      meetingId: roomId ?? '',
+      roomId: roomId ?? '',
+      question,
+      transcript:
+        room?.transcript.map((turn) => ({
+          displayName: turn.displayName,
+          text: turn.text,
+          startedAt: turn.startedAt,
+        })) ?? [],
+      notes: room?.notes ?? '',
+      messages:
+        room?.messages.map((message) => ({ text: message.text, sentAt: message.sentAt })) ?? [],
+    };
+    const accepted = acceptAssistantAsk(
+      context,
+      [`room:${roomId}`, `peer:${socket.id}`],
+      Boolean(roomId && room),
+    );
+    if (!accepted.ok) {
+      socket.emit('assistant:error', { requestId, error: accepted.error });
+      return;
+    }
+    const events = await runAssistant(assistant, context);
+    const target = io.to(roomId as string);
+    for (const event of events) {
+      if (event.type === 'token') {
+        target.emit('assistant:token', { requestId, text: event.text });
+      } else if (event.type === 'done') {
+        target.emit('assistant:done', { requestId, actions: event.actions });
+      } else {
+        target.emit('assistant:error', { requestId, error: event.error });
+      }
+    }
+  });
+
   socket.on('notes:update', (text) => {
     const room = currentRoom();
     if (room && socket.data.roomId) {
@@ -452,8 +506,10 @@ function registerSocket(
 export function registerSignalingHandlers(
   io: CollabServer,
   execution = new ExecutionService(createRunnerFromEnv()),
+  assistant?: MeetingAssistant,
 ): void {
+  const helper = assistant ?? createMeetingAssistant();
   io.on('connection', (socket) => {
-    registerSocket(io, socket, execution);
+    registerSocket(io, socket, execution, helper);
   });
 }

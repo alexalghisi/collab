@@ -1,6 +1,6 @@
 import type { IconName } from '../ui/icons';
 
-export type Section = 'home' | 'meetings' | 'calendar' | 'chat';
+export type Section = 'home' | 'meetings' | 'calendar' | 'chat' | 'search';
 
 export interface SectionItem {
   readonly id: Section;
@@ -13,4 +13,5 @@ export const SECTIONS: readonly SectionItem[] = [
   { id: 'meetings', label: 'Meetings', icon: 'videocam' },
   { id: 'calendar', label: 'Calendar', icon: 'calendar' },
   { id: 'chat', label: 'Chat', icon: 'chatbubbles' },
+  { id: 'search', label: 'Search', icon: 'search' },
 ];
