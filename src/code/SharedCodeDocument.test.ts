@@ -63,6 +63,10 @@ class TestChannel implements SignalingChannel {
     this.online = false;
   }
 
+  upload(): Promise<never> {
+    throw new Error('this test never shares a file');
+  }
+
   /** Replays what was buffered while offline, as a reconnecting transport would. */
   reconnect(): void {
     this.online = true;

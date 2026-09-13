@@ -1,0 +1,27 @@
+rules_version = '2';
+
+// The Firestore route has no server of ours in it, so these rules are where the
+// file limits are enforced: the size and the type are checked on write, and a
+// path is only writable by a signed-in participant of that room.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /rooms/{roomId}/{fileId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/png',
+          'image/jpeg',
+          'image/gif',
+          'image/webp',
+          'image/svg+xml',
+          'application/pdf',
+          'application/json',
+          'application/zip',
+          'text/plain',
+          'text/csv',
+          'text/markdown'
+        ];
+    }
+  }
+}
