@@ -53,7 +53,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 
 - Multi-party video and voice calls over a mesh of WebRTC peer connections; join with video or audio only and turn the camera on later without renegotiation.
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
-- Shareable invite links (`?room=…`) with human-friendly meeting IDs.
+- Shareable invite links (`?room=…`) with human-friendly meeting IDs. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared notes** that every participant can edit, and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in).
 - **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that executes the room's code — JavaScript, TypeScript, Python or Go — in a network-less, resource-capped, throwaway sandbox and streams the output to everyone.
 - **Meeting assistant**: an in-call panel that answers questions from the live transcript, notes and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
@@ -271,7 +271,7 @@ Collab/
 │   ├── chat/                   # Team chat channels (Firestore) and its hook
 │   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
-│   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links, recording
+│   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links / email / SMS, recording
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
 │   ├── search/                 # VectorStore (memory / pgvector / Pinecone) and meeting chunking
@@ -378,6 +378,13 @@ Then add the public URL as the repository **variable**
 `EXPO_PUBLIC_SIGNALING_URL` (for example `https://collab-signaling.onrender.com`)
 and re-run the workflow. Restrict the server to your own origin with the
 `CORS_ORIGIN` environment variable; it defaults to `*`.
+
+In-call **SMS and email invites** go through that same server. Set Twilio
+(`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`) to deliver
+texts, and Resend (`RESEND_API_KEY`, `RESEND_FROM`) for mail. `PUBLIC_APP_URL`
+is the join link written into the message — use the public site, not
+`localhost`, or the recipient cannot open it. A Twilio trial only delivers to
+numbers you have verified in their console.
 
 With neither configured, the build falls back to `http://localhost:4000` and
 joining a meeting fails with `Unable to reach the signaling service at
