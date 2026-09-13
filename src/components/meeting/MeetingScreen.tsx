@@ -10,13 +10,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CollabSession } from '../../hooks/useCollabSession';
-import { INVITE_ACTION_LABEL, shareInvite } from '../../meeting/invite';
+import { INVITE_ACTION_LABEL } from '../../meeting/invite';
 import { CAN_RECORD } from '../../meeting/recording';
 import { useRecording } from '../../meeting/useRecording';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
+import { InvitePanel } from './InvitePanel';
 import { CodePanel } from './CodePanel';
 import { AssistantPanel } from './AssistantPanel';
 import { NotesPanel } from './NotesPanel';
@@ -33,7 +34,7 @@ export interface MeetingScreenProps {
   displayName: string;
 }
 
-type Panel = 'participants' | 'chat' | 'notes' | 'transcript' | 'assistant' | null;
+type Panel = 'participants' | 'chat' | 'notes' | 'transcript' | 'assistant' | 'invite' | null;
 /** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
 type Stage = 'grid' | 'whiteboard' | 'code';
 
@@ -57,7 +58,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [stage, setStage] = useState<Stage>('grid');
   const [readCount, setReadCount] = useState(0);
-  const [inviteDone, setInviteDone] = useState(false);
   const recording = useRecording(session.localStream, session.participants, roomId);
 
   const wide = width >= WIDE_LAYOUT_MIN_WIDTH;
@@ -78,12 +78,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
 
   const toggleStage = (next: Exclude<Stage, 'grid'>): void => {
     setStage((current) => (current === next ? 'grid' : next));
-  };
-
-  const invite = async (): Promise<void> => {
-    await shareInvite(roomId);
-    setInviteDone(true);
-    setTimeout(() => setInviteDone(false), 2000);
   };
 
   const rows: ParticipantRow[] = [
@@ -150,13 +144,14 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
             onPress={session.returnToMain}
           />
         )}
-        <Pressable style={styles.inviteButton} onPress={() => void invite()}>
-          <Ionicons
-            name={inviteDone ? 'checkmark' : 'link-outline'}
-            size={16}
-            color={colors.text}
-          />
-          <Text style={styles.inviteText}>{inviteDone ? 'Copied' : INVITE_ACTION_LABEL}</Text>
+        <Pressable
+          style={[styles.inviteButton, panel === 'invite' && styles.inviteButtonActive]}
+          onPress={() => togglePanel('invite')}
+          accessibilityRole="button"
+          accessibilityLabel="Invite someone"
+        >
+          <Ionicons name="person-add-outline" size={16} color={colors.text} />
+          <Text style={styles.inviteText}>{INVITE_ACTION_LABEL}</Text>
         </Pressable>
       </View>
 
@@ -234,6 +229,13 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
               <AssistantPanel
                 turns={session.assistantTurns}
                 onAsk={session.askAssistant}
+                onClose={() => setPanel(null)}
+              />
+            )}
+            {panel === 'invite' && (
+              <InvitePanel
+                roomId={roomId}
+                onSend={session.sendInvite}
                 onClose={() => setPanel(null)}
               />
             )}
@@ -395,6 +397,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
+  },
+  inviteButtonActive: {
+    backgroundColor: colors.primary,
   },
   inviteText: {
     color: colors.text,

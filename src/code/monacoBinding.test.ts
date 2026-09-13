@@ -147,6 +147,10 @@ class SilentChannel implements SignalingChannel {
   upload(): Promise<never> {
     throw new Error('this test never shares a file');
   }
+
+  sendInvite(): Promise<never> {
+    throw new Error('this test never sends an invite');
+  }
 }
 
 describe('MonacoTextBinding', () => {

@@ -1,6 +1,6 @@
 const ROOM_PARAM = 'room';
 
-export const INVITE_ACTION_LABEL = 'Copy link';
+export const INVITE_ACTION_LABEL = 'Invite';
 
 /** Room id carried by an invite link such as `https://…/collab/?room=kqz-wrtm-pfa`. */
 export function readRoomFromLink(): string | null {
