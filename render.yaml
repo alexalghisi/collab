@@ -1,0 +1,14 @@
+# One-click deploy of the signaling server on Render (https://render.com/docs/blueprint-spec).
+# After the first deploy, put the service URL into the EXPO_PUBLIC_SIGNALING_URL repository
+# variable so the GitHub Pages build points at it.
+services:
+  - type: web
+    name: collab-signaling
+    runtime: docker
+    plan: free
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: '4000'
