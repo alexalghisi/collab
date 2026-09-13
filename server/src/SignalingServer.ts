@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import * as Y from 'yjs';
+import { REJECTION_MESSAGES } from '../../src/code/execution';
 import { decodeUpdate, encodeUpdate } from '../../src/code/updates';
+import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -13,6 +15,7 @@ import {
   type Stroke,
   type WaitingPeer,
 } from '../../src/signaling/events';
+import type { CodeLanguage } from '../../src/code/languages';
 
 export interface SocketData {
   sessionId?: string;
@@ -168,7 +171,11 @@ async function handleLeave(io: CollabServer, roomId: string, peerId: string): Pr
   }
 }
 
-function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
+function registerSocket(
+  io: CollabServer,
+  socket: CollabServerSocket,
+  execution: ExecutionService,
+): void {
   const currentRoom = (): RoomState | undefined =>
     socket.data.roomId ? rooms.get(socket.data.roomId) : undefined;
   const hostedRoom = (): RoomState | undefined => {
@@ -298,6 +305,56 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
     }
   });
 
+  socket.on('code:run', async (payload) => {
+    const roomId = socket.data.roomId;
+    const runId = `${socket.id}:${randomUUID()}`;
+    const displayName = socket.data.displayName ?? 'Guest';
+    const accepted = execution.accept(
+      payload,
+      [`room:${roomId}`, `peer:${socket.id}`],
+      Boolean(roomId),
+    );
+
+    if (!accepted.ok) {
+      // Only the sender hears about a refusal; the room never saw a run start.
+      socket.emit('code:run:started', {
+        runId,
+        byPeerId: socket.id,
+        byDisplayName: displayName,
+        language: (payload as { language?: CodeLanguage })?.language ?? 'javascript',
+      });
+      socket.emit('code:run:finished', {
+        runId,
+        exitCode: null,
+        timedOut: false,
+        error: REJECTION_MESSAGES[accepted.reason],
+      });
+      return;
+    }
+
+    const { request } = accepted;
+    const room = io.to(roomId as string);
+    room.emit('code:run:started', {
+      runId,
+      byPeerId: socket.id,
+      byDisplayName: displayName,
+      language: request.language,
+    });
+    try {
+      const result = await execution.run(request, (chunk) => {
+        room.emit('code:output', { runId, ...chunk });
+      });
+      room.emit('code:run:finished', { runId, ...result, error: null });
+    } catch (cause) {
+      room.emit('code:run:finished', {
+        runId,
+        exitCode: null,
+        timedOut: false,
+        error: (cause as Error).message,
+      });
+    }
+  });
+
   socket.on('notes:update', (text) => {
     const room = currentRoom();
     if (room && socket.data.roomId) {
@@ -332,8 +389,11 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
   });
 }
 
-export function registerSignalingHandlers(io: CollabServer): void {
+export function registerSignalingHandlers(
+  io: CollabServer,
+  execution = new ExecutionService(createRunnerFromEnv()),
+): void {
   io.on('connection', (socket) => {
-    registerSocket(io, socket);
+    registerSocket(io, socket, execution);
   });
 }

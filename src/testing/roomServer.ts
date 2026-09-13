@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
+import type { ExecutionService } from '../../server/src/execution/ExecutionService';
 import { registerSignalingHandlers, type CollabServer } from '../../server/src/SignalingServer';
 import { INITIAL_PEER_STATE, type RoomJoinedPayload } from '../signaling/events';
 import type { SignalingChannel, SignalingFactory } from '../signaling/SignalingChannel';
@@ -25,10 +26,10 @@ export interface RoomServer {
  * channels, so server behaviour is asserted through the transport the app uses
  * rather than through a stand-in.
  */
-export async function startRoomServer(): Promise<RoomServer> {
+export async function startRoomServer(execution?: ExecutionService): Promise<RoomServer> {
   const httpServer = createServer();
   const io: CollabServer = new Server(httpServer);
-  registerSignalingHandlers(io);
+  registerSignalingHandlers(io, execution);
   httpServer.listen(0);
   await once(httpServer, 'listening');
   const url = `http://localhost:${(httpServer.address() as AddressInfo).port}`;
