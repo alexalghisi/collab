@@ -16,6 +16,7 @@ COPY src/signaling ./src/signaling
 COPY src/code ./src/code
 COPY src/chat ./src/chat
 COPY src/files ./src/files
+COPY src/meeting ./src/meeting
 COPY src/transcript ./src/transcript
 COPY src/search ./src/search
 COPY src/assistant ./src/assistant

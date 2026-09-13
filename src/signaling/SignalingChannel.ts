@@ -1,5 +1,6 @@
 import type { FileAttachment } from '../files/attachments';
 import type { UploadableFile, UploadProgress } from '../files/upload';
+import type { ParsedContact } from '../meeting/contact';
 import type { ClientToServerEvents, PeerState, ServerToClientEvents } from './events';
 
 /** Events a client may send once it is inside a room. */
@@ -22,6 +23,14 @@ export interface SignalingChannel {
    * backend of its own. Rejects with an AttachmentError the sender can be shown.
    */
   upload(file: UploadableFile, onProgress: UploadProgress): Promise<FileAttachment>;
+  /** Delivers an email or SMS invite through the signaling server. */
+  sendInvite(
+    input: string,
+    hostName: string,
+    link: string,
+    /** Main room id; invites point here even from a breakout. */
+    inviteRoomId?: string,
+  ): Promise<ParsedContact>;
 }
 
 export interface SignalingOptions {
