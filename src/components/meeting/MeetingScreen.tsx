@@ -17,6 +17,7 @@ import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
+import { CodePanel } from './CodePanel';
 import { NotesPanel } from './NotesPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
@@ -31,6 +32,8 @@ export interface MeetingScreenProps {
 }
 
 type Panel = 'participants' | 'chat' | 'notes' | null;
+/** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
+type Stage = 'grid' | 'whiteboard' | 'code';
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
 const PANEL_WIDTH = 340;
@@ -50,7 +53,7 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
   const { width } = useWindowDimensions();
   const [panel, setPanel] = useState<Panel>(null);
   const [reactionsOpen, setReactionsOpen] = useState(false);
-  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
+  const [stage, setStage] = useState<Stage>('grid');
   const [readCount, setReadCount] = useState(0);
   const [inviteDone, setInviteDone] = useState(false);
   const recording = useRecording(session.localStream, session.participants, roomId);
@@ -69,6 +72,10 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
 
   const togglePanel = (next: Exclude<Panel, null>): void => {
     setPanel((current) => (current === next ? null : next));
+  };
+
+  const toggleStage = (next: Exclude<Stage, 'grid'>): void => {
+    setStage((current) => (current === next ? 'grid' : next));
   };
 
   const invite = async (): Promise<void> => {
@@ -152,7 +159,7 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
       </View>
 
       <View style={styles.body}>
-        {whiteboardOpen ? (
+        {stage !== 'grid' ? (
           <View style={styles.stage}>
             <ScrollView horizontal style={styles.stripScroll} contentContainerStyle={styles.strip}>
               {tiles.map(([key, tile]) => (
@@ -161,12 +168,23 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
                 </View>
               ))}
             </ScrollView>
-            <Whiteboard
-              strokes={session.strokes}
-              selfPeerId={session.selfPeerId}
-              onAddStroke={session.addStroke}
-              onRemoveStrokes={session.removeStrokes}
-            />
+            {stage === 'whiteboard' ? (
+              <Whiteboard
+                strokes={session.strokes}
+                selfPeerId={session.selfPeerId}
+                onAddStroke={session.addStroke}
+                onRemoveStrokes={session.removeStrokes}
+              />
+            ) : (
+              session.code && (
+                <CodePanel
+                  document={session.code}
+                  runs={session.runs}
+                  selfPeerId={session.selfPeerId}
+                  onRun={session.runCode}
+                />
+              )
+            )}
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.grid}>
@@ -260,8 +278,14 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
         <ToolbarButton
           icon="brush"
           label="Whiteboard"
-          active={whiteboardOpen}
-          onPress={() => setWhiteboardOpen((open) => !open)}
+          active={stage === 'whiteboard'}
+          onPress={() => toggleStage('whiteboard')}
+        />
+        <ToolbarButton
+          icon="code-slash"
+          label="Code"
+          active={stage === 'code'}
+          onPress={() => toggleStage('code')}
         />
         <ToolbarButton
           icon="document-text-outline"
