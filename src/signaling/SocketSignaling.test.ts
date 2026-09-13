@@ -1,10 +1,11 @@
-import { createServer, type Server as HttpServer } from 'node:http';
-import { once } from 'node:events';
-import type { AddressInfo } from 'node:net';
-import { Server } from 'socket.io';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { registerSignalingHandlers, type CollabServer } from '../../server/src/SignalingServer';
-import { INITIAL_PEER_STATE, type RoomJoinedPayload, type Stroke } from './events';
+import { startRoomServer, type RoomServer } from '../testing/roomServer';
+import {
+  INITIAL_PEER_STATE,
+  type RoomJoinedPayload,
+  type Stroke,
+  type WaitingPeer,
+} from './events';
 import { AdmissionDeniedError, SignalingUnavailableError } from './SignalingChannel';
 import { createSocketSignaling } from './SocketSignaling';
 
@@ -17,38 +18,18 @@ const stroke: Stroke = {
 };
 
 describe('SocketSignaling against the signaling server', () => {
-  let httpServer: HttpServer;
-  let io: CollabServer;
-  let url: string;
-  let connect: ReturnType<typeof createSocketSignaling>;
-  const open: Array<{ disconnect: () => void }> = [];
+  let server: RoomServer;
 
-  const join = (sessionId: string, displayName: string, roomId = 'room') => {
-    const channel = connect({
-      sessionId,
-      roomId,
-      displayName,
-      state: INITIAL_PEER_STATE,
-    });
-    open.push(channel);
-    return channel;
-  };
+  /** Joins without waiting for admission, for the cases that are held back. */
+  const knock = (sessionId: string, displayName: string) =>
+    server.connect({ sessionId, roomId: 'room', displayName, state: INITIAL_PEER_STATE });
 
   beforeEach(async () => {
-    httpServer = createServer();
-    io = new Server(httpServer);
-    registerSignalingHandlers(io);
-    httpServer.listen(0);
-    await once(httpServer, 'listening');
-    url = `http://localhost:${(httpServer.address() as AddressInfo).port}`;
-    connect = createSocketSignaling(url);
+    server = await startRoomServer();
   });
 
   afterEach(async () => {
-    for (const channel of open.splice(0)) {
-      channel.disconnect();
-    }
-    await io.close();
+    await server.stop();
   });
 
   it('reports the URL it dialled when no server answers', async () => {
@@ -58,9 +39,9 @@ describe('SocketSignaling against the signaling server', () => {
       displayName: 'Ada',
       state: INITIAL_PEER_STATE,
     });
-    open.push(dead);
 
     const cause = await dead.connect().catch((error: unknown) => error);
+    dead.disconnect();
 
     expect(cause).toBeInstanceOf(SignalingUnavailableError);
     expect((cause as SignalingUnavailableError).url).toBe('http://localhost:1');
@@ -68,107 +49,90 @@ describe('SocketSignaling against the signaling server', () => {
   });
 
   it('makes the first participant host and lists earlier peers to a joiner', async () => {
-    const first = join('a', 'Ada');
-    const firstJoined = new Promise<RoomJoinedPayload>((resolve) =>
-      first.on('room:joined', resolve),
-    );
-    await first.connect();
-    const host = (await firstJoined).selfPeerId;
+    const host = await server.join('a', 'Ada');
+    const guest = await server.join('b', 'Linus');
 
-    const second = join('b', 'Linus');
-    const secondJoined = new Promise<RoomJoinedPayload>((resolve) =>
-      second.on('room:joined', resolve),
-    );
-    await second.connect();
-    const payload = await secondJoined;
-
-    expect(payload.hostPeerId).toBe(host);
-    expect(payload.peers.map((peer) => peer.displayName)).toEqual(['Ada']);
+    expect(guest.joined.hostPeerId).toBe(host.joined.selfPeerId);
+    expect(guest.joined.peers.map((peer) => peer.displayName)).toEqual(['Ada']);
   });
 
   it('hands the host seat to the earliest remaining peer when the host leaves', async () => {
-    const first = join('a', 'Ada');
-    await first.connect();
-    const second = join('b', 'Linus');
-    const secondJoined = new Promise<RoomJoinedPayload>((resolve) =>
-      second.on('room:joined', resolve),
-    );
-    await second.connect();
-    const promoted = new Promise<string>((resolve) => second.on('room:host', resolve));
+    const host = await server.join('a', 'Ada');
+    const guest = await server.join('b', 'Linus');
+    const promoted = new Promise<string>((resolve) => guest.channel.on('room:host', resolve));
 
-    first.disconnect();
+    host.channel.disconnect();
 
-    expect(await promoted).toBe((await secondJoined).selfPeerId);
+    expect(await promoted).toBe(guest.joined.selfPeerId);
   });
 
   it('replays the whiteboard to a late joiner', async () => {
-    const first = join('a', 'Ada');
-    await first.connect();
-    first.emit('board:stroke', stroke);
+    const host = await server.join('a', 'Ada');
+    host.channel.emit('board:stroke', stroke);
 
-    const second = join('b', 'Linus');
-    const joined = new Promise<RoomJoinedPayload>((resolve) => second.on('room:joined', resolve));
-    await second.connect();
+    const late = await server.join('b', 'Linus');
 
-    expect((await joined).strokes).toEqual([stroke]);
+    expect(late.joined.strokes).toEqual([stroke]);
   });
 
   it('holds a joiner in the waiting room until the host decides', async () => {
-    const host = join('a', 'Ada');
-    await host.connect();
-    host.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
-    const waiting = new Promise<Array<{ peerId: string }>>((resolve) =>
-      host.on('waiting:update', resolve),
+    const host = await server.join('a', 'Ada');
+    host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
+    const waiting = new Promise<WaitingPeer[]>((resolve) =>
+      host.channel.on('waiting:update', resolve),
     );
 
-    const guest = join('b', 'Linus');
+    const guest = knock('b', 'Linus');
     const held = new Promise<void>((resolve) => guest.on('room:waiting', resolve));
+    const joined = new Promise<RoomJoinedPayload>((resolve) => guest.on('room:joined', resolve));
     const connecting = guest.connect();
     await held;
 
     const [pending] = await waiting;
-    host.emit('waiting:decide', { peerId: pending.peerId, admit: true });
+    host.channel.emit('waiting:decide', { peerId: pending.peerId, admit: true });
+    await connecting;
 
-    await expect(connecting).resolves.toBeUndefined();
+    expect((await joined).hostPeerId).toBe(host.joined.selfPeerId);
+    guest.disconnect();
   });
 
   it('rejects the join of a denied guest', async () => {
-    const host = join('a', 'Ada');
-    await host.connect();
-    host.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
-    const waiting = new Promise<Array<{ peerId: string }>>((resolve) =>
-      host.on('waiting:update', resolve),
+    const host = await server.join('a', 'Ada');
+    host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
+    const waiting = new Promise<WaitingPeer[]>((resolve) =>
+      host.channel.on('waiting:update', resolve),
     );
 
-    const guest = join('b', 'Linus');
+    const guest = knock('b', 'Linus');
     const connecting = guest.connect();
     const [pending] = await waiting;
-    host.emit('waiting:decide', { peerId: pending.peerId, admit: false });
+    host.channel.emit('waiting:decide', { peerId: pending.peerId, admit: false });
 
     await expect(connecting).rejects.toBeInstanceOf(AdmissionDeniedError);
+    guest.disconnect();
   });
 
   it('lets an admitted session back in without queueing again', async () => {
-    const host = join('a', 'Ada');
-    await host.connect();
-    host.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
-    const waiting = new Promise<Array<{ peerId: string }>>((resolve) =>
-      host.on('waiting:update', resolve),
+    const host = await server.join('a', 'Ada');
+    host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
+    const waiting = new Promise<WaitingPeer[]>((resolve) =>
+      host.channel.on('waiting:update', resolve),
     );
 
-    const guest = join('b', 'Linus');
+    const guest = knock('b', 'Linus');
     const firstAttempt = guest.connect();
     const [pending] = await waiting;
-    host.emit('waiting:decide', { peerId: pending.peerId, admit: true });
+    host.channel.emit('waiting:decide', { peerId: pending.peerId, admit: true });
     await firstAttempt;
     guest.disconnect();
 
-    const returning = join('b', 'Linus');
+    const returning = knock('b', 'Linus');
     let held = false;
     returning.on('room:waiting', () => {
       held = true;
     });
     await returning.connect();
+    returning.disconnect();
 
     expect(held).toBe(false);
   });

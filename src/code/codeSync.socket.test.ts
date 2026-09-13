@@ -1,61 +1,31 @@
-import { createServer, type Server as HttpServer } from 'node:http';
-import { once } from 'node:events';
-import type { AddressInfo } from 'node:net';
-import { Server } from 'socket.io';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { registerSignalingHandlers, type CollabServer } from '../../server/src/SignalingServer';
-import { INITIAL_PEER_STATE, type RoomJoinedPayload } from '../signaling/events';
-import type { SignalingChannel } from '../signaling/SignalingChannel';
-import { createSocketSignaling } from '../signaling/SocketSignaling';
+import { settle, startRoomServer, type RoomServer } from '../testing/roomServer';
 import { SharedCodeDocument } from './SharedCodeDocument';
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
 
 /** The document rides the same channel the call does, so it is tested that way. */
 describe('shared code over the Socket.IO transport', () => {
-  let httpServer: HttpServer;
-  let io: CollabServer;
-  let connect: ReturnType<typeof createSocketSignaling>;
-  const channels: SignalingChannel[] = [];
+  let server: RoomServer;
   const documents: SharedCodeDocument[] = [];
 
   const join = async (sessionId: string, displayName: string) => {
-    const channel = connect({
-      sessionId,
-      roomId: 'room',
-      displayName,
-      state: INITIAL_PEER_STATE,
-    });
-    channels.push(channel);
+    const { channel, joined } = await server.join(sessionId, displayName);
     const document = new SharedCodeDocument(channel, { peerId: sessionId, displayName });
     documents.push(document);
-    const joined = new Promise<RoomJoinedPayload>((resolve) => channel.on('room:joined', resolve));
-    await channel.connect();
-    const payload = await joined;
-    if (payload.code) {
-      document.applyState(payload.code);
+    if (joined.code) {
+      document.applyState(joined.code);
     }
-    return { channel, document, payload };
+    return { channel, document, payload: joined };
   };
 
   beforeEach(async () => {
-    httpServer = createServer();
-    io = new Server(httpServer);
-    registerSignalingHandlers(io);
-    httpServer.listen(0);
-    await once(httpServer, 'listening');
-    const { port } = httpServer.address() as AddressInfo;
-    connect = createSocketSignaling(`http://localhost:${port}`);
+    server = await startRoomServer();
   });
 
   afterEach(async () => {
     for (const document of documents.splice(0)) {
       document.destroy();
     }
-    for (const channel of channels.splice(0)) {
-      channel.disconnect();
-    }
-    await io.close();
+    await server.stop();
   });
 
   it('replicates edits between two participants in the room', async () => {
