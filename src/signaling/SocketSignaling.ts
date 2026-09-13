@@ -2,6 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from './events';
 import {
   AdmissionDeniedError,
+  SignalingUnavailableError,
   type SignalingChannel,
   type SignalingFactory,
   type SignalingOptions,
@@ -24,7 +25,7 @@ class SocketChannel implements SignalingChannel {
   private readonly raw: RawSocket;
 
   constructor(
-    url: string,
+    private readonly url: string,
     private readonly options: SignalingOptions,
   ) {
     this.socket = io(url, {
@@ -45,7 +46,7 @@ class SocketChannel implements SignalingChannel {
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.socket.once('connect_error', reject);
+      this.socket.once('connect_error', () => reject(new SignalingUnavailableError(this.url)));
       this.socket.once('room:joined', () => resolve());
       this.socket.once('room:denied', () => reject(new AdmissionDeniedError()));
       this.socket.once('connect', () => {
