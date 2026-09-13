@@ -67,6 +67,10 @@ class TestChannel implements SignalingChannel {
     throw new Error('this test never shares a file');
   }
 
+  sendInvite(): Promise<never> {
+    throw new Error('this test never sends an invite');
+  }
+
   /** Replays what was buffered while offline, as a reconnecting transport would. */
   reconnect(): void {
     this.online = true;
