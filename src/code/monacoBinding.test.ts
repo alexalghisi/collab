@@ -143,6 +143,10 @@ class SilentChannel implements SignalingChannel {
     return Promise.resolve();
   }
   disconnect(): void {}
+
+  upload(): Promise<never> {
+    throw new Error('this test never shares a file');
+  }
 }
 
 describe('MonacoTextBinding', () => {

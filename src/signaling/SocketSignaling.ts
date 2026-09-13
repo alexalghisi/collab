@@ -1,4 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
+import type { FileAttachment } from '../files/attachments';
+import { postFile, type UploadableFile, type UploadProgress } from '../files/upload';
 import type { ClientToServerEvents, ServerToClientEvents } from './events';
 import {
   AdmissionDeniedError,
@@ -55,6 +57,11 @@ class SocketChannel implements SignalingChannel {
       });
       this.socket.connect();
     });
+  }
+
+  upload(file: UploadableFile, onProgress: UploadProgress): Promise<FileAttachment> {
+    const { roomId, sessionId } = this.options;
+    return postFile(`${this.url}/files`, file, { roomId, sessionId }, onProgress);
   }
 
   disconnect(): void {

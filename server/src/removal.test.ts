@@ -28,7 +28,7 @@ describe('removing a participant', () => {
     });
     await settle();
 
-    guest.channel.emit('chat:message', 'still here');
+    guest.channel.emit('chat:message', { text: 'still here', file: null });
     guest.channel.emit('code:update', 'AAAA');
     await settle();
 
@@ -79,7 +79,7 @@ describe('removing a participant', () => {
       command: { action: 'remove' },
     });
     await settle();
-    other.channel.emit('chat:message', 'still allowed');
+    other.channel.emit('chat:message', { text: 'still allowed', file: null });
     await settle();
 
     expect(messages.map((message) => message.text)).toEqual(['still allowed']);
@@ -96,7 +96,7 @@ describe('removing a participant', () => {
       command: { action: 'mute' },
     });
     await settle();
-    guest.channel.emit('chat:message', 'muted, not gone');
+    guest.channel.emit('chat:message', { text: 'muted, not gone', file: null });
     await settle();
 
     expect(messages.map((message) => message.text)).toEqual(['muted, not gone']);
