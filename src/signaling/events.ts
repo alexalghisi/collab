@@ -1,6 +1,12 @@
 import type { ChatDraft } from '../chat/messages';
 import type { ExecutionRequest, RunFinished, RunOutput, RunStarted } from '../code/execution';
 import type { FileAttachment } from '../files/attachments';
+import type {
+  AssistantAsk,
+  AssistantDone,
+  AssistantFailure,
+  AssistantToken,
+} from '../assistant/types';
 import type { TranscriptSegment } from '../transcript/segments';
 
 /** Presence flags every participant broadcasts to the room. */
@@ -152,6 +158,8 @@ export interface ClientToServerEvents {
   'code:run': (request: ExecutionRequest) => void;
   /** One final spoken turn from this participant. */
   'transcript:segment': (segment: TranscriptSegment) => void;
+  /** Asks the meeting assistant; the reply is streamed to the whole room. */
+  'assistant:ask': (ask: AssistantAsk) => void;
   'room:settings': (settings: RoomSettings) => void;
   'host:command': (payload: HostCommandPayload) => void;
   'waiting:decide': (decision: WaitingDecision) => void;
@@ -176,6 +184,9 @@ export interface ServerToClientEvents {
   'code:output': (payload: RunOutput) => void;
   'code:run:finished': (payload: RunFinished) => void;
   'transcript:segment': (segment: TranscriptSegment) => void;
+  'assistant:token': (payload: AssistantToken) => void;
+  'assistant:done': (payload: AssistantDone) => void;
+  'assistant:error': (payload: AssistantFailure) => void;
   'room:settings': (settings: RoomSettings) => void;
   /** The room has a waiting room; the host has been asked to let us in. */
   'room:waiting': () => void;

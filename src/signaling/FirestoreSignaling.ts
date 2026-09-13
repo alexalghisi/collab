@@ -20,6 +20,7 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
 import { randomUUID } from 'expo-crypto';
+import type { StructuredAction } from '../assistant/types';
 import { EXECUTION_URL } from '../code/config';
 import type { ChatDraft } from '../chat/messages';
 import type { ExecutionRequest, ExecutionResult } from '../code/execution';
@@ -154,6 +155,7 @@ class FirestoreChannel implements SignalingChannel {
   private readonly codeUpdates: CollectionReference;
   private readonly codeRuns: CollectionReference;
   private readonly transcript: CollectionReference;
+  private readonly assistantTurns: CollectionReference;
   private readonly waiting: CollectionReference;
   private readonly unsubscribers: Unsubscribe[] = [];
   private unsubscribeWaiting: Unsubscribe | null = null;
@@ -215,6 +217,9 @@ class FirestoreChannel implements SignalingChannel {
     'code:run': (request) => {
       void this.runCode(request);
     },
+    'assistant:ask': (ask) => {
+      void this.askAssistant(ask);
+    },
     'transcript:segment': (segment) => {
       const entry = normalizeTranscriptSegment({
         ...segment,
@@ -259,6 +264,7 @@ class FirestoreChannel implements SignalingChannel {
     this.codeUpdates = collection(this.room, 'codeUpdates');
     this.codeRuns = collection(this.room, 'runs');
     this.transcript = collection(this.room, 'transcript');
+    this.assistantTurns = collection(this.room, 'assistant');
     this.waiting = collection(this.room, 'waiting');
   }
 
@@ -305,6 +311,7 @@ class FirestoreChannel implements SignalingChannel {
     this.subscribeCodeUpdates();
     this.subscribeCodeRuns();
     this.subscribeTranscript();
+    this.subscribeAssistant();
   }
 
   /**
@@ -738,6 +745,87 @@ class FirestoreChannel implements SignalingChannel {
         void updateDoc(this.selfRef(), { codeAwareness: pending });
       }
     }, AWARENESS_THROTTLE_MS);
+  }
+
+  private async askAssistant(ask: { requestId: string; question: string }): Promise<void> {
+    const entry = doc(this.assistantTurns, ask.requestId);
+    await setDoc(entry, { question: ask.question, startedAt: Date.now() });
+    try {
+      const [turns, chats, roomSnap] = await Promise.all([
+        getDocs(query(this.transcript, orderBy('startedAt'))),
+        getDocs(query(this.messages, orderBy('sentAt'))),
+        getDoc(this.room),
+      ]);
+      const response = await fetch(`${EXECUTION_URL}/assistant`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          meetingId: this.options.roomId,
+          roomId: this.options.roomId,
+          question: ask.question,
+          transcript: turns.docs
+            .map((item) => normalizeTranscriptSegment(item.data()))
+            .filter((segment): segment is NonNullable<typeof segment> => segment !== null)
+            .map((segment) => ({
+              displayName: segment.displayName,
+              text: segment.text,
+              startedAt: segment.startedAt,
+            })),
+          notes: ((roomSnap.data() as RoomDoc | undefined)?.notes ?? '') as string,
+          messages: chats.docs.map((item) => {
+            const data = item.data() as MessageDoc;
+            return { text: data.text, sentAt: data.sentAt };
+          }),
+        }),
+      });
+      const body = (await response.json()) as {
+        text?: string;
+        actions?: StructuredAction[];
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error ?? `The assistant answered ${response.status}.`);
+      }
+      await setDoc(
+        entry,
+        { text: body.text ?? '', actions: body.actions ?? [], error: null, finished: true },
+        { merge: true },
+      );
+    } catch (cause) {
+      await setDoc(entry, { error: (cause as Error).message, finished: true }, { merge: true });
+    }
+  }
+
+  private subscribeAssistant(): void {
+    const unsubscribe = onSnapshot(this.assistantTurns, (snapshot) => {
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'removed') {
+          continue;
+        }
+        const requestId = change.doc.id;
+        const data = change.doc.data() as {
+          text?: string;
+          actions?: StructuredAction[];
+          error?: string | null;
+          finished?: boolean;
+        };
+        if (!data.finished) {
+          continue;
+        }
+        if (data.error) {
+          this.emitter.dispatch('assistant:error', { requestId, error: data.error });
+        } else {
+          if (data.text) {
+            this.emitter.dispatch('assistant:token', { requestId, text: data.text });
+          }
+          this.emitter.dispatch('assistant:done', {
+            requestId,
+            actions: data.actions ?? [],
+          });
+        }
+      }
+    });
+    this.unsubscribers.push(unsubscribe);
   }
 
   private subscribeTranscript(): void {
