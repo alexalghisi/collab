@@ -19,6 +19,7 @@ import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
 import { CodePanel } from './CodePanel';
 import { NotesPanel } from './NotesPanel';
+import { TranscriptPanel } from './TranscriptPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
 import { ToolbarButton } from './ToolbarButton';
@@ -31,7 +32,7 @@ export interface MeetingScreenProps {
   displayName: string;
 }
 
-type Panel = 'participants' | 'chat' | 'notes' | null;
+type Panel = 'participants' | 'chat' | 'notes' | 'transcript' | null;
 /** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
 type Stage = 'grid' | 'whiteboard' | 'code';
 
@@ -220,6 +221,14 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
                 onClose={() => setPanel(null)}
               />
             )}
+            {panel === 'transcript' && (
+              <TranscriptPanel
+                segments={session.transcript}
+                captionsOn={session.captionsOn}
+                error={session.captionError}
+                onClose={() => setPanel(null)}
+              />
+            )}
           </View>
         )}
       </View>
@@ -292,6 +301,18 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
           label="Notes"
           active={panel === 'notes'}
           onPress={() => togglePanel('notes')}
+        />
+        <ToolbarButton
+          icon={session.captionsOn ? 'mic-circle' : 'mic-circle-outline'}
+          label={session.captionsOn ? 'Captions on' : 'Captions'}
+          active={session.captionsOn}
+          onPress={session.toggleCaptions}
+        />
+        <ToolbarButton
+          icon="text-outline"
+          label="Transcript"
+          active={panel === 'transcript'}
+          onPress={() => togglePanel('transcript')}
         />
         <ToolbarButton
           icon="people"
