@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
+import * as Y from 'yjs';
+import { decodeUpdate, encodeUpdate } from '../../src/code/updates';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -41,6 +43,9 @@ interface RoomState {
   hostPeerId: string;
   strokes: Stroke[];
   notes: string;
+  /** Merged shared editor document, so a late joiner gets the current code. */
+  code: Y.Doc;
+  codeEdited: boolean;
   settings: RoomSettings;
   waiting: Map<string, WaitingPeer>;
   /** Sessions that passed the waiting room (or joined before it was enabled). */
@@ -59,6 +64,8 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
       hostPeerId: firstPeerId,
       strokes: [],
       notes: '',
+      code: new Y.Doc(),
+      codeEdited: false,
       settings: DEFAULT_ROOM_SETTINGS,
       waiting: new Map(),
       admitted: new Set(),
@@ -110,6 +117,7 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     strokes: room.strokes,
     notes: room.notes,
     settings: room.settings,
+    code: room.codeEdited ? encodeUpdate(Y.encodeStateAsUpdate(room.code)) : null,
   });
   socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
 }
@@ -118,6 +126,7 @@ async function handleLeave(io: CollabServer, roomId: string, peerId: string): Pr
   const room = rooms.get(roomId);
   const remaining = await listRoomPeers(io, roomId, peerId);
   if (remaining.length === 0) {
+    room?.code.destroy();
     rooms.delete(roomId);
     return;
   }
@@ -231,6 +240,22 @@ function registerSocket(io: CollabServer, socket: CollabServerSocket): void {
     if (room && socket.data.roomId) {
       room.strokes = room.strokes.filter((stroke) => !strokeIds.includes(stroke.id));
       socket.to(socket.data.roomId).emit('board:remove', strokeIds);
+    }
+  });
+
+  socket.on('code:update', (update) => {
+    const room = currentRoom();
+    if (room && socket.data.roomId) {
+      Y.applyUpdate(room.code, decodeUpdate(update));
+      room.codeEdited = true;
+      socket.to(socket.data.roomId).emit('code:update', update);
+    }
+  });
+
+  // Cursors and selections are presence, not content: relayed, never stored.
+  socket.on('code:awareness', (update) => {
+    if (socket.data.roomId) {
+      socket.to(socket.data.roomId).emit('code:awareness', update);
     }
   });
 

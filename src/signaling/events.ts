@@ -95,6 +95,11 @@ export interface RoomJoinedPayload {
   readonly strokes: Stroke[];
   readonly notes: string;
   readonly settings: RoomSettings;
+  /**
+   * Merged state of the shared code document, base64-encoded, or null when the
+   * room has none yet. Transports that stream updates instead send null.
+   */
+  readonly code: string | null;
 }
 
 export interface OutgoingSdpPayload {
@@ -127,6 +132,10 @@ export interface ClientToServerEvents {
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
   'notes:update': (text: string) => void;
+  /** Base64-encoded Yjs document update for the shared code editor. */
+  'code:update': (update: string) => void;
+  /** Base64-encoded Yjs awareness update: cursors, selections and editor presence. */
+  'code:awareness': (update: string) => void;
   'room:settings': (settings: RoomSettings) => void;
   'host:command': (payload: HostCommandPayload) => void;
   'waiting:decide': (decision: WaitingDecision) => void;
@@ -145,6 +154,8 @@ export interface ServerToClientEvents {
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
   'notes:update': (text: string) => void;
+  'code:update': (update: string) => void;
+  'code:awareness': (update: string) => void;
   'room:settings': (settings: RoomSettings) => void;
   /** The room has a waiting room; the host has been asked to let us in. */
   'room:waiting': () => void;

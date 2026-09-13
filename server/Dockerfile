@@ -9,9 +9,11 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 ENV NODE_ENV=production
 
-# The server shares the event contract with the client (src/signaling/events.ts).
+# The server shares the event contract with the client (src/signaling/events.ts)
+# and the shared editor's update encoding (src/code/updates.ts).
 COPY tsconfig.json ./
 COPY src/signaling ./src/signaling
+COPY src/code ./src/code
 COPY server ./server
 
 EXPOSE 4000
