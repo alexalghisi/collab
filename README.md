@@ -380,8 +380,9 @@ and re-run the workflow. Restrict the server to your own origin with the
 `CORS_ORIGIN` environment variable; it defaults to `*`.
 
 In-call **SMS and email invites** go through that same server. Set Twilio
-(`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`) to deliver
-texts, and Resend (`RESEND_API_KEY`, `RESEND_FROM`) for mail. `PUBLIC_APP_URL`
+(`TWILIO_ACCOUNT_SID`, plus either `TWILIO_AUTH_TOKEN` or an API key
+`TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET`, and `TWILIO_FROM_NUMBER`) to
+deliver texts, and Resend (`RESEND_API_KEY`, `RESEND_FROM`) for mail. `PUBLIC_APP_URL`
 is the join link written into the message — use the public site, not
 `localhost`, or the recipient cannot open it. A Twilio trial only delivers to
 numbers you have verified in their console.

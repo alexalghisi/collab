@@ -26,20 +26,38 @@ function read(env: InviteEnv, key: string): string {
   return env[key]?.trim() ?? '';
 }
 
-function twilioSendSms(env: InviteEnv): InviteTransport['sendSms'] | null {
-  const sid = read(env, 'TWILIO_ACCOUNT_SID');
+function twilioAuth(
+  env: InviteEnv,
+): { accountSid: string; username: string; password: string } | null {
+  const accountSid = read(env, 'TWILIO_ACCOUNT_SID');
+  if (accountSid === '' || !accountSid.startsWith('AC')) {
+    return null;
+  }
+  const apiKey = read(env, 'TWILIO_API_KEY_SID');
+  const apiSecret = read(env, 'TWILIO_API_KEY_SECRET');
+  if (apiKey !== '' && apiSecret !== '') {
+    return { accountSid, username: apiKey, password: apiSecret };
+  }
   const token = read(env, 'TWILIO_AUTH_TOKEN');
+  if (token !== '') {
+    return { accountSid, username: accountSid, password: token };
+  }
+  return null;
+}
+
+function twilioSendSms(env: InviteEnv): InviteTransport['sendSms'] | null {
+  const auth = twilioAuth(env);
   const from = read(env, 'TWILIO_FROM_NUMBER');
-  if (sid === '' || token === '' || from === '') {
+  if (!auth || from === '') {
     return null;
   }
   return async (to, body) => {
     const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`,
+      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(auth.accountSid)}/Messages.json`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`,
+          Authorization: `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString('base64')}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
