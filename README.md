@@ -55,6 +55,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs.
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing) and **shared notes** that every participant can edit.
+- **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that executes the room's code — JavaScript, TypeScript, Python or Go — in a network-less, resource-capped, throwaway sandbox and streams the output to everyone.
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Local recording** (web): captures your video together with the mixed audio of every participant and downloads a `.webm` file when stopped.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
