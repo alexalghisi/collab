@@ -33,6 +33,14 @@ export class AdmissionDeniedError extends Error {
   }
 }
 
+/** `connect()` rejects with this when the transport itself is unreachable. */
+export class SignalingUnavailableError extends Error {
+  constructor(readonly url: string) {
+    super(`Unable to reach the signaling service at ${url}.`);
+    this.name = 'SignalingUnavailableError';
+  }
+}
+
 export type SignalingFactory = (options: SignalingOptions) => SignalingChannel;
 
 type Listener = (...args: unknown[]) => void;

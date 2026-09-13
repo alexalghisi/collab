@@ -36,6 +36,15 @@ jobs:
         env:
           # Project pages are served from https://<user>.github.io/collab/
           WEB_BASE_URL: /collab
+          # A static export cannot host a signaling server: the deployed app needs
+          # either the Firebase config (Firestore transport) or the URL of a
+          # deployed server/ instance (Socket.IO transport). Unset values export as
+          # empty strings and the app falls back to the local dev server.
+          EXPO_PUBLIC_SIGNALING_URL: ${{ vars.EXPO_PUBLIC_SIGNALING_URL }}
+          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY }}
+          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
+          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID }}
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
