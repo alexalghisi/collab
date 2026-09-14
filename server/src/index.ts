@@ -16,6 +16,8 @@ import { executionRouter } from './execution/router';
 import { filesRouter } from './files/router';
 import { databasePath } from './db/JsonFile';
 import { inviteRouter } from './invite/router';
+import { createMeetingStore } from './meetings/MeetingStore';
+import { meetingsRouter } from './meetings/router';
 import { transportFromEnv } from './invite/senders';
 import { files, isAdmitted, registerSignalingHandlers, type CollabServer } from './SignalingServer';
 
@@ -62,11 +64,13 @@ app.use(express.json({ limit: MAX_CODE_BYTES + MAX_STDIN_BYTES + 4096 }));
 const execution = new ExecutionService(createRunnerFromEnv());
 const assistant = createMeetingAssistant();
 const accounts = createAccountStore(databasePath('accounts.json', ROOT));
+const meetings = createMeetingStore(accounts, databasePath('meetings.json', ROOT));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
 });
 app.use(accountsRouter({ store: accounts }));
+app.use(meetingsRouter({ accounts, meetings }));
 app.use(executionRouter(execution));
 app.use(assistantRouter(assistant));
 app.use(searchRouter(meetingIndexStore()));

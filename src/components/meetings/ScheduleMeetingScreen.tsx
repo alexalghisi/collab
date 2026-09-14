@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import type { Account } from '../../auth/types';
 import { parseDateTime, toDateInput, toTimeInput } from '../../meeting/calendar';
 import { generateRoomId } from '../../meeting/roomId';
 import type { MeetingDraft } from '../../meeting/types';
@@ -12,12 +13,17 @@ const DURATIONS = [15, 30, 45, 60, 90, 120];
 export interface ScheduleMeetingScreenProps {
   /** Pre-selected start (e.g. the day picked in the calendar). */
   initialStart: Date;
+  /** Everyone with an account here, so guests are picked rather than typed. */
+  people: Account[];
+  directoryError: string | null;
   onSave: (draft: MeetingDraft) => void;
   onCancel: () => void;
 }
 
 export function ScheduleMeetingScreen({
   initialStart,
+  people,
+  directoryError,
   onSave,
   onCancel,
 }: ScheduleMeetingScreenProps) {
@@ -27,9 +33,16 @@ export function ScheduleMeetingScreen({
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [description, setDescription] = useState('');
   const [roomId, setRoomId] = useState(generateRoomId);
+  const [attendeeIds, setAttendeeIds] = useState<string[]>([]);
 
   const startsAt = parseDateTime(date, time);
   const ready = title.trim().length > 0 && startsAt !== null;
+
+  const toggleAttendee = (id: string) => {
+    setAttendeeIds((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+  };
 
   const save = () => {
     if (startsAt === null) {
@@ -41,6 +54,7 @@ export function ScheduleMeetingScreen({
       startsAt,
       durationMinutes,
       description: description.trim(),
+      attendeeIds,
     });
   };
 
@@ -103,6 +117,44 @@ export function ScheduleMeetingScreen({
           );
         })}
       </View>
+
+      <Text style={styles.label}>Who is coming</Text>
+      {people.length === 0 ? (
+        <Text style={styles.hint}>
+          {directoryError ??
+            'Nobody else has an account here yet. Invite them from the meeting once you start it.'}
+        </Text>
+      ) : (
+        <View style={styles.people}>
+          {people.map((person) => {
+            const selected = attendeeIds.includes(person.id);
+            return (
+              <Pressable
+                key={person.id}
+                style={[styles.person, selected && styles.personSelected]}
+                onPress={() => toggleAttendee(person.id)}
+                accessibilityRole="checkbox"
+                accessibilityLabel={person.displayName}
+                accessibilityState={{ checked: selected }}
+              >
+                <Ionicons
+                  name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={20}
+                  color={selected ? colors.primary : colors.textSubtle}
+                />
+                <View style={styles.personText}>
+                  <Text style={styles.personName} numberOfLines={1}>
+                    {person.displayName}
+                  </Text>
+                  <Text style={styles.personEmail} numberOfLines={1}>
+                    {person.email}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       <Text style={styles.label}>Description (optional)</Text>
       <TextInput
@@ -198,6 +250,35 @@ const styles = StyleSheet.create({
   chipText: {
     color: colors.text,
     fontWeight: '600',
+  },
+  people: {
+    gap: 8,
+  },
+  person: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  personSelected: {
+    borderColor: colors.primary,
+  },
+  personText: {
+    flex: 1,
+  },
+  personName: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  personEmail: {
+    color: colors.textSubtle,
+    fontSize: 12,
   },
   roomId: {
     flex: 1,

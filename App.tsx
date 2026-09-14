@@ -3,6 +3,7 @@ import { SafeAreaView, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useCollabSession } from './src/hooks/useCollabSession';
 import { useAuth } from './src/auth/useAuth';
+import { useDirectory } from './src/auth/useDirectory';
 import { useTeamChat } from './src/chat/useTeamChat';
 import { createSignaling } from './src/signaling';
 import { nextHalfHour } from './src/meeting/calendar';
@@ -29,7 +30,8 @@ export default function App() {
   const auth = useAuth();
   const account = auth.account;
   const session = useCollabSession(createSignaling);
-  const meetings = useMeetings(account?.id ?? 'guest');
+  const meetings = useMeetings(auth.session);
+  const directory = useDirectory(auth.session);
   const meetingSearch = useMeetingSearch();
   const teamChat = useTeamChat(account);
   const [view, setView] = useState<View>('home');
@@ -124,12 +126,13 @@ export default function App() {
         {view === 'home' && (
           <HomeScreen
             displayName={displayName}
+            selfId={account.id}
             roomId={roomId}
             onRoomIdChange={setRoomId}
             onJoin={(nextRoomId, video) => void joinRoom(nextRoomId, video)}
             onSchedule={() => openSchedule()}
             connecting={session.status === 'connecting'}
-            error={session.error}
+            error={session.error ?? meetings.error}
             meetings={meetings.meetings}
             onStartMeeting={startMeeting}
             onDeleteMeeting={deleteMeeting}
@@ -138,6 +141,7 @@ export default function App() {
         {view === 'meetings' && (
           <MeetingsScreen
             meetings={meetings.meetings}
+            selfId={account.id}
             onStart={startMeeting}
             onDelete={deleteMeeting}
             onSchedule={() => openSchedule()}
@@ -146,6 +150,7 @@ export default function App() {
         {view === 'calendar' && (
           <CalendarScreen
             meetings={meetings.meetings}
+            selfId={account.id}
             onStart={startMeeting}
             onDelete={deleteMeeting}
             onSchedule={openSchedule}
@@ -156,6 +161,8 @@ export default function App() {
         {view === 'schedule' && (
           <ScheduleMeetingScreen
             initialStart={scheduleStart}
+            people={directory.people}
+            directoryError={directory.error}
             onSave={saveMeeting}
             onCancel={() => setView('meetings')}
           />

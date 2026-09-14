@@ -7,11 +7,19 @@ export interface MeetingListProps {
   title: string;
   meetings: Meeting[];
   emptyText: string;
+  selfId: string;
   onStart: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
 }
 
-export function MeetingList({ title, meetings, emptyText, onStart, onDelete }: MeetingListProps) {
+export function MeetingList({
+  title,
+  meetings,
+  emptyText,
+  selfId,
+  onStart,
+  onDelete,
+}: MeetingListProps) {
   return (
     <View style={styles.section}>
       <Text style={styles.heading}>{title}</Text>
@@ -19,7 +27,13 @@ export function MeetingList({ title, meetings, emptyText, onStart, onDelete }: M
         <Text style={styles.empty}>{emptyText}</Text>
       ) : (
         meetings.map((meeting) => (
-          <MeetingRow key={meeting.id} meeting={meeting} onStart={onStart} onDelete={onDelete} />
+          <MeetingRow
+            key={meeting.id}
+            meeting={meeting}
+            selfId={selfId}
+            onStart={onStart}
+            onDelete={onDelete}
+          />
         ))
       )}
     </View>

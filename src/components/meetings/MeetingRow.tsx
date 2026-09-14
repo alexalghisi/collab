@@ -3,6 +3,7 @@ import { buildIcs, googleCalendarUrl } from '../../meeting/calendarExport';
 import { formatDay, formatTime } from '../../meeting/calendar';
 import { downloadTextFile } from '../../meeting/download';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
+import { describePeople } from '../../meeting/people';
 import { meetingEndsAt, type Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
@@ -10,6 +11,8 @@ import { IconButton } from '../ui/IconButton';
 
 export interface MeetingRowProps {
   meeting: Meeting;
+  /** Account id of whoever is looking, which decides who may cancel. */
+  selfId: string;
   onStart: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
 }
@@ -19,9 +22,10 @@ function describeWhen(meeting: Meeting): string {
   return meeting.durationMinutes > 0 ? `${start} – ${formatTime(meetingEndsAt(meeting))}` : start;
 }
 
-export function MeetingRow({ meeting, onStart, onDelete }: MeetingRowProps) {
+export function MeetingRow({ meeting, selfId, onStart, onDelete }: MeetingRowProps) {
   const upcoming = meetingEndsAt(meeting) >= Date.now();
   const inviteLink = buildInviteLink(meeting.roomId);
+  const organizing = meeting.organizer.id === selfId;
 
   return (
     <View style={styles.row}>
@@ -30,6 +34,9 @@ export function MeetingRow({ meeting, onStart, onDelete }: MeetingRowProps) {
           {meeting.title}
         </Text>
         <Text style={styles.when}>{describeWhen(meeting)}</Text>
+        <Text style={styles.people} numberOfLines={1}>
+          {describePeople(meeting, selfId)}
+        </Text>
         <Text style={styles.roomId}>ID {meeting.roomId}</Text>
       </View>
       <View style={styles.actions}>
@@ -65,12 +72,14 @@ export function MeetingRow({ meeting, onStart, onDelete }: MeetingRowProps) {
             />
           </>
         )}
-        <IconButton
-          icon="trash-outline"
-          label="Delete meeting"
-          color={colors.danger}
-          onPress={() => onDelete(meeting)}
-        />
+        {organizing && (
+          <IconButton
+            icon="trash-outline"
+            label="Delete meeting"
+            color={colors.danger}
+            onPress={() => onDelete(meeting)}
+          />
+        )}
       </View>
     </View>
   );
@@ -101,6 +110,10 @@ const styles = StyleSheet.create({
   when: {
     color: colors.textMuted,
     fontSize: 14,
+  },
+  people: {
+    color: colors.textMuted,
+    fontSize: 13,
   },
   roomId: {
     color: colors.textSubtle,

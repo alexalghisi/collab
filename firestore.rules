@@ -12,9 +12,5 @@ service cloud.firestore {
     match /channels/{channelId}/{document=**} {
       allow read, write: if request.auth != null;
     }
-    // Scheduled meetings and history are private to their owner.
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
   }
 }

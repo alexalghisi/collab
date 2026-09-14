@@ -60,7 +60,8 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - **Meeting assistant**: an in-call panel that answers questions from the live transcript and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
-- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
+- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics** (with the organiser and the guests attached).
+- **A shared calendar**: guests are picked from the account directory rather than typed, so a meeting appears for everybody invited — each row says who you have and when, and only the organiser can cancel it. Meetings live in the server's database next to the accounts.
 - **Accounts in the deployment's own database**: sign up and sign in with an email and a password stored (scrypt-hashed) in a JSON database next to the signaling server. Nobody reaches a meeting without an account, which is what gives the app a directory of names to schedule with.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
@@ -272,7 +273,7 @@ Collab/
 │   ├── chat/                   # Team chat channels (Firestore) and its hook
 │   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
-│   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links / email / SMS
+│   ├── meeting/                # Meeting model, calendar API client, calendar + .ics helpers, invite links / email / SMS
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   ├── storage/                # Small key-value store (localStorage on web, memory on native)
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter

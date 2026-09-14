@@ -11,6 +11,7 @@ import type { IconName } from '../ui/icons';
 
 export interface HomeScreenProps {
   displayName: string;
+  selfId: string;
   roomId: string;
   onRoomIdChange: (value: string) => void;
   onJoin: (roomId: string, video: boolean) => void;
@@ -57,6 +58,7 @@ function ActionCard({ icon, title, subtitle, color, onPress, disabled = false }:
 
 export function HomeScreen({
   displayName,
+  selfId,
   roomId,
   onRoomIdChange,
   onJoin,
@@ -135,6 +137,7 @@ export function HomeScreen({
         title="Up next"
         meetings={upNext}
         emptyText="No upcoming meetings. Schedule one to see it here."
+        selfId={selfId}
         onStart={onStartMeeting}
         onDelete={onDeleteMeeting}
       />

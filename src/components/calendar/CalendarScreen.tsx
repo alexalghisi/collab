@@ -17,12 +17,19 @@ import { IconButton } from '../ui/IconButton';
 
 export interface CalendarScreenProps {
   meetings: Meeting[];
+  selfId: string;
   onStart: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onSchedule: (day: Date) => void;
 }
 
-export function CalendarScreen({ meetings, onStart, onDelete, onSchedule }: CalendarScreenProps) {
+export function CalendarScreen({
+  meetings,
+  selfId,
+  onStart,
+  onDelete,
+  onSchedule,
+}: CalendarScreenProps) {
   const today = new Date();
   const [month, setMonth] = useState(() => addMonths(today, 0));
   const [selected, setSelected] = useState(today);
@@ -99,6 +106,7 @@ export function CalendarScreen({ meetings, onStart, onDelete, onSchedule }: Cale
         title={formatLongDay(selected)}
         meetings={selectedMeetings}
         emptyText="No meetings on this day."
+        selfId={selfId}
         onStart={onStart}
         onDelete={onDelete}
       />

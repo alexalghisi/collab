@@ -6,6 +6,7 @@ import { MeetingList } from './MeetingList';
 
 export interface MeetingsScreenProps {
   meetings: Meeting[];
+  selfId: string;
   onStart: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onSchedule: () => void;
@@ -17,7 +18,13 @@ export function splitByTime(meetings: Meeting[], now = Date.now()) {
   return { upcoming, past };
 }
 
-export function MeetingsScreen({ meetings, onStart, onDelete, onSchedule }: MeetingsScreenProps) {
+export function MeetingsScreen({
+  meetings,
+  selfId,
+  onStart,
+  onDelete,
+  onSchedule,
+}: MeetingsScreenProps) {
   const { upcoming, past } = splitByTime(meetings);
 
   return (
@@ -30,6 +37,7 @@ export function MeetingsScreen({ meetings, onStart, onDelete, onSchedule }: Meet
         title="Upcoming"
         meetings={upcoming}
         emptyText="Nothing scheduled. Plan a meeting and share the invite link."
+        selfId={selfId}
         onStart={onStart}
         onDelete={onDelete}
       />
@@ -37,6 +45,7 @@ export function MeetingsScreen({ meetings, onStart, onDelete, onSchedule }: Meet
         title="Past"
         meetings={past}
         emptyText="Meetings you host or join will show up here."
+        selfId={selfId}
         onStart={onStart}
         onDelete={onDelete}
       />
