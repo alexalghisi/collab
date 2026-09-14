@@ -7,6 +7,7 @@ import type {
   AssistantFailure,
   AssistantToken,
 } from '../assistant/types';
+import type { MeetingStage } from '../meeting/stage';
 import type { TranscriptSegment } from '../transcript/segments';
 
 /** Presence flags every participant broadcasts to the room. */
@@ -106,6 +107,8 @@ export interface RoomJoinedPayload {
   readonly peers: PeerInfo[];
   /** Whiteboard content so far; transports that stream strokes send an empty list here. */
   readonly strokes: Stroke[];
+  /** The surface the host has the room on, so a joiner lands where everyone else is. */
+  readonly stage: MeetingStage;
   readonly settings: RoomSettings;
   /**
    * Merged state of the shared code document, base64-encoded, or null when the
@@ -148,6 +151,8 @@ export interface ClientToServerEvents {
   'chat:message': (draft: ChatDraft) => void;
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
+  /** Host only: puts the whole room on the whiteboard, the editor, or back on the tiles. */
+  'stage:focus': (stage: MeetingStage) => void;
   /** Base64-encoded Yjs document update for the shared code editor. */
   'code:update': (update: string) => void;
   /** Base64-encoded Yjs awareness update: cursors, selections and editor presence. */
@@ -175,6 +180,7 @@ export interface ServerToClientEvents {
   'chat:message': (message: ChatMessage) => void;
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
+  'stage:focus': (stage: MeetingStage) => void;
   'code:update': (update: string) => void;
   'code:awareness': (update: string) => void;
   'code:run:started': (payload: RunStarted) => void;

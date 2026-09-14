@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
+import type { MeetingStage } from '../../meeting/stage';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
@@ -32,8 +33,6 @@ export interface MeetingScreenProps {
 }
 
 type Panel = 'participants' | 'chat' | 'transcript' | 'assistant' | 'invite' | null;
-/** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
-type Stage = 'grid' | 'whiteboard' | 'code';
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
 const PANEL_WIDTH = 340;
@@ -53,8 +52,8 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
   const { width } = useWindowDimensions();
   const [panel, setPanel] = useState<Panel>(null);
   const [reactionsOpen, setReactionsOpen] = useState(false);
-  const [stage, setStage] = useState<Stage>('grid');
   const [readCount, setReadCount] = useState(0);
+  const stage = session.stage;
 
   const wide = width >= WIDE_LAYOUT_MIN_WIDTH;
   const gridWidth = wide && panel ? width - PANEL_WIDTH : width;
@@ -72,8 +71,9 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
     setPanel((current) => (current === next ? null : next));
   };
 
-  const toggleStage = (next: Exclude<Stage, 'grid'>): void => {
-    setStage((current) => (current === next ? 'grid' : next));
+  /** The host's choice reaches the room; everyone else moves their own screen. */
+  const toggleStage = (next: Exclude<MeetingStage, 'grid'>): void => {
+    session.focusStage(stage === next ? 'grid' : next);
   };
 
   const rows: ParticipantRow[] = [

@@ -8,6 +8,7 @@ import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionServ
 import { acceptAssistantAsk, createMeetingAssistant, runAssistant } from './assistant/service';
 import { attachmentPath, FileStore } from './files/FileStore';
 import { normalizeChatDraft } from '../../src/chat/messages';
+import { DEFAULT_MEETING_STAGE, normalizeStage, type MeetingStage } from '../../src/meeting/stage';
 import type { FileAttachment } from '../../src/files/attachments';
 import { normalizeTranscriptSegment, type TranscriptSegment } from '../../src/transcript/segments';
 import {
@@ -52,6 +53,8 @@ type CollabServerSocket = Socket<
 interface RoomState {
   hostPeerId: string;
   strokes: Stroke[];
+  /** The surface the host put the room on; a late joiner lands on it too. */
+  stage: MeetingStage;
   /** Recent chat, kept so the assistant can read what the room said. */
   messages: ChatMessage[];
   /** Spoken turns so far; a late joiner gets the same log as everyone else. */
@@ -94,6 +97,7 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
     room = {
       hostPeerId: firstPeerId,
       strokes: [],
+      stage: DEFAULT_MEETING_STAGE,
       messages: [],
       transcript: [],
       code: new Y.Doc(),
@@ -148,6 +152,7 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     hostPeerId: room.hostPeerId,
     peers,
     strokes: room.strokes,
+    stage: room.stage,
     settings: room.settings,
     code: room.codeEdited ? encodeUpdate(Y.encodeStateAsUpdate(room.code)) : null,
     transcript: room.transcript,
@@ -344,6 +349,21 @@ function registerSocket(
       room.strokes = room.strokes.filter((stroke) => !strokeIds.includes(stroke.id));
       socket.to(socket.data.roomId).emit('board:remove', strokeIds);
     }
+  });
+
+  /**
+   * Only the host moves the room. Anyone may open the whiteboard or the editor
+   * for themselves, but leading everybody there is a host action, so a guest
+   * cannot pull the room off the tiles while somebody is presenting.
+   */
+  socket.on('stage:focus', (value) => {
+    const room = hostedRoom();
+    const stage = normalizeStage(value);
+    if (!room || !socket.data.roomId || !stage) {
+      return;
+    }
+    room.stage = stage;
+    socket.to(socket.data.roomId).emit('stage:focus', stage);
   });
 
   socket.on('code:update', (update) => {

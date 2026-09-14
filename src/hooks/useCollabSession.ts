@@ -8,6 +8,7 @@ import type { FileAttachment } from '../files/attachments';
 import { AttachmentError, type UploadableFile, type UploadProgress } from '../files/upload';
 import { InviteError, type ParsedContact } from '../meeting/contact';
 import { buildInviteLink } from '../meeting/invite';
+import { DEFAULT_MEETING_STAGE, type MeetingStage } from '../meeting/stage';
 import { createSpeechCapture } from '../transcript/speech';
 import type { TranscriptSegment } from '../transcript/segments';
 import {
@@ -81,6 +82,8 @@ export interface CollabSession {
   readonly participants: RemoteParticipant[];
   readonly messages: ChatMessage[];
   readonly strokes: Stroke[];
+  /** The surface the room is on: the tiles, the whiteboard or the shared editor. */
+  readonly stage: MeetingStage;
   /** Spoken turns in this room, oldest first. */
   readonly transcript: TranscriptSegment[];
   /** True while this participant's recognizer is running. */
@@ -118,6 +121,11 @@ export interface CollabSession {
   sendInvite: (input: string) => Promise<ParsedContact>;
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
+  /**
+   * Opens a shared surface. The host takes the room with them; for anybody
+   * else the change stays on their own screen until the host moves.
+   */
+  focusStage: (stage: MeetingStage) => void;
   /** Starts or stops live captions for this participant. */
   toggleCaptions: () => void;
   askAssistant: (question: string) => void;
@@ -164,6 +172,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [stage, setStage] = useState<MeetingStage>(DEFAULT_MEETING_STAGE);
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [captionsOn, setCaptionsOn] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
@@ -245,6 +254,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     setParticipants([]);
     setMessages([]);
     setStrokes([]);
+    setStage(DEFAULT_MEETING_STAGE);
     setTranscript([]);
     setCaptionError(null);
     setAssistantTurns([]);
@@ -346,6 +356,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setHostPeerId(room.hostPeerId);
         setParticipants(room.peers.map(toParticipant));
         setStrokes(room.strokes);
+        setStage(room.stage);
         setTranscript(room.transcript);
         if (room.code) {
           sharedCode.applyState(room.code);
@@ -381,6 +392,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('board:remove', (strokeIds) => {
         setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
       });
+      signaling.on('stage:focus', setStage);
       signaling.on('transcript:segment', (segment) => {
         setTranscript((current) =>
           current.some((existing) => existing.id === segment.id) ? current : [...current, segment],
@@ -621,6 +633,18 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.emit('board:remove', strokeIds);
   }, []);
 
+  const focusStage = useCallback(
+    (next: MeetingStage) => {
+      setStage(next);
+      // Only the host leads the room; the server drops anybody else's attempt,
+      // so a guest's own view is all that moves.
+      if (selfPeerId !== null && selfPeerId === hostPeerId) {
+        signalingRef.current?.emit('stage:focus', next);
+      }
+    },
+    [selfPeerId, hostPeerId],
+  );
+
   const askAssistant = useCallback((question: string) => {
     const text = question.trim();
     if (!text) {
@@ -734,6 +758,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     participants,
     messages,
     strokes,
+    stage,
     transcript,
     captionsOn,
     captionError,
@@ -761,6 +786,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     sendInvite,
     addStroke,
     removeStrokes,
+    focusStage,
     toggleCaptions,
     askAssistant,
     runCode,

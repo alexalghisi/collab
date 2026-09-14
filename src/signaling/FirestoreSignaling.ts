@@ -40,6 +40,7 @@ import {
 } from '../files/upload';
 import { firebaseStorage } from '../firebase/app';
 import { sendContactInvite } from '../meeting/sendInvite';
+import { DEFAULT_MEETING_STAGE, normalizeStage, type MeetingStage } from '../meeting/stage';
 import { normalizeTranscriptSegment } from '../transcript/segments';
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -91,12 +92,14 @@ interface CodeRunDoc {
 
 interface RoomDoc {
   readonly hostPeerId: string;
+  readonly stage?: MeetingStage;
   readonly settings?: RoomSettings;
 }
 
 /** Room state as seen by a joiner, with defaults filled in. */
 interface RoomSnapshot {
   readonly hostPeerId: string;
+  readonly stage: MeetingStage;
   readonly settings: RoomSettings;
 }
 
@@ -167,6 +170,8 @@ class FirestoreChannel implements SignalingChannel {
   private compacting = false;
   private joinedAt = 0;
   private lastSettings = DEFAULT_ROOM_SETTINGS;
+  /** The stage we last wrote or read, so our own write does not come back as a move. */
+  private lastStage: MeetingStage = DEFAULT_MEETING_STAGE;
   private readonly pageHide = {
     handler: () => this.disconnect(),
     attach: () => window.addEventListener('pagehide', this.pageHide.handler),
@@ -201,6 +206,10 @@ class FirestoreChannel implements SignalingChannel {
         batch.delete(doc(this.strokes, id));
       }
       void batch.commit();
+    },
+    'stage:focus': (stage) => {
+      this.lastStage = stage;
+      void setDoc(this.room, { stage }, { merge: true });
     },
     'code:update': (update) => {
       const entry: CodeUpdateDoc = { update, createdAt: Date.now() };
@@ -406,17 +415,18 @@ class FirestoreChannel implements SignalingChannel {
     return runTransaction(this.room.firestore, async (transaction) => {
       const data = (await transaction.get(this.room)).data() as RoomDoc | undefined;
       const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
+      const stage = normalizeStage(data?.stage) ?? DEFAULT_MEETING_STAGE;
       if (data?.hostPeerId) {
         const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
-          return { hostPeerId: data.hostPeerId, settings };
+          return { hostPeerId: data.hostPeerId, stage, settings };
         }
       }
       if (!claim) {
-        return { hostPeerId: '', settings };
+        return { hostPeerId: '', stage, settings };
       }
       transaction.set(this.room, { hostPeerId: this.peerId }, { merge: true });
-      return { hostPeerId: this.peerId, settings };
+      return { hostPeerId: this.peerId, stage, settings };
     });
   }
 
@@ -465,7 +475,8 @@ class FirestoreChannel implements SignalingChannel {
     }
   }
 
-  private subscribeParticipants({ hostPeerId, settings }: RoomSnapshot): Promise<void> {
+  private subscribeParticipants({ hostPeerId, stage, settings }: RoomSnapshot): Promise<void> {
+    this.lastStage = stage;
     return new Promise((resolve, reject) => {
       let initial = true;
       const unsubscribe = onSnapshot(
@@ -492,6 +503,7 @@ class FirestoreChannel implements SignalingChannel {
               hostPeerId,
               peers,
               strokes: [],
+              stage,
               settings,
               code: null,
               transcript: [],
@@ -529,6 +541,11 @@ class FirestoreChannel implements SignalingChannel {
         this.isHost = data.hostPeerId === this.peerId;
         this.emitter.dispatch('room:host', data.hostPeerId);
         this.syncWaitingSubscription(this.isHost);
+      }
+      const stage = normalizeStage(data?.stage) ?? DEFAULT_MEETING_STAGE;
+      if (stage !== this.lastStage) {
+        this.lastStage = stage;
+        this.emitter.dispatch('stage:focus', stage);
       }
       const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
       if (!sameSettings(settings, this.lastSettings)) {
