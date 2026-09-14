@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { looksLikeEmail, MIN_PASSWORD_LENGTH, normalizeEmail } from '../../../src/auth/credentials';
 
 /** An account as everybody else in the deployment may see it. */
 export interface Account {
@@ -59,11 +60,7 @@ export interface AccountDatabase {
   write(snapshot: Snapshot): void;
 }
 
-export const MIN_PASSWORD_LENGTH = 8;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const KEY_LENGTH = 64;
-
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 function hashPassword(password: string, salt: string): string {
   return scryptSync(password, salt, KEY_LENGTH).toString('hex');
@@ -105,7 +102,7 @@ export class AccountStore {
     if (displayName === '') {
       throw new AccountError(400, 'Enter your name.');
     }
-    if (!EMAIL_PATTERN.test(address)) {
+    if (!looksLikeEmail(address)) {
       throw new AccountError(400, 'Enter a valid email address.');
     }
     if (password.length < MIN_PASSWORD_LENGTH) {

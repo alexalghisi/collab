@@ -34,14 +34,9 @@ export default function App() {
   const [view, setView] = useState<View>('home');
   const [scheduleStart, setScheduleStart] = useState(() => nextHalfHour());
   const [roomId, setRoomId] = useState(() => readRoomFromLink() ?? '');
-  const [displayName, setDisplayName] = useState('');
 
-  useEffect(() => {
-    const name = auth.user?.displayName;
-    if (name) {
-      setDisplayName((current) => current || name);
-    }
-  }, [auth.user]);
+  // Everyone in a room is signed in, so the name on a tile is the account's.
+  const displayName = auth.user?.displayName ?? '';
 
   // Stays true while moving between a room and its breakout rooms.
   const inMeeting = session.roomId !== null;
@@ -55,7 +50,7 @@ export default function App() {
     setView('home');
     const joined = await session.join({
       roomId: nextRoomId,
-      displayName: displayName.trim(),
+      displayName,
       video,
     });
     if (joined) {
@@ -81,7 +76,7 @@ export default function App() {
     setView('meetings');
   };
 
-  if (auth.enabled && auth.initializing) {
+  if (auth.initializing) {
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
@@ -89,8 +84,16 @@ export default function App() {
     );
   }
 
-  if (auth.enabled && !auth.user) {
-    return <LoginScreen onSignIn={auth.signIn} error={auth.error} />;
+  // No guest lobby: a meeting always belongs to accounts the deployment knows.
+  if (!auth.user) {
+    return (
+      <LoginScreen
+        onSignIn={(credentials) => void auth.signIn(credentials)}
+        onSignUp={(request) => void auth.signUp(request)}
+        error={auth.error}
+        pending={auth.pending}
+      />
+    );
   }
 
   if (session.status === 'waiting') {
@@ -106,7 +109,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
-        <MeetingScreen session={session} roomId={roomId.trim()} displayName={displayName.trim()} />
+        <MeetingScreen session={session} roomId={roomId.trim()} displayName={displayName} />
       </SafeAreaView>
     );
   }
@@ -123,7 +126,6 @@ export default function App() {
         {view === 'home' && (
           <HomeScreen
             displayName={displayName}
-            onDisplayNameChange={setDisplayName}
             roomId={roomId}
             onRoomIdChange={setRoomId}
             onJoin={(nextRoomId, video) => void joinRoom(nextRoomId, video)}

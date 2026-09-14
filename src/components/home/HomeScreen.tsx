@@ -10,8 +10,8 @@ import { Button } from '../ui/Button';
 import type { IconName } from '../ui/icons';
 
 export interface HomeScreenProps {
+  /** The signed-in account's name; it is what other participants see. */
   displayName: string;
-  onDisplayNameChange: (value: string) => void;
   roomId: string;
   onRoomIdChange: (value: string) => void;
   onJoin: (roomId: string, video: boolean) => void;
@@ -58,7 +58,6 @@ function ActionCard({ icon, title, subtitle, color, onPress, disabled = false }:
 
 export function HomeScreen({
   displayName,
-  onDisplayNameChange,
   roomId,
   onRoomIdChange,
   onJoin,
@@ -70,8 +69,7 @@ export function HomeScreen({
   onDeleteMeeting,
 }: HomeScreenProps) {
   const now = new Date();
-  const hasName = displayName.trim().length > 0;
-  const canJoin = hasName && roomId.trim().length > 0 && !connecting;
+  const canJoin = roomId.trim().length > 0 && !connecting;
   const upNext = splitByTime(meetings).upcoming.slice(0, 3);
 
   return (
@@ -79,21 +77,12 @@ export function HomeScreen({
       <View>
         <Text style={styles.greeting}>
           {greeting(now.getHours())}
-          {hasName ? `, ${displayName.trim()}` : ''}
+          {displayName ? `, ${displayName}` : ''}
         </Text>
         <Text style={styles.date}>
           {formatLongDay(now)} · {formatTime(now.getTime())}
         </Text>
       </View>
-
-      <TextInput
-        style={styles.input}
-        value={displayName}
-        onChangeText={onDisplayNameChange}
-        placeholder="Your name (shown to other participants)"
-        placeholderTextColor={colors.textSubtle}
-        autoCapitalize="words"
-      />
 
       <View style={styles.cards}>
         <ActionCard
@@ -102,7 +91,7 @@ export function HomeScreen({
           subtitle="Start now and invite others"
           color={colors.warning}
           onPress={() => onJoin(generateRoomId(), true)}
-          disabled={!hasName || connecting}
+          disabled={connecting}
         />
         <ActionCard
           icon="calendar"

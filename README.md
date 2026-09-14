@@ -60,7 +60,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
 - Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
-- Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
+- **Accounts in a local database**: sign up and sign in with an email address and a password held by the signaling server itself (scrypt verifiers, hashed session tokens, a JSON snapshot on disk). There is no guest lobby — every meeting belongs to a named account, which is what lets the calendar say who is invited.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
 - Automated multi-platform release pipeline that publishes installable binaries to GitHub Releases.
@@ -267,9 +267,11 @@ Collab/
 │   │   ├── meeting/            # In-call screen: toolbar, participants + host tools, chat, whiteboard, waiting room
 │   │   ├── chat/               # Team channels screen and the shared message thread
 │   │   └── ui/                 # Shared buttons and icon types
+│   ├── auth/                   # Account client, session hook, people directory, shared credential rules
 │   ├── chat/                   # Team chat channels (Firestore) and its hook
-│   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
+│   ├── firebase/               # Single Firebase app / Firestore / Storage instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
+│   ├── storage/                # Small key-value store (localStorage on web, memory on mobile)
 │   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links / email / SMS
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
@@ -277,7 +279,7 @@ Collab/
 │   ├── assistant/              # Meeting assistant tools, providers, and the CI eval harness
 │   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
 ├── server/
-│   └── src/                    # Express + Socket.IO signaling server
+│   └── src/                    # Express + Socket.IO signaling server, local account database
 ├── firestore.rules             # Security rules for signaling rooms, channels and per-user meetings
 ├── desktop/                    # Electron shell + electron-builder config (.dmg / .exe)
 ├── scripts/                    # Build helpers
@@ -327,24 +329,14 @@ port 4000 (and `http://localhost:4000` from a loopback preview). A phone on
 the LAN therefore reaches the desktop running the server instead of its own
 loopback. Override the URL when the server lives somewhere else.
 
-### Social sign-in (Google / Facebook)
+### Accounts
 
-Sign-in is optional: with no credentials configured the app runs as an open
-guest lobby. Copy [`.env.example`](.env.example) to `.env` and fill in the
-values below to enable "Continue with Google" and "Continue with Facebook".
-
-- **Web** uses Firebase, so it reads the Firebase web config:
-  - `EXPO_PUBLIC_FIREBASE_API_KEY`
-  - `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
-  - `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
-  - `EXPO_PUBLIC_FIREBASE_APP_ID`
-- **Mobile (iOS / Android)** signs in through Expo AuthSession, so it reads the
-  OAuth client IDs directly:
-  - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`,
-    `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
-  - `EXPO_PUBLIC_FACEBOOK_APP_ID`
-
-Redirects use the app's `collab` scheme, which is already declared in `app.json`.
+The first screen is sign-in, and creating an account needs nothing but the
+server started in step 2 — it keeps the accounts itself, in
+`server/data/accounts.json` (git-ignored; set `ACCOUNTS_DB_PATH` to move it).
+Point `EXPO_PUBLIC_ACCOUNTS_URL` at the server when sign-in is not served from
+`EXPO_PUBLIC_SIGNALING_URL`, which is what a Firestore deployment needs since
+it has no signaling URL of its own.
 
 ### 4. Run the desktop shell locally
 
