@@ -16,24 +16,22 @@ const corpus = {
       endedAt: 16_000,
     },
   ],
-  notes: 'Decision: ship the billing fix on Thursday.',
   messages: [{ text: 'I will send the invite.', sentAt: 20_000 }],
 };
 
 describe('passagesFromMeeting', () => {
-  it('keeps the speaker, the notes and the chat as separate passages', () => {
+  it('keeps the speaker and the chat as separate passages', () => {
     const passages = passagesFromMeeting(corpus);
-    expect(passages.map((passage) => passage.source)).toEqual(['transcript', 'notes', 'chat']);
+    expect(passages.map((passage) => passage.source)).toEqual(['transcript', 'chat']);
     expect(passages[0].text).toContain('Ada:');
     expect(passages[0].startMs).toBe(12_000);
-    expect(passages[2].startMs).toBe(20_000);
+    expect(passages[1].startMs).toBe(20_000);
   });
 
   it('skips a chat line that is only an attachment', () => {
     const passages = passagesFromMeeting({
       ...corpus,
       transcript: [],
-      notes: '',
       messages: [{ text: '', sentAt: 1 }],
     });
     expect(passages).toEqual([]);

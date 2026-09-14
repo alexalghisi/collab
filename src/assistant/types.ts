@@ -47,7 +47,6 @@ export interface AssistantContext {
     readonly text: string;
     readonly startedAt: number;
   }[];
-  readonly notes: string;
   readonly messages: readonly { readonly text: string; readonly sentAt: number }[];
 }
 

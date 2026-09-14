@@ -31,7 +31,6 @@ export class MeetingAssistant {
         startedAt: turn.startedAt,
         endedAt: turn.startedAt,
       })),
-      notes: context.notes,
       messages: context.messages,
     });
     try {

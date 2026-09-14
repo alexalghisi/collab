@@ -106,7 +106,6 @@ export interface RoomJoinedPayload {
   readonly peers: PeerInfo[];
   /** Whiteboard content so far; transports that stream strokes send an empty list here. */
   readonly strokes: Stroke[];
-  readonly notes: string;
   readonly settings: RoomSettings;
   /**
    * Merged state of the shared code document, base64-encoded, or null when the
@@ -149,7 +148,6 @@ export interface ClientToServerEvents {
   'chat:message': (draft: ChatDraft) => void;
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
-  'notes:update': (text: string) => void;
   /** Base64-encoded Yjs document update for the shared code editor. */
   'code:update': (update: string) => void;
   /** Base64-encoded Yjs awareness update: cursors, selections and editor presence. */
@@ -177,7 +175,6 @@ export interface ServerToClientEvents {
   'chat:message': (message: ChatMessage) => void;
   'board:stroke': (stroke: Stroke) => void;
   'board:remove': (strokeIds: string[]) => void;
-  'notes:update': (text: string) => void;
   'code:update': (update: string) => void;
   'code:awareness': (update: string) => void;
   'code:run:started': (payload: RunStarted) => void;

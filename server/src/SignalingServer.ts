@@ -52,7 +52,6 @@ type CollabServerSocket = Socket<
 interface RoomState {
   hostPeerId: string;
   strokes: Stroke[];
-  notes: string;
   /** Recent chat, kept so the assistant can read what the room said. */
   messages: ChatMessage[];
   /** Spoken turns so far; a late joiner gets the same log as everyone else. */
@@ -95,7 +94,6 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
     room = {
       hostPeerId: firstPeerId,
       strokes: [],
-      notes: '',
       messages: [],
       transcript: [],
       code: new Y.Doc(),
@@ -150,7 +148,6 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     hostPeerId: room.hostPeerId,
     peers,
     strokes: room.strokes,
-    notes: room.notes,
     settings: room.settings,
     code: room.codeEdited ? encodeUpdate(Y.encodeStateAsUpdate(room.code)) : null,
     transcript: room.transcript,
@@ -428,7 +425,6 @@ function registerSocket(
           text: turn.text,
           startedAt: turn.startedAt,
         })) ?? [],
-      notes: room?.notes ?? '',
       messages:
         room?.messages.map((message) => ({ text: message.text, sentAt: message.sentAt })) ?? [],
     };
@@ -451,14 +447,6 @@ function registerSocket(
       } else {
         target.emit('assistant:error', { requestId, error: event.error });
       }
-    }
-  });
-
-  socket.on('notes:update', (text) => {
-    const room = currentRoom();
-    if (room && socket.data.roomId) {
-      room.notes = text;
-      socket.to(socket.data.roomId).emit('notes:update', text);
     }
   });
 

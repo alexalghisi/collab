@@ -1,4 +1,4 @@
-export const MEETING_SOURCES = ['transcript', 'notes', 'chat'] as const;
+export const MEETING_SOURCES = ['transcript', 'chat'] as const;
 export type MeetingSource = (typeof MEETING_SOURCES)[number];
 
 export interface VectorRecord {

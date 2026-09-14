@@ -91,14 +91,12 @@ interface CodeRunDoc {
 
 interface RoomDoc {
   readonly hostPeerId: string;
-  readonly notes?: string;
   readonly settings?: RoomSettings;
 }
 
 /** Room state as seen by a joiner, with defaults filled in. */
 interface RoomSnapshot {
   readonly hostPeerId: string;
-  readonly notes: string;
   readonly settings: RoomSettings;
 }
 
@@ -169,8 +167,6 @@ class FirestoreChannel implements SignalingChannel {
   private compacting = false;
   private joinedAt = 0;
   private lastSettings = DEFAULT_ROOM_SETTINGS;
-  /** Our own notes writes echo back through the room snapshot; they must not overwrite newer typing. */
-  private lastSentNotes: string | null = null;
   private readonly pageHide = {
     handler: () => this.disconnect(),
     attach: () => window.addEventListener('pagehide', this.pageHide.handler),
@@ -205,10 +201,6 @@ class FirestoreChannel implements SignalingChannel {
         batch.delete(doc(this.strokes, id));
       }
       void batch.commit();
-    },
-    'notes:update': (notes) => {
-      this.lastSentNotes = notes;
-      void setDoc(this.room, { notes }, { merge: true });
     },
     'code:update': (update) => {
       const entry: CodeUpdateDoc = { update, createdAt: Date.now() };
@@ -413,19 +405,18 @@ class FirestoreChannel implements SignalingChannel {
   private syncRoom(claim: boolean): Promise<RoomSnapshot> {
     return runTransaction(this.room.firestore, async (transaction) => {
       const data = (await transaction.get(this.room)).data() as RoomDoc | undefined;
-      const notes = data?.notes ?? '';
       const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
       if (data?.hostPeerId) {
         const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
-          return { hostPeerId: data.hostPeerId, notes, settings };
+          return { hostPeerId: data.hostPeerId, settings };
         }
       }
       if (!claim) {
-        return { hostPeerId: '', notes, settings };
+        return { hostPeerId: '', settings };
       }
       transaction.set(this.room, { hostPeerId: this.peerId }, { merge: true });
-      return { hostPeerId: this.peerId, notes, settings };
+      return { hostPeerId: this.peerId, settings };
     });
   }
 
@@ -474,7 +465,7 @@ class FirestoreChannel implements SignalingChannel {
     }
   }
 
-  private subscribeParticipants({ hostPeerId, notes, settings }: RoomSnapshot): Promise<void> {
+  private subscribeParticipants({ hostPeerId, settings }: RoomSnapshot): Promise<void> {
     return new Promise((resolve, reject) => {
       let initial = true;
       const unsubscribe = onSnapshot(
@@ -501,7 +492,6 @@ class FirestoreChannel implements SignalingChannel {
               hostPeerId,
               peers,
               strokes: [],
-              notes,
               settings,
               code: null,
               transcript: [],
@@ -539,10 +529,6 @@ class FirestoreChannel implements SignalingChannel {
         this.isHost = data.hostPeerId === this.peerId;
         this.emitter.dispatch('room:host', data.hostPeerId);
         this.syncWaitingSubscription(this.isHost);
-      }
-      const notes = data?.notes ?? '';
-      if (notes !== this.lastSentNotes) {
-        this.emitter.dispatch('notes:update', notes);
       }
       const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
       if (!sameSettings(settings, this.lastSettings)) {
@@ -763,10 +749,9 @@ class FirestoreChannel implements SignalingChannel {
     const entry = doc(this.assistantTurns, ask.requestId);
     await setDoc(entry, { question: ask.question, startedAt: Date.now() });
     try {
-      const [turns, chats, roomSnap] = await Promise.all([
+      const [turns, chats] = await Promise.all([
         getDocs(query(this.transcript, orderBy('startedAt'))),
         getDocs(query(this.messages, orderBy('sentAt'))),
-        getDoc(this.room),
       ]);
       const response = await fetch(`${EXECUTION_URL}/assistant`, {
         method: 'POST',
@@ -783,7 +768,6 @@ class FirestoreChannel implements SignalingChannel {
               text: segment.text,
               startedAt: segment.startedAt,
             })),
-          notes: ((roomSnap.data() as RoomDoc | undefined)?.notes ?? '') as string,
           messages: chats.docs.map((item) => {
             const data = item.data() as MessageDoc;
             return { text: data.text, sentAt: data.sentAt };

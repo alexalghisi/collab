@@ -30,7 +30,7 @@ export function AssistantPanel({ turns, onAsk, onClose }: AssistantPanelProps) {
         {turns.length === 0 && (
           <Text style={styles.empty}>
             Ask what the room decided, who owns a follow-up, or where a topic came up. Answers use
-            the live transcript, notes and chat.
+            the live transcript and chat.
           </Text>
         )}
         {turns.map((turn) => (

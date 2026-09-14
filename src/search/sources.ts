@@ -8,12 +8,11 @@ export interface MeetingCorpus {
   readonly meetingId: string;
   readonly roomId: string;
   readonly transcript: readonly TranscriptSegment[];
-  readonly notes: string;
   readonly messages: readonly Pick<ChatMessage, 'text' | 'sentAt'>[];
 }
 
 /**
- * Turns a meeting's transcript, notes and chat into embeddable passages.
+ * Turns a meeting's transcript and chat into embeddable passages.
  * Each source keeps its own clock so a later hit can point at "ten minutes in"
  * rather than at the whole meeting.
  */
@@ -30,16 +29,6 @@ export function passagesFromMeeting(corpus: MeetingCorpus): Array<Omit<VectorRec
         startMs: segment.startedAt,
       });
     }
-  }
-  for (const text of chunkText(corpus.notes)) {
-    passages.push({
-      id: randomUUID(),
-      meetingId: corpus.meetingId,
-      roomId: corpus.roomId,
-      source: 'notes',
-      text,
-      startMs: 0,
-    });
   }
   for (const message of corpus.messages) {
     if (!message.text.trim()) {

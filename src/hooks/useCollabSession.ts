@@ -81,7 +81,6 @@ export interface CollabSession {
   readonly participants: RemoteParticipant[];
   readonly messages: ChatMessage[];
   readonly strokes: Stroke[];
-  readonly notes: string;
   /** Spoken turns in this room, oldest first. */
   readonly transcript: TranscriptSegment[];
   /** True while this participant's recognizer is running. */
@@ -119,7 +118,6 @@ export interface CollabSession {
   sendInvite: (input: string) => Promise<ParsedContact>;
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
-  updateNotes: (text: string) => void;
   /** Starts or stops live captions for this participant. */
   toggleCaptions: () => void;
   askAssistant: (question: string) => void;
@@ -138,7 +136,6 @@ export interface CollabSession {
 }
 
 const REACTION_VISIBLE_MS = 4000;
-const NOTES_SYNC_DELAY_MS = 400;
 const MEDIA_ERROR = 'Camera or microphone access was denied.';
 const SIGNALING_ERROR = 'Unable to reach the signaling service.';
 const DENIED_ERROR = 'The host did not let you in.';
@@ -167,7 +164,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [notes, setNotes] = useState('');
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [captionsOn, setCaptionsOn] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
@@ -196,7 +192,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const parkedCameraRef = useRef<MediaStreamTrack | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechRef = useRef(createSpeechCapture());
   const selfPeerIdRef = useRef<string | null>(null);
 
@@ -246,16 +241,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.disconnect();
     signalingRef.current = null;
 
-    if (notesTimerRef.current) {
-      clearTimeout(notesTimerRef.current);
-      notesTimerRef.current = null;
-    }
-
     settingsRef.current = DEFAULT_ROOM_SETTINGS;
     setParticipants([]);
     setMessages([]);
     setStrokes([]);
-    setNotes('');
     setTranscript([]);
     setCaptionError(null);
     setAssistantTurns([]);
@@ -357,7 +346,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setHostPeerId(room.hostPeerId);
         setParticipants(room.peers.map(toParticipant));
         setStrokes(room.strokes);
-        setNotes(room.notes);
         setTranscript(room.transcript);
         if (room.code) {
           sharedCode.applyState(room.code);
@@ -393,7 +381,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('board:remove', (strokeIds) => {
         setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
       });
-      signaling.on('notes:update', setNotes);
       signaling.on('transcript:segment', (segment) => {
         setTranscript((current) =>
           current.some((existing) => existing.id === segment.id) ? current : [...current, segment],
@@ -634,18 +621,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.emit('board:remove', strokeIds);
   }, []);
 
-  /** Shows the change at once and sends it after a short pause in typing. */
-  const updateNotes = useCallback((text: string) => {
-    setNotes(text);
-    if (notesTimerRef.current) {
-      clearTimeout(notesTimerRef.current);
-    }
-    notesTimerRef.current = setTimeout(() => {
-      notesTimerRef.current = null;
-      signalingRef.current?.emit('notes:update', text);
-    }, NOTES_SYNC_DELAY_MS);
-  }, []);
-
   const askAssistant = useCallback((question: string) => {
     const text = question.trim();
     if (!text) {
@@ -759,7 +734,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     participants,
     messages,
     strokes,
-    notes,
     transcript,
     captionsOn,
     captionError,
@@ -787,7 +761,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     sendInvite,
     addStroke,
     removeStrokes,
-    updateNotes,
     toggleCaptions,
     askAssistant,
     runCode,

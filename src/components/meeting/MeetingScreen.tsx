@@ -11,8 +11,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
-import { CAN_RECORD } from '../../meeting/recording';
-import { useRecording } from '../../meeting/useRecording';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
@@ -20,7 +18,6 @@ import { ChatPanel } from './ChatPanel';
 import { InvitePanel } from './InvitePanel';
 import { CodePanel } from './CodePanel';
 import { AssistantPanel } from './AssistantPanel';
-import { NotesPanel } from './NotesPanel';
 import { TranscriptPanel } from './TranscriptPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
@@ -34,7 +31,7 @@ export interface MeetingScreenProps {
   displayName: string;
 }
 
-type Panel = 'participants' | 'chat' | 'notes' | 'transcript' | 'assistant' | 'invite' | null;
+type Panel = 'participants' | 'chat' | 'transcript' | 'assistant' | 'invite' | null;
 /** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
 type Stage = 'grid' | 'whiteboard' | 'code';
 
@@ -58,7 +55,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [stage, setStage] = useState<Stage>('grid');
   const [readCount, setReadCount] = useState(0);
-  const recording = useRecording(session.localStream, session.participants, roomId);
 
   const wide = width >= WIDE_LAYOUT_MIN_WIDTH;
   const gridWidth = wide && panel ? width - PANEL_WIDTH : width;
@@ -129,12 +125,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
             {session.breakoutOf ? ` · breakout room of ${session.breakoutOf}` : ''}
           </Text>
         </View>
-        {recording.active && (
-          <View style={styles.recordingBadge}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>REC</Text>
-          </View>
-        )}
         {session.breakoutOf && (
           <Button
             label="Return to main room"
@@ -210,13 +200,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
                 onClose={() => setPanel(null)}
               />
             )}
-            {panel === 'notes' && (
-              <NotesPanel
-                notes={session.notes}
-                onChange={session.updateNotes}
-                onClose={() => setPanel(null)}
-              />
-            )}
             {panel === 'transcript' && (
               <TranscriptPanel
                 segments={session.transcript}
@@ -286,14 +269,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
           active={reactionsOpen}
           onPress={() => setReactionsOpen((open) => !open)}
         />
-        {CAN_RECORD && (
-          <ToolbarButton
-            icon={recording.active ? 'stop-circle' : 'radio-button-on'}
-            label={recording.active ? 'Stop recording' : 'Record'}
-            danger={recording.active}
-            onPress={() => (recording.active ? void recording.stop() : recording.start())}
-          />
-        )}
         <ToolbarButton
           icon="brush"
           label="Whiteboard"
@@ -305,12 +280,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
           label="Code"
           active={stage === 'code'}
           onPress={() => toggleStage('code')}
-        />
-        <ToolbarButton
-          icon="document-text-outline"
-          label="Notes"
-          active={panel === 'notes'}
-          onPress={() => togglePanel('notes')}
         />
         <ToolbarButton
           icon={session.captionsOn ? 'mic-circle' : 'mic-circle-outline'}
@@ -363,22 +332,6 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-  },
-  recordingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  recordingDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.danger,
-  },
-  recordingText: {
-    color: colors.danger,
-    fontSize: 12,
-    fontWeight: '700',
   },
   roomTitle: {
     color: colors.text,
