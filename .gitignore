@@ -21,6 +21,9 @@ desktop/dist/
 desktop/out/
 desktop/web/
 
+# Local account database
+server/data/
+
 # Environment
 .env
 .env.local

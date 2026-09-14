@@ -6,6 +6,8 @@ import cors from 'cors';
 import express from 'express';
 import { Server } from 'socket.io';
 import { MAX_CODE_BYTES, MAX_STDIN_BYTES } from '../../src/code/execution';
+import { openAccountStore } from './accounts/AccountStore';
+import { accountRouter } from './accounts/router';
 import { assistantRouter } from './assistant/router';
 import { searchRouter } from './assistant/searchRouter';
 import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
@@ -62,6 +64,7 @@ const assistant = createMeetingAssistant();
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
 });
+app.use(accountRouter({ store: openAccountStore() }));
 app.use(executionRouter(execution));
 app.use(assistantRouter(assistant));
 app.use(searchRouter(meetingIndexStore()));
