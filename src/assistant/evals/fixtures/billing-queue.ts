@@ -22,7 +22,6 @@ export const billingQueueContext: AssistantContext = {
       startedAt: 12_000,
     },
   ],
-  notes: 'Decision: ship billing on Thursday. Action: Linus sends the finance invite.',
   messages: [{ text: 'Invite subject: billing queue fix', sentAt: 9_000 }],
 };
 

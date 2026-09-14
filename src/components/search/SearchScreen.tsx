@@ -12,8 +12,7 @@ export function SearchScreen({ search }: SearchScreenProps) {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Meeting search</Text>
       <Text style={styles.lede}>
-        Finds passages in past transcripts, notes and chat. The same index the in-call assistant
-        uses.
+        Finds passages in past transcripts and chat. The same index the in-call assistant uses.
       </Text>
       <View style={styles.row}>
         <TextInput
