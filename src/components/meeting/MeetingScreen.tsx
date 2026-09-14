@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
+import type { MeetingStage } from '../../signaling/events';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
@@ -32,8 +33,11 @@ export interface MeetingScreenProps {
 }
 
 type Panel = 'participants' | 'chat' | 'transcript' | 'assistant' | 'invite' | null;
-/** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
-type Stage = 'grid' | 'whiteboard' | 'code';
+
+const STAGE_LABELS: Record<Exclude<MeetingStage, 'grid'>, string> = {
+  whiteboard: 'whiteboard',
+  code: 'shared editor',
+};
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
 const PANEL_WIDTH = 340;
@@ -53,8 +57,12 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
   const { width } = useWindowDimensions();
   const [panel, setPanel] = useState<Panel>(null);
   const [reactionsOpen, setReactionsOpen] = useState(false);
-  const [stage, setStage] = useState<Stage>('grid');
+  /** Set only when a participant opened a surface the host did not. */
+  const [ownStage, setOwnStage] = useState<MeetingStage | null>(null);
   const [readCount, setReadCount] = useState(0);
+
+  const roomStage = session.settings.stage;
+  const stage = ownStage ?? roomStage;
 
   const wide = width >= WIDE_LAYOUT_MIN_WIDTH;
   const gridWidth = wide && panel ? width - PANEL_WIDTH : width;
@@ -68,12 +76,24 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
     }
   }, [panel, session.messages.length]);
 
+  // Wherever the host takes the room, everybody goes, including anyone who had
+  // opened something else for themselves.
+  useEffect(() => {
+    setOwnStage(null);
+  }, [roomStage]);
+
   const togglePanel = (next: Exclude<Panel, null>): void => {
     setPanel((current) => (current === next ? null : next));
   };
 
-  const toggleStage = (next: Exclude<Stage, 'grid'>): void => {
-    setStage((current) => (current === next ? 'grid' : next));
+  /** The host moves the whole room; anyone else only moves their own view. */
+  const toggleStage = (next: Exclude<MeetingStage, 'grid'>): void => {
+    const target = stage === next ? 'grid' : next;
+    if (session.isHost) {
+      session.updateSettings({ stage: target });
+      return;
+    }
+    setOwnStage(target);
   };
 
   const rows: ParticipantRow[] = [
@@ -123,6 +143,7 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
           <Text style={styles.roomMeta}>
             {tileCount} participant{tileCount === 1 ? '' : 's'}
             {session.breakoutOf ? ` · breakout room of ${session.breakoutOf}` : ''}
+            {roomStage === 'grid' ? '' : ` · the host opened the ${STAGE_LABELS[roomStage]}`}
           </Text>
         </View>
         {session.breakoutOf && (

@@ -37,13 +37,26 @@ export interface JoinRoomPayload {
   readonly breakoutOf?: string;
 }
 
+/** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
+export type MeetingStage = 'grid' | 'whiteboard' | 'code';
+
 /** Room-wide options only the host may change. */
 export interface RoomSettings {
   readonly waitingRoom: boolean;
   readonly breakoutOpen: boolean;
+  /**
+   * The surface the host put in front of the room. Opening the editor or the
+   * whiteboard is a thing the host does to the room, the way sharing a screen
+   * is: everyone follows, instead of each participant having to find it.
+   */
+  readonly stage: MeetingStage;
 }
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = { waitingRoom: false, breakoutOpen: false };
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+  waitingRoom: false,
+  breakoutOpen: false,
+  stage: 'grid',
+};
 
 export type HostCommand =
   | { readonly action: 'mute' }

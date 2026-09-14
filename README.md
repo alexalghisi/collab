@@ -57,7 +57,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing) and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in).
 - **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that executes the room's code — JavaScript, TypeScript, Python or Go — in a network-less, resource-capped, throwaway sandbox and streams the output to everyone.
 - **Meeting assistant**: an in-call panel that answers questions from the live transcript and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
-- **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
+- **Host tools**: a **shared stage** — when the host opens the whiteboard or the editor the whole room follows, the way a screen share does, while anyone else opening one only moves their own view; a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
 - Home dashboard with one-click **New meeting**, **Join** and **Schedule**. Scheduling picks the people to invite from the account directory, so the monthly **calendar** and the upcoming/past list say who is expected and when; each meeting can be added to **Google Calendar** (invitees as guests) or downloaded as **.ics** (invitees as `ATTENDEE`s). Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
 - **Accounts in a local database**: sign up and sign in with an email address and a password held by the signaling server itself (scrypt verifiers, hashed session tokens, a JSON snapshot on disk). There is no guest lobby — every meeting belongs to a named account, which is what lets the calendar say who is invited.
@@ -134,6 +134,10 @@ the same `SignalingChannel` as everything else — there is no `y-websocket`
 server to deploy. Two message types carry it: `code:update` for document
 updates and `code:awareness` for cursors and selections, both base64-encoded
 because both transports are JSON.
+
+Which surface the room is looking at is a room setting (`stage`), so it takes
+the same host-only path as the waiting room and reaches a late joiner in
+`room:joined` — nobody has to be told in chat to open the editor.
 
 Late joiners are served the same way whiteboard strokes are, per transport:
 

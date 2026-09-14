@@ -141,7 +141,14 @@ function toPeerInfo(snapshot: QueryDocumentSnapshot): PeerInfo {
 }
 
 function sameSettings(a: RoomSettings, b: RoomSettings): boolean {
-  return a.waitingRoom === b.waitingRoom && a.breakoutOpen === b.breakoutOpen;
+  return (
+    a.waitingRoom === b.waitingRoom && a.breakoutOpen === b.breakoutOpen && a.stage === b.stage
+  );
+}
+
+/** A room document written before a setting existed still has to answer for it. */
+function readSettings(data: RoomDoc | undefined): RoomSettings {
+  return { ...DEFAULT_ROOM_SETTINGS, ...data?.settings };
 }
 
 class FirestoreChannel implements SignalingChannel {
@@ -405,7 +412,7 @@ class FirestoreChannel implements SignalingChannel {
   private syncRoom(claim: boolean): Promise<RoomSnapshot> {
     return runTransaction(this.room.firestore, async (transaction) => {
       const data = (await transaction.get(this.room)).data() as RoomDoc | undefined;
-      const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
+      const settings = readSettings(data);
       if (data?.hostPeerId) {
         const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
@@ -530,7 +537,7 @@ class FirestoreChannel implements SignalingChannel {
         this.emitter.dispatch('room:host', data.hostPeerId);
         this.syncWaitingSubscription(this.isHost);
       }
-      const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
+      const settings = readSettings(data);
       if (!sameSettings(settings, this.lastSettings)) {
         this.lastSettings = settings;
         this.emitter.dispatch('room:settings', settings);
