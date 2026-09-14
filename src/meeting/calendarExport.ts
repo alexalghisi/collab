@@ -16,6 +16,9 @@ export function googleCalendarUrl(meeting: Meeting, inviteLink: string): string 
     details: [meeting.description, `Join: ${inviteLink}`].filter(Boolean).join('\n\n'),
     location: inviteLink,
   });
+  for (const invitee of meeting.invitees) {
+    params.append('add', invitee.email);
+  }
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
@@ -36,6 +39,9 @@ export function buildIcs(meeting: Meeting, inviteLink: string): string {
     `DESCRIPTION:${escapeIcsText([meeting.description, `Join: ${inviteLink}`].filter(Boolean).join('\n'))}`,
     `LOCATION:${escapeIcsText(inviteLink)}`,
     `URL:${inviteLink}`,
+    ...meeting.invitees.map(
+      (invitee) => `ATTENDEE;CN=${escapeIcsText(invitee.name)};RSVP=TRUE:mailto:${invitee.email}`,
+    ),
     'END:VEVENT',
     'END:VCALENDAR',
     '',

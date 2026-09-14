@@ -3,7 +3,7 @@ import { buildIcs, googleCalendarUrl } from '../../meeting/calendarExport';
 import { formatDay, formatTime } from '../../meeting/calendar';
 import { downloadTextFile } from '../../meeting/download';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
-import { meetingEndsAt, type Meeting } from '../../meeting/types';
+import { describeInvitees, meetingEndsAt, type Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
@@ -30,6 +30,9 @@ export function MeetingRow({ meeting, onStart, onDelete }: MeetingRowProps) {
           {meeting.title}
         </Text>
         <Text style={styles.when}>{describeWhen(meeting)}</Text>
+        <Text style={styles.people} numberOfLines={2}>
+          {describeInvitees(meeting.invitees)}
+        </Text>
         <Text style={styles.roomId}>ID {meeting.roomId}</Text>
       </View>
       <View style={styles.actions}>
@@ -101,6 +104,10 @@ const styles = StyleSheet.create({
   when: {
     color: colors.textMuted,
     fontSize: 14,
+  },
+  people: {
+    color: colors.textMuted,
+    fontSize: 13,
   },
   roomId: {
     color: colors.textSubtle,

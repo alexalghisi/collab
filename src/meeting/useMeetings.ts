@@ -38,6 +38,7 @@ export function useMeetings(uid: string): MeetingsState {
         startsAt: now,
         durationMinutes: 0,
         description: '',
+        invitees: [],
         createdAt: now,
       });
     },

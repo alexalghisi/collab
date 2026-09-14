@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import type { Account } from '../../auth/accounts';
 import { parseDateTime, toDateInput, toTimeInput } from '../../meeting/calendar';
 import { generateRoomId } from '../../meeting/roomId';
 import type { MeetingDraft } from '../../meeting/types';
@@ -12,12 +13,20 @@ const DURATIONS = [15, 30, 45, 60, 90, 120];
 export interface ScheduleMeetingScreenProps {
   /** Pre-selected start (e.g. the day picked in the calendar). */
   initialStart: Date;
+  /** Everyone with an account here; the organiser is filtered out by `selfId`. */
+  people: Account[];
+  selfId: string;
+  /** Why the directory is empty, when asking for it failed. */
+  directoryError: string | null;
   onSave: (draft: MeetingDraft) => void;
   onCancel: () => void;
 }
 
 export function ScheduleMeetingScreen({
   initialStart,
+  people,
+  selfId,
+  directoryError,
   onSave,
   onCancel,
 }: ScheduleMeetingScreenProps) {
@@ -27,9 +36,16 @@ export function ScheduleMeetingScreen({
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [description, setDescription] = useState('');
   const [roomId, setRoomId] = useState(generateRoomId);
+  const [invited, setInvited] = useState<string[]>([]);
 
+  const others = people.filter((person) => person.id !== selfId);
   const startsAt = parseDateTime(date, time);
   const ready = title.trim().length > 0 && startsAt !== null;
+
+  const toggleInvite = (id: string) =>
+    setInvited((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
 
   const save = () => {
     if (startsAt === null) {
@@ -41,6 +57,9 @@ export function ScheduleMeetingScreen({
       startsAt,
       durationMinutes,
       description: description.trim(),
+      invitees: others
+        .filter((person) => invited.includes(person.id))
+        .map(({ id, name, email }) => ({ id, name, email })),
     });
   };
 
@@ -103,6 +122,44 @@ export function ScheduleMeetingScreen({
           );
         })}
       </View>
+
+      <Text style={styles.label}>People</Text>
+      {others.length === 0 ? (
+        <Text style={styles.hint}>
+          {directoryError ??
+            'Nobody else has an account here yet. They show up as soon as they sign up.'}
+        </Text>
+      ) : (
+        <View style={styles.people}>
+          {others.map((person) => {
+            const selected = invited.includes(person.id);
+            return (
+              <Pressable
+                key={person.id}
+                style={[styles.person, selected && styles.personSelected]}
+                onPress={() => toggleInvite(person.id)}
+                accessibilityRole="checkbox"
+                accessibilityLabel={`Invite ${person.name}`}
+                accessibilityState={{ checked: selected }}
+              >
+                <Ionicons
+                  name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={20}
+                  color={selected ? colors.primary : colors.textSubtle}
+                />
+                <View style={styles.personText}>
+                  <Text style={styles.personName} numberOfLines={1}>
+                    {person.name}
+                  </Text>
+                  <Text style={styles.personEmail} numberOfLines={1}>
+                    {person.email}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       <Text style={styles.label}>Description (optional)</Text>
       <TextInput
@@ -198,6 +255,35 @@ const styles = StyleSheet.create({
   chipText: {
     color: colors.text,
     fontWeight: '600',
+  },
+  people: {
+    gap: 6,
+  },
+  person: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  personSelected: {
+    borderColor: colors.primary,
+  },
+  personText: {
+    flex: 1,
+  },
+  personName: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  personEmail: {
+    color: colors.textSubtle,
+    fontSize: 12,
   },
   roomId: {
     flex: 1,

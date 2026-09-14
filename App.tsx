@@ -3,6 +3,7 @@ import { SafeAreaView, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useCollabSession } from './src/hooks/useCollabSession';
 import { useAuth } from './src/auth/useAuth';
+import { useDirectory } from './src/auth/useDirectory';
 import { useTeamChat } from './src/chat/useTeamChat';
 import { createSignaling } from './src/signaling';
 import { nextHalfHour } from './src/meeting/calendar';
@@ -27,6 +28,7 @@ type View = Section | 'schedule';
 
 export default function App() {
   const auth = useAuth();
+  const directory = useDirectory(auth.token);
   const session = useCollabSession(createSignaling);
   const meetings = useMeetings(auth.user?.uid ?? 'guest');
   const meetingSearch = useMeetingSearch();
@@ -158,6 +160,9 @@ export default function App() {
         {view === 'schedule' && (
           <ScheduleMeetingScreen
             initialStart={scheduleStart}
+            people={directory.people}
+            selfId={auth.user.uid}
+            directoryError={directory.error}
             onSave={saveMeeting}
             onCancel={() => setView('meetings')}
           />

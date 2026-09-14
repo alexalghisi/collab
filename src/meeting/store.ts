@@ -21,12 +21,15 @@ export interface MeetingStore {
 
 const byStart = (a: Meeting, b: Meeting) => a.startsAt - b.startsAt;
 
+/** A meeting stored before it could have invitees still has to load. */
+const restore = (stored: Meeting): Meeting => ({ ...stored, invitees: stored.invitees ?? [] });
+
 function createFirestoreStore(db: Firestore, uid: string): MeetingStore {
   const meetings = collection(db, 'users', uid, 'meetings');
   return {
     subscribe(listener) {
       return onSnapshot(query(meetings, orderBy('startsAt')), (snapshot) => {
-        listener(snapshot.docs.map((entry) => entry.data() as Meeting));
+        listener(snapshot.docs.map((entry) => restore(entry.data() as Meeting)));
       });
     },
     save(meeting) {
@@ -41,7 +44,7 @@ function createFirestoreStore(db: Firestore, uid: string): MeetingStore {
 function createLocalStore(uid: string): MeetingStore {
   const key = `collab.meetings.${uid}`;
   const listeners = new Set<MeetingsListener>();
-  let meetings: Meeting[] = JSON.parse(storage.read(key) ?? '[]') as Meeting[];
+  let meetings: Meeting[] = (JSON.parse(storage.read(key) ?? '[]') as Meeting[]).map(restore);
 
   const commit = (next: Meeting[]) => {
     meetings = next.sort(byStart);
