@@ -61,7 +61,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
 - Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
-- Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
+- **Accounts in the deployment's own database**: sign up and sign in with an email and a password stored (scrypt-hashed) in a JSON database next to the signaling server. Nobody reaches a meeting without an account, which is what gives the app a directory of names to schedule with.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
 - Automated multi-platform release pipeline that publishes installable binaries to GitHub Releases.
@@ -255,7 +255,7 @@ sequenceDiagram
 
 ```
 Collab/
-├── App.tsx                     # Root component: auth gate, app shell, meeting screen
+├── App.tsx                     # Root component: login gate, app shell, meeting screen
 ├── index.ts                    # Expo entry point; registers WebRTC globals
 ├── app.json                    # Expo configuration
 ├── app.config.js               # Applies the GitHub Pages sub-path only when WEB_BASE_URL is set
@@ -268,18 +268,20 @@ Collab/
 │   │   ├── meeting/            # In-call screen: toolbar, participants + host tools, chat, whiteboard, waiting room
 │   │   ├── chat/               # Team channels screen and the shared message thread
 │   │   └── ui/                 # Shared buttons and icon types
+│   ├── auth/                   # Account types, shared credential rules, accounts API client, session
 │   ├── chat/                   # Team chat channels (Firestore) and its hook
 │   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
 │   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links / email / SMS
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
+│   ├── storage/                # Small key-value store (localStorage on web, memory on native)
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
 │   ├── search/                 # VectorStore (memory / pgvector / Pinecone) and meeting chunking
 │   ├── assistant/              # Meeting assistant tools, providers, and the CI eval harness
 │   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
 ├── server/
-│   └── src/                    # Express + Socket.IO signaling server
-├── firestore.rules             # Security rules for signaling rooms, channels and per-user meetings
+│   └── src/                    # Express + Socket.IO signaling server, accounts + meetings database
+├── firestore.rules             # Security rules for signaling rooms and team chat channels
 ├── desktop/                    # Electron shell + electron-builder config (.dmg / .exe)
 ├── scripts/                    # Build helpers
 └── .github/                    # CI, release workflow, issue & PR templates
@@ -328,24 +330,31 @@ port 4000 (and `http://localhost:4000` from a loopback preview). A phone on
 the LAN therefore reaches the desktop running the server instead of its own
 loopback. Override the URL when the server lives somewhere else.
 
-### Social sign-in (Google / Facebook)
+### Accounts and the local database
 
-Sign-in is optional: with no credentials configured the app runs as an open
-guest lobby. Copy [`.env.example`](.env.example) to `.env` and fill in the
-values below to enable "Continue with Google" and "Continue with Facebook".
+Sign-in is not optional and needs no third party: the signaling server keeps
+accounts in `server/.data/accounts.json` and scheduled meetings in
+`server/.data/meetings.json`, and serves both over the same origin as the
+socket. Set `DATA_DIR` to put them somewhere else (a mounted volume, say).
 
-- **Web** uses Firebase, so it reads the Firebase web config:
-  - `EXPO_PUBLIC_FIREBASE_API_KEY`
-  - `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
-  - `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
-  - `EXPO_PUBLIC_FIREBASE_APP_ID`
-- **Mobile (iOS / Android)** signs in through Expo AuthSession, so it reads the
-  OAuth client IDs directly:
-  - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`,
-    `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
-  - `EXPO_PUBLIC_FACEBOOK_APP_ID`
+Passwords are stored as scrypt hashes with a per-account salt, and sessions are
+bearer tokens that expire after 30 days. The endpoints are:
 
-Redirects use the app's `collab` scheme, which is already declared in `app.json`.
+| Endpoint                | Purpose                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| `POST /accounts/signup` | Create an account; answers with the token and the account. |
+| `POST /accounts/login`  | Sign in; same answer.                                      |
+| `POST /accounts/logout` | Forget the caller's token.                                 |
+| `GET /accounts/me`      | Confirm a stored token still belongs to somebody.          |
+| `GET /accounts`         | The directory of names, for scheduling. Needs a session.   |
+| `GET /meetings`         | Meetings the caller organises or is invited to.            |
+| `POST /meetings`        | Schedule one, with attendees picked from the directory.    |
+| `DELETE /meetings/:id`  | The organiser cancels it for everybody.                    |
+
+When Firebase is also configured, the client takes an **anonymous** Firebase
+session after signing in, so the Firestore transport and team chat still
+satisfy [`firestore.rules`](firestore.rules) while identity stays local. Enable
+Anonymous sign-in under Authentication → Sign-in method.
 
 ### 4. Run the desktop shell locally
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AuthUser } from '../auth/types';
+import type { Account } from '../auth/types';
 import { firestore } from '../firebase/app';
 import type { ChatMessage } from '../signaling/events';
 import {
@@ -21,7 +21,7 @@ export interface TeamChat {
   send: (text: string) => Promise<void>;
 }
 
-export function useTeamChat(user: AuthUser | null): TeamChat {
+export function useTeamChat(user: Account | null): TeamChat {
   const db = user ? firestore : null;
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);

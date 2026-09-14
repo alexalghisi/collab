@@ -1,7 +1,8 @@
 rules_version = '2';
 
 // Deploy from Firebase console > Firestore Database > Rules (or `firebase deploy --only firestore:rules`).
-// Every signed-in user may take part in any room; signaling data is short-lived.
+// Sign-in happens against the server's own account database, so clients hold an
+// anonymous Firebase session: these rules keep the public out, not each other.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /rooms/{roomId}/{document=**} {

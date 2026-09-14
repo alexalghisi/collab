@@ -37,3 +37,5 @@ yarn-error.*
 .idea/
 .vscode/
 *.pem
+# Local database (accounts, scheduled meetings)
+server/.data/

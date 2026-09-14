@@ -7,7 +7,7 @@ import {
   type Firestore,
   type Unsubscribe,
 } from 'firebase/firestore';
-import type { AuthUser } from '../auth/types';
+import type { Account } from '../auth/types';
 import type { ChatMessage } from '../signaling/events';
 
 /** A persistent team conversation, shared by everyone signed in to this deployment. */
@@ -30,8 +30,8 @@ export function subscribeChannels(
   });
 }
 
-export function createChannel(db: Firestore, name: string, user: AuthUser): Promise<unknown> {
-  const channel: ChannelDoc = { name, createdBy: user.uid, createdAt: Date.now() };
+export function createChannel(db: Firestore, name: string, user: Account): Promise<unknown> {
+  const channel: ChannelDoc = { name, createdBy: user.id, createdAt: Date.now() };
   return addDoc(collection(db, 'channels'), channel);
 }
 
@@ -49,11 +49,11 @@ export function subscribeMessages(
 export function sendMessage(
   db: Firestore,
   channelId: string,
-  user: AuthUser,
+  user: Account,
   text: string,
 ): Promise<unknown> {
   const message: MessageDoc = {
-    peerId: user.uid,
+    peerId: user.id,
     displayName: user.displayName,
     text,
     file: null,

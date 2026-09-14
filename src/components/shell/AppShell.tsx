@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { AuthUser } from '../../auth/types';
+import type { Account } from '../../auth/types';
 import { colors } from '../../theme';
 import { SECTIONS, type Section } from './sections';
 
@@ -10,7 +10,7 @@ export const SIDEBAR_MIN_WIDTH = 900;
 export interface AppShellProps {
   section: Section;
   onSelect: (section: Section) => void;
-  user: AuthUser | null;
+  user: Account | null;
   onSignOut: () => void;
   children: ReactNode;
 }

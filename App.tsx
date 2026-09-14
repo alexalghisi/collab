@@ -27,21 +27,15 @@ type View = Section | 'schedule';
 
 export default function App() {
   const auth = useAuth();
+  const account = auth.account;
   const session = useCollabSession(createSignaling);
-  const meetings = useMeetings(auth.user?.uid ?? 'guest');
+  const meetings = useMeetings(account?.id ?? 'guest');
   const meetingSearch = useMeetingSearch();
-  const teamChat = useTeamChat(auth.user);
+  const teamChat = useTeamChat(account);
   const [view, setView] = useState<View>('home');
   const [scheduleStart, setScheduleStart] = useState(() => nextHalfHour());
   const [roomId, setRoomId] = useState(() => readRoomFromLink() ?? '');
-  const [displayName, setDisplayName] = useState('');
-
-  useEffect(() => {
-    const name = auth.user?.displayName;
-    if (name) {
-      setDisplayName((current) => current || name);
-    }
-  }, [auth.user]);
+  const displayName = account?.displayName ?? '';
 
   // Stays true while moving between a room and its breakout rooms.
   const inMeeting = session.roomId !== null;
@@ -81,7 +75,7 @@ export default function App() {
     setView('meetings');
   };
 
-  if (auth.enabled && auth.initializing) {
+  if (auth.initializing) {
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
@@ -89,8 +83,15 @@ export default function App() {
     );
   }
 
-  if (auth.enabled && !auth.user) {
-    return <LoginScreen onSignIn={auth.signIn} error={auth.error} />;
+  if (!account) {
+    return (
+      <LoginScreen
+        pending={auth.pending}
+        error={auth.error}
+        onSignIn={(credentials) => void auth.signIn(credentials)}
+        onSignUp={(draft) => void auth.signUp(draft)}
+      />
+    );
   }
 
   if (session.status === 'waiting') {
@@ -117,13 +118,12 @@ export default function App() {
       <AppShell
         section={view === 'schedule' ? 'meetings' : view}
         onSelect={setView}
-        user={auth.user}
+        user={account}
         onSignOut={() => void auth.signOut()}
       >
         {view === 'home' && (
           <HomeScreen
             displayName={displayName}
-            onDisplayNameChange={setDisplayName}
             roomId={roomId}
             onRoomIdChange={setRoomId}
             onJoin={(nextRoomId, video) => void joinRoom(nextRoomId, video)}
@@ -151,7 +151,7 @@ export default function App() {
             onSchedule={openSchedule}
           />
         )}
-        {view === 'chat' && <TeamChatScreen chat={teamChat} selfId={auth.user?.uid ?? null} />}
+        {view === 'chat' && <TeamChatScreen chat={teamChat} selfId={account.id} />}
         {view === 'search' && <SearchScreen search={meetingSearch} />}
         {view === 'schedule' && (
           <ScheduleMeetingScreen

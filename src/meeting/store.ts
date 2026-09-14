@@ -8,7 +8,7 @@ import {
   setDoc,
   type Firestore,
 } from 'firebase/firestore';
-import { storage } from './storage';
+import { storage } from '../storage/keyValue';
 import type { Meeting } from './types';
 
 export type MeetingsListener = (meetings: Meeting[]) => void;

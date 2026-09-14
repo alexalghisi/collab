@@ -1,62 +1,121 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  FacebookAuthProvider,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut as firebaseSignOut,
-  type User,
-} from 'firebase/auth';
-import { firebaseAuth as auth } from '../firebase/app';
-import type { AuthState, AuthUser, SocialProvider } from './types';
+import { ensureBackendSession, releaseBackendSession } from '../firebase/session';
+import { AuthError, fetchSelf, logIn, logOut, signUp } from './api';
+import { CREDENTIAL_MESSAGES, validateCredentials, validateSignUp } from './credentials';
+import { readStoredSession, writeStoredSession } from './session';
+import type { AuthSession, AuthState, Credentials, SignUpDraft } from './types';
 
-const providerFactories: Record<SocialProvider, () => GoogleAuthProvider | FacebookAuthProvider> = {
-  google: () => new GoogleAuthProvider(),
-  facebook: () => new FacebookAuthProvider(),
-};
-
-function toAuthUser(user: User): AuthUser {
-  return {
-    uid: user.uid,
-    displayName: user.displayName ?? user.email ?? 'Guest',
-    email: user.email,
-    photoURL: user.photoURL,
-  };
-}
-
+/**
+ * Signing in against this deployment's own account database. Everybody who can
+ * join a meeting has a name and an email here, which is what the directory and
+ * the calendar are built on; there is no guest lobby to slip in through.
+ */
 export function useAuth(): AuthState {
-  const enabled = auth !== null;
-  const [initializing, setInitializing] = useState(enabled);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [initializing, setInitializing] = useState(true);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!auth) {
-      return;
-    }
-    return onAuthStateChanged(auth, (next) => {
-      setUser(next ? toAuthUser(next) : null);
-      setInitializing(false);
-    });
+  const keep = useCallback((next: AuthSession) => {
+    writeStoredSession(next);
+    setSession(next);
+    void ensureBackendSession();
   }, []);
 
-  const signIn = useCallback(async (provider: SocialProvider) => {
-    if (!auth) {
+  // A stored token is confirmed with the server before it is trusted, but a
+  // server that cannot be reached is not a reason to sign somebody out.
+  useEffect(() => {
+    const stored = readStoredSession();
+    if (!stored) {
+      setInitializing(false);
       return;
     }
-    setError(null);
-    try {
-      await signInWithPopup(auth, providerFactories[provider]());
-    } catch {
-      setError('Sign-in failed. Please try again.');
-    }
-  }, []);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const account = await fetchSelf(stored.token);
+        if (!cancelled) {
+          keep({ token: stored.token, account });
+        }
+      } catch (cause) {
+        if (cancelled) {
+          return;
+        }
+        if (cause instanceof AuthError && cause.status !== null) {
+          writeStoredSession(null);
+        } else {
+          keep(stored);
+        }
+      } finally {
+        if (!cancelled) {
+          setInitializing(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [keep]);
+
+  const submit = useCallback(
+    async (request: () => Promise<AuthSession>, invalid: string | null) => {
+      setError(invalid);
+      if (invalid) {
+        return;
+      }
+      setPending(true);
+      try {
+        keep(await request());
+      } catch (cause) {
+        setError(cause instanceof AuthError ? cause.message : 'That did not work. Try again.');
+      } finally {
+        setPending(false);
+      }
+    },
+    [keep],
+  );
+
+  const signUpWith = useCallback(
+    async (draft: SignUpDraft) => {
+      const validated = validateSignUp(draft);
+      await submit(
+        () => signUp(draft),
+        validated.ok ? null : CREDENTIAL_MESSAGES[validated.reason],
+      );
+    },
+    [submit],
+  );
+
+  const signInWith = useCallback(
+    async (credentials: Credentials) => {
+      const validated = validateCredentials(credentials);
+      await submit(
+        () => logIn(credentials),
+        validated.ok ? null : CREDENTIAL_MESSAGES[validated.reason],
+      );
+    },
+    [submit],
+  );
 
   const signOut = useCallback(async () => {
-    if (auth) {
-      await firebaseSignOut(auth);
+    const token = session?.token;
+    writeStoredSession(null);
+    setSession(null);
+    setError(null);
+    await releaseBackendSession();
+    if (token) {
+      await logOut(token);
     }
-  }, []);
+  }, [session]);
 
-  return { enabled, initializing, user, error, signIn, signOut };
+  return {
+    initializing,
+    pending,
+    session,
+    account: session?.account ?? null,
+    error,
+    signUp: signUpWith,
+    signIn: signInWith,
+    signOut,
+  };
 }

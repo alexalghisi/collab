@@ -6,12 +6,15 @@ import cors from 'cors';
 import express from 'express';
 import { Server } from 'socket.io';
 import { MAX_CODE_BYTES, MAX_STDIN_BYTES } from '../../src/code/execution';
+import { createAccountStore } from './accounts/AccountStore';
+import { accountsRouter } from './accounts/router';
 import { assistantRouter } from './assistant/router';
 import { searchRouter } from './assistant/searchRouter';
 import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
 import { filesRouter } from './files/router';
+import { databasePath } from './db/JsonFile';
 import { inviteRouter } from './invite/router';
 import { transportFromEnv } from './invite/senders';
 import { files, isAdmitted, registerSignalingHandlers, type CollabServer } from './SignalingServer';
@@ -58,10 +61,12 @@ app.use(express.json({ limit: MAX_CODE_BYTES + MAX_STDIN_BYTES + 4096 }));
 
 const execution = new ExecutionService(createRunnerFromEnv());
 const assistant = createMeetingAssistant();
+const accounts = createAccountStore(databasePath('accounts.json', ROOT));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
 });
+app.use(accountsRouter({ store: accounts }));
 app.use(executionRouter(execution));
 app.use(assistantRouter(assistant));
 app.use(searchRouter(meetingIndexStore()));
