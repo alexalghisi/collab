@@ -1,8 +1,12 @@
+import { storage } from './storage';
+
 const LIVE_KEY = 'collab.liveMeeting';
 
 export interface LiveMeeting {
   readonly roomId: string;
   readonly sessionId: string;
+  readonly displayName: string;
+  readonly video: boolean;
 }
 
 function readSession(key: string): string | null {
@@ -29,31 +33,58 @@ function clearSession(key: string): void {
   }
 }
 
-export function readLiveMeeting(): LiveMeeting | null {
-  const raw = readSession(LIVE_KEY);
+function readLocal(key: string): string | null {
+  try {
+    return storage.read(key);
+  } catch {
+    return null;
+  }
+}
+
+function parseLive(raw: string | null): LiveMeeting | null {
   if (!raw) {
     return null;
   }
   try {
     const parsed = JSON.parse(raw) as Partial<LiveMeeting>;
     if (
-      typeof parsed.roomId === 'string' &&
-      parsed.roomId !== '' &&
-      typeof parsed.sessionId === 'string' &&
-      parsed.sessionId !== ''
+      typeof parsed.roomId !== 'string' ||
+      parsed.roomId === '' ||
+      typeof parsed.sessionId !== 'string' ||
+      parsed.sessionId === ''
     ) {
-      return { roomId: parsed.roomId, sessionId: parsed.sessionId };
+      return null;
     }
-    return null;
+    return {
+      roomId: parsed.roomId,
+      sessionId: parsed.sessionId,
+      displayName: typeof parsed.displayName === 'string' ? parsed.displayName : '',
+      video: parsed.video !== false,
+    };
   } catch {
     return null;
   }
 }
 
+export function readLiveMeeting(): LiveMeeting | null {
+  return parseLive(readSession(LIVE_KEY)) ?? parseLive(readLocal(LIVE_KEY));
+}
+
 export function writeLiveMeeting(meeting: LiveMeeting): void {
-  writeSession(LIVE_KEY, JSON.stringify(meeting));
+  const raw = JSON.stringify(meeting);
+  writeSession(LIVE_KEY, raw);
+  try {
+    storage.write(LIVE_KEY, raw);
+  } catch {
+    return;
+  }
 }
 
 export function clearLiveMeeting(): void {
   clearSession(LIVE_KEY);
+  try {
+    storage.remove(LIVE_KEY);
+  } catch {
+    return;
+  }
 }
