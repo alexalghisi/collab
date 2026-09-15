@@ -102,7 +102,7 @@ export function TeamChatScreen({ chat, selfId }: TeamChatScreenProps) {
       <MessageThread
         messages={chat.messages}
         selfId={selfId}
-        onSend={(text) => void chat.send(text)}
+        onSend={({ text }) => void chat.send(text)}
         placeholder={`Message #${active.name}`}
         emptyText="This channel is quiet. Start the conversation."
       />
