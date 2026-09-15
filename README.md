@@ -79,7 +79,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared notes** that every participant can edit, and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in).
-- **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that executes the room's code — JavaScript, TypeScript, Python or Go — in a network-less, resource-capped, throwaway sandbox and streams the output to everyone.
+- **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that executes the room's code — JavaScript, TypeScript, Python, Go or C++ — in a network-less, resource-capped, throwaway sandbox and streams the output to everyone.
 - **Meeting assistant**: an in-call panel that answers questions from the live transcript, notes and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Local recording** (web): captures your video together with the mixed audio of every participant and downloads a `.webm` file when stopped.
@@ -193,15 +193,20 @@ limited per room and per participant on the server, and a participant the host
 removed cannot run anything at all.
 
 JavaScript, TypeScript and Python run on the stock `node:22-alpine` and
-`python:3.12-alpine` images. Go needs one image built up front, because a cold
-`go run` compiles the standard library and spends about 50 seconds doing it:
+`python:3.12-alpine` images. Go and C++ each need one image built up front.
+Go, because a cold `go run` compiles the standard library and spends about 50
+seconds doing it; C++, because `g++` has to compile then run without putting
+the submission through a shell:
 
 ```bash
 docker build -f server/sandbox/go.Dockerfile -t collab-sandbox-go server/sandbox
+docker build -f server/sandbox/cpp.Dockerfile -t collab-sandbox-cpp server/sandbox
 ```
 
-That image ships a populated build cache, which each run gets as its own
+The Go image ships a populated build cache, which each run gets as its own
 throwaway copy — around three seconds for a Go submission instead of a minute.
+The C++ image ships `g++` and a tiny wrapper that writes the binary to `/tmp`
+and execs it.
 
 Both transports use the same service: the Socket.IO path relays `code:run` and
 streams `code:output` to everyone in the room, and the Firestore path posts to
