@@ -1,5 +1,19 @@
 const DEFAULT_PORT = '4000';
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+/** Static hosts cannot run the signaling process, so they must not same-origin. */
+const STATIC_HOST_SUFFIXES = [
+  'github.io',
+  'gitlab.io',
+  'netlify.app',
+  'vercel.app',
+  'pages.dev',
+];
+
+function isStaticHost(hostname: string): boolean {
+  return STATIC_HOST_SUFFIXES.some(
+    (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`),
+  );
+}
 
 /** Enough of `window.location` to pick a host the page can actually reach. */
 export interface PageLocation {
@@ -41,7 +55,12 @@ export function resolveSignalingUrl(
     const scheme = location.protocol === 'https:' ? 'https' : 'http';
     return `${scheme}://${location.hostname}:${DEFAULT_PORT}`;
   }
-  return `http://localhost:${DEFAULT_PORT}`;
+  // github.io and other static hosts have no signaling process. A tunnel or
+  // custom domain that served this page is the signaling origin itself.
+  if (isStaticHost(location.hostname)) {
+    return `http://localhost:${DEFAULT_PORT}`;
+  }
+  return stripTrailingSlash(location.origin);
 }
 
 function stripTrailingSlash(url: string): string {

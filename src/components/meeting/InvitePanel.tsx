@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { InviteError, type ParsedContact } from '../../meeting/contact';
-import { shareInvite } from '../../meeting/invite';
+import { buildInviteLink, shareInvite } from '../../meeting/invite';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { SidePanel } from './SidePanel';
@@ -75,7 +75,10 @@ export function InvitePanel({ roomId, onSend, onClose }: InvitePanelProps) {
         {status && <Text style={styles.status}>{status}</Text>}
         {error && <Text style={styles.error}>{error}</Text>}
         <View style={styles.copy}>
-          <Text style={styles.copyHint}>Or share the link yourself.</Text>
+          <Text style={styles.copyHint}>Or share this link yourself.</Text>
+          <Text selectable style={styles.link}>
+            {buildInviteLink(roomId)}
+          </Text>
           <Button
             label={copied ? 'Copied' : 'Copy link'}
             icon={copied ? 'checkmark' : 'link-outline'}
@@ -127,5 +130,10 @@ const styles = StyleSheet.create({
   copyHint: {
     color: colors.textSubtle,
     fontSize: 13,
+  },
+  link: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

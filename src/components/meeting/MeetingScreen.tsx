@@ -19,9 +19,6 @@ import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
 import { InvitePanel } from './InvitePanel';
 import { CodePanel } from './CodePanel';
-import { AssistantPanel } from './AssistantPanel';
-import { NotesPanel } from './NotesPanel';
-import { TranscriptPanel } from './TranscriptPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
 import { ToolbarButton } from './ToolbarButton';
@@ -34,7 +31,7 @@ export interface MeetingScreenProps {
   displayName: string;
 }
 
-type Panel = 'participants' | 'chat' | 'notes' | 'transcript' | 'assistant' | 'invite' | null;
+type Panel = 'participants' | 'chat' | 'invite' | null;
 /** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
 type Stage = 'grid' | 'whiteboard' | 'code';
 
@@ -54,7 +51,7 @@ function columnsFor(tileCount: number, width: number): number {
 
 export function MeetingScreen({ session, roomId, displayName }: MeetingScreenProps) {
   const { width } = useWindowDimensions();
-  const [panel, setPanel] = useState<Panel>(null);
+  const [panel, setPanel] = useState<Panel>('invite');
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [stage, setStage] = useState<Stage>('grid');
   const [readCount, setReadCount] = useState(0);
@@ -125,7 +122,9 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
         <View style={styles.headerText}>
           <Text style={styles.roomTitle}>{session.roomId ?? roomId}</Text>
           <Text style={styles.roomMeta}>
-            {tileCount} participant{tileCount === 1 ? '' : 's'}
+            {tileCount === 1
+              ? 'Only you so far — send the invite on the right'
+              : `${tileCount} participants`}
             {session.breakoutOf ? ` · breakout room of ${session.breakoutOf}` : ''}
           </Text>
         </View>
@@ -210,28 +209,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
                 onClose={() => setPanel(null)}
               />
             )}
-            {panel === 'notes' && (
-              <NotesPanel
-                notes={session.notes}
-                onChange={session.updateNotes}
-                onClose={() => setPanel(null)}
-              />
-            )}
-            {panel === 'transcript' && (
-              <TranscriptPanel
-                segments={session.transcript}
-                captionsOn={session.captionsOn}
-                error={session.captionError}
-                onClose={() => setPanel(null)}
-              />
-            )}
-            {panel === 'assistant' && (
-              <AssistantPanel
-                turns={session.assistantTurns}
-                onAsk={session.askAssistant}
-                onClose={() => setPanel(null)}
-              />
-            )}
             {panel === 'invite' && (
               <InvitePanel
                 roomId={roomId}
@@ -305,30 +282,6 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
           label="Code"
           active={stage === 'code'}
           onPress={() => toggleStage('code')}
-        />
-        <ToolbarButton
-          icon="document-text-outline"
-          label="Notes"
-          active={panel === 'notes'}
-          onPress={() => togglePanel('notes')}
-        />
-        <ToolbarButton
-          icon={session.captionsOn ? 'mic-circle' : 'mic-circle-outline'}
-          label={session.captionsOn ? 'Captions on' : 'Captions'}
-          active={session.captionsOn}
-          onPress={session.toggleCaptions}
-        />
-        <ToolbarButton
-          icon="text-outline"
-          label="Transcript"
-          active={panel === 'transcript'}
-          onPress={() => togglePanel('transcript')}
-        />
-        <ToolbarButton
-          icon="sparkles-outline"
-          label="Assistant"
-          active={panel === 'assistant'}
-          onPress={() => togglePanel('assistant')}
         />
         <ToolbarButton
           icon="people"
