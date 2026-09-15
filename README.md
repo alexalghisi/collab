@@ -12,8 +12,32 @@
 
 ---
 
+## Use it now (Zoom-style call)
+
+Open the hosted app in a browser. No install.
+
+| What                 | URL                                          |
+| -------------------- | -------------------------------------------- |
+| **App**              | https://alexalghisi.github.io/collab         |
+| **Signaling server** | https://collab-signaling.onrender.com        |
+| Server health        | https://collab-signaling.onrender.com/health |
+
+The web app already points at that server (`EXPO_PUBLIC_SIGNALING_URL`). You do not type the server URL into the meeting screen.
+
+**Call someone (for example a child on another phone or laptop):**
+
+1. You open https://alexalghisi.github.io/collab and sign in (email, or Continue with Google once a Google client ID is set).
+2. Click **New meeting**. Allow camera and microphone.
+3. Copy the link from the address bar (it looks like `…/collab/?room=abc-defg-hij`) or use **Copy link** in the call.
+4. Send that link (WhatsApp, SMS, email). The other person opens it, signs in, and joins the same room.
+
+The first join after the server has been idle can take about a minute — Render’s free instance sleeps. A `200` from `/health` means it is awake.
+
+---
+
 ## Table of contents
 
+- [Use it now (Zoom-style call)](#use-it-now-zoom-style-call)
 - [Download & run (for recruiters)](#download--run-for-recruiters)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -391,10 +415,10 @@ deployed app has to be told at build time how rooms are coordinated. Pick one:
 process and hold a WebSocket open. [`render.yaml`](render.yaml) is a Render
 blueprint for exactly that (_New → Blueprint_, point it at this repository); it
 builds [`server/Dockerfile`](server/Dockerfile) and health-checks `/health`.
-Then add the public URL as the repository **variable**
-`EXPO_PUBLIC_SIGNALING_URL` (for example `https://collab-signaling.onrender.com`)
-and re-run the workflow. Restrict the server to your own origin with the
-`CORS_ORIGIN` environment variable; it defaults to `*`. For **Continue with
+The live service is **https://collab-signaling.onrender.com**; the Pages build
+already uses it via the repository variable `EXPO_PUBLIC_SIGNALING_URL`. Restrict
+the server to your own origin with the `CORS_ORIGIN` environment variable; it
+defaults to `*`. For **Continue with
 Google**, set the repository variable `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` and
 the Render environment variable `GOOGLE_CLIENT_ID` to the same Web client ID.
 
