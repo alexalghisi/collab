@@ -8,7 +8,8 @@ import {
   type User,
 } from 'firebase/auth';
 import { firebaseAuth as firebase } from '../firebase/app';
-import { loginAccount, registerAccount, restoreAccount } from './serverAccount';
+import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
+import { requestGoogleCredential } from './googleWeb';
 import { clearSessionToken, readSessionToken, writeSessionToken } from './session';
 import type { AuthState, AuthUser, SocialProvider } from './types';
 
@@ -64,8 +65,22 @@ export function useAuth(): AuthState {
   }, []);
 
   const signIn = useCallback(async (provider: SocialProvider) => {
+    if (provider === 'google') {
+      setError(null);
+      try {
+        const credential = await requestGoogleCredential();
+        const session = await loginWithGoogle(credential);
+        writeSessionToken(session.token);
+        setUser(session.user);
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : 'Google sign-in failed. Please try again.',
+        );
+      }
+      return;
+    }
     if (!firebase) {
-      setError('Social sign-in is not configured on this deployment.');
+      setError('Facebook sign-in is not configured on this deployment.');
       return;
     }
     setError(null);
@@ -96,7 +111,9 @@ export function useAuth(): AuthState {
         setUser(session.user);
       } catch (cause) {
         setError(
-          cause instanceof Error ? cause.message : 'Could not create your account. Please try again.',
+          cause instanceof Error
+            ? cause.message
+            : 'Could not create your account. Please try again.',
         );
       }
     },
@@ -115,7 +132,7 @@ export function useAuth(): AuthState {
     initializing,
     user,
     error,
-    social: { google: firebase !== null, facebook: firebase !== null },
+    social: { google: true, facebook: firebase !== null },
     signIn,
     signInWithEmail,
     createAccount,

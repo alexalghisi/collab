@@ -4,7 +4,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import type { AuthSessionResult } from 'expo-auth-session';
 import { readNativeAuthConfig } from './config';
-import { loginAccount, registerAccount, restoreAccount } from './serverAccount';
+import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
 import { clearSessionToken, readSessionToken, writeSessionToken } from './session';
 import type { AuthState, AuthUser, SocialProvider } from './types';
 
@@ -70,7 +70,31 @@ export function useAuth(): AuthState {
       if (!result || result.type === 'cancel' || result.type === 'dismiss') {
         return;
       }
-      const accessToken = result.type === 'success' ? result.authentication?.accessToken : null;
+      const authentication = result.type === 'success' ? result.authentication : null;
+      const idToken = authentication?.idToken;
+      const accessToken = authentication?.accessToken;
+      if (idToken) {
+        try {
+          const session = await loginWithGoogle({ idToken });
+          writeSessionToken(session.token);
+          setUser(session.user);
+          setError(null);
+        } catch {
+          setError(SIGN_IN_ERROR);
+        }
+        return;
+      }
+      if (accessToken && fetchUser === fetchGoogleUser) {
+        try {
+          const session = await loginWithGoogle({ accessToken });
+          writeSessionToken(session.token);
+          setUser(session.user);
+          setError(null);
+        } catch {
+          setError(SIGN_IN_ERROR);
+        }
+        return;
+      }
       if (!accessToken) {
         setError(SIGN_IN_ERROR);
         return;

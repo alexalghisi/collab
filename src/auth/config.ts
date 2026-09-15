@@ -2,8 +2,7 @@ import type { FirebaseOptions } from 'firebase/app';
 
 /**
  * Reads the Firebase web configuration from public environment variables.
- * Returns null when the project is not configured, which keeps the app
- * usable as an open guest lobby until credentials are provided.
+ * Returns null when the project is not configured.
  */
 export function readFirebaseConfig(): FirebaseOptions | null {
   const apiKey = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
@@ -16,6 +15,11 @@ export function readFirebaseConfig(): FirebaseOptions | null {
   }
 
   return { apiKey, authDomain, projectId, appId };
+}
+
+export function readGoogleWebClientId(): string | null {
+  const id = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
+  return id && id.length > 0 ? id : null;
 }
 
 export interface GoogleClientIds {
@@ -33,8 +37,7 @@ export interface NativeAuthConfig {
  * Reads the native OAuth client IDs from public environment variables.
  * On mobile, social sign-in runs through Expo AuthSession rather than the
  * Firebase web popup, so it needs the platform client IDs (Google) and/or a
- * Facebook app ID. Returns null when no provider is configured, which keeps
- * the app usable as an open guest lobby.
+ * Facebook app ID. Returns null when no provider is configured.
  */
 export function readNativeAuthConfig(): NativeAuthConfig | null {
   const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;

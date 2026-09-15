@@ -1,5 +1,5 @@
 import { SIGNALING_URL } from '../signaling/config';
-import type { AuthUser } from './types';
+import type { AuthUser, GoogleCredential } from './types';
 
 export interface AuthSession {
   readonly token: string;
@@ -66,6 +66,14 @@ export async function loginAccount(email: string, password: string): Promise<Aut
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function loginWithGoogle(credential: GoogleCredential): Promise<AuthSession> {
+  return request('/auth/google', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credential),
   });
 }
 
