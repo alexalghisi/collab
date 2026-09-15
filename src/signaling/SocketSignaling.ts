@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import type { FileAttachment } from '../files/attachments';
 import { postFile, type UploadableFile, type UploadProgress } from '../files/upload';
+import { readSessionToken } from '../auth/session';
 import { sendContactInvite } from '../meeting/sendInvite';
 import type { ClientToServerEvents, ServerToClientEvents } from './events';
 import {
@@ -48,6 +49,7 @@ class SocketChannel implements SignalingChannel {
       autoConnect: false,
       reconnectionAttempts: 8,
       reconnectionDelay: 750,
+      auth: { token: readSessionToken() ?? '' },
     });
     this.raw = this.socket as unknown as RawSocket;
   }
@@ -68,6 +70,7 @@ class SocketChannel implements SignalingChannel {
           return;
         }
         settled = true;
+        clearTimeout(timer);
         this.socket.off('connect_error', onError);
         if (error) {
           reject(error);
@@ -83,6 +86,8 @@ class SocketChannel implements SignalingChannel {
           finish(new SignalingUnavailableError(this.url));
         }
       };
+      // Remote URLs can sit in "connecting" forever if the host is gone.
+      const timer = setTimeout(() => finish(new SignalingUnavailableError(this.url)), 12_000);
       this.socket.on('connect_error', onError);
       this.socket.once('room:joined', () => finish());
       this.socket.once('room:denied', () => finish(new AdmissionDeniedError()));

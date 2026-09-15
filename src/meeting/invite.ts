@@ -8,7 +8,15 @@ export function readRoomFromLink(): string | null {
 }
 
 export function buildInviteLink(roomId: string): string {
-  const url = new URL(window.location.href);
+  const base = process.env.EXPO_PUBLIC_APP_URL?.trim();
+  let url: URL;
+  try {
+    url = base
+      ? new URL(base.includes('://') ? base : `https://${base}`)
+      : new URL(window.location.href);
+  } catch {
+    url = new URL(window.location.href);
+  }
   url.search = new URLSearchParams({ [ROOM_PARAM]: roomId }).toString();
   return url.toString();
 }
