@@ -90,6 +90,41 @@ function requestAccessToken(api: GoogleIdentity, clientId: string): Promise<stri
   });
 }
 
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
+export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): Promise<string> {
+  const clientId = readGoogleWebClientId();
+  if (!clientId) {
+    throw new Error('Google Calendar is not configured on this deployment.');
+  }
+  await loadScript();
+  const api = googleApi();
+  const oauth = api?.oauth2;
+  if (!oauth) {
+    throw new Error('Could not load Google Sign-In.');
+  }
+  return new Promise((resolve, reject) => {
+    const client = oauth.initTokenClient({
+      client_id: clientId,
+      scope: CALENDAR_SCOPE,
+      callback: (response) => {
+        if (response.access_token) {
+          resolve(response.access_token);
+          return;
+        }
+        reject(
+          new Error(
+            response.error === 'access_denied'
+              ? 'Google Calendar access was not granted.'
+              : response.error || 'Google Calendar access was cancelled.',
+          ),
+        );
+      },
+    });
+    client.requestAccessToken({ prompt });
+  });
+}
+
 export async function requestGoogleCredential(): Promise<GoogleCredential> {
   const clientId = readGoogleWebClientId();
   if (!clientId) {
