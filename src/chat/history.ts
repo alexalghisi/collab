@@ -23,16 +23,19 @@ function isChatMessage(value: unknown): value is ChatMessage {
   );
 }
 
+export function chatMessagesOf(value: unknown): ChatMessage[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isChatMessage);
+}
+
 export function parseChatMessages(raw: string | null): ChatMessage[] {
   if (!raw) {
     return [];
   }
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter(isChatMessage);
+    return chatMessagesOf(JSON.parse(raw));
   } catch {
     return [];
   }
