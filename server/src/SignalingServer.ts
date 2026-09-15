@@ -28,6 +28,8 @@ export interface SocketData {
   sessionId?: string;
   roomId?: string;
   displayName?: string;
+  accountName?: string;
+  accountId?: string;
   joinedAt?: number;
   state?: PeerState;
   /** Set while the socket sits in a waiting room instead of the room itself. */
@@ -217,7 +219,7 @@ function registerSocket(
 
   socket.on('room:join', async ({ sessionId, roomId, displayName, state, breakoutOf }) => {
     socket.data.sessionId = sessionId;
-    socket.data.displayName = displayName;
+    socket.data.displayName = socket.data.accountName || displayName;
     socket.data.state = state;
     if (breakoutOf) {
       await socket.join(breakoutChannel(breakoutOf));

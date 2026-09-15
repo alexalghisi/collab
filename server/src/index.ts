@@ -9,6 +9,8 @@ import { MAX_CODE_BYTES, MAX_STDIN_BYTES } from '../../src/code/execution';
 import { assistantRouter } from './assistant/router';
 import { searchRouter } from './assistant/searchRouter';
 import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
+import { authRouter } from './auth/router';
+import { verifyToken } from './auth/tokens';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
 import { filesRouter } from './files/router';
@@ -62,6 +64,7 @@ const assistant = createMeetingAssistant();
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
 });
+app.use(authRouter({ root: ROOT }));
 app.use(executionRouter(execution));
 app.use(assistantRouter(assistant));
 app.use(searchRouter(meetingIndexStore()));
@@ -69,12 +72,21 @@ app.use(filesRouter({ store: files, membership: isAdmitted }));
 app.use(inviteRouter({ membership: isAdmitted, transport: transportFromEnv() }));
 
 if (existsSync(WEB_ROOT)) {
-  app.use(express.static(WEB_ROOT));
+  app.use(
+    express.static(WEB_ROOT, {
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-store');
+        }
+      },
+    }),
+  );
   app.use((req, res, next) => {
     if (req.method !== 'GET' || req.path.startsWith('/socket.io')) {
       next();
       return;
     }
+    res.setHeader('Cache-Control', 'no-store');
     res.sendFile(join(WEB_ROOT, 'index.html'));
   });
 }
@@ -82,6 +94,16 @@ if (existsSync(WEB_ROOT)) {
 const httpServer = createServer(app);
 const io: CollabServer = new Server(httpServer, {
   cors: { origin: CORS_ORIGIN },
+});
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  const session = verifyToken(typeof token === 'string' ? token : undefined);
+  if (session) {
+    socket.data.accountName = session.displayName;
+    socket.data.accountId = session.uid;
+  }
+  next();
 });
 
 registerSignalingHandlers(io, execution, assistant);

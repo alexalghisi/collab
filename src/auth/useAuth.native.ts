@@ -4,9 +4,10 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import type { AuthSessionResult } from 'expo-auth-session';
 import { readNativeAuthConfig } from './config';
+import { loginAccount, registerAccount, restoreAccount } from './serverAccount';
+import { clearSessionToken, readSessionToken, writeSessionToken } from './session';
 import type { AuthState, AuthUser, SocialProvider } from './types';
 
-// Finalises the auth session when the app is reopened from the browser redirect.
 WebBrowser.maybeCompleteAuthSession();
 
 const config = readNativeAuthConfig();
@@ -19,7 +20,7 @@ async function fetchGoogleUser(accessToken: string): Promise<AuthUser> {
   const profile = await response.json();
   return {
     uid: profile.id,
-    displayName: profile.name ?? profile.email ?? 'Guest',
+    displayName: profile.name ?? profile.email ?? 'Member',
     email: profile.email ?? null,
     photoURL: profile.picture ?? null,
   };
@@ -32,14 +33,14 @@ async function fetchFacebookUser(accessToken: string): Promise<AuthUser> {
   const profile = await response.json();
   return {
     uid: profile.id,
-    displayName: profile.name ?? profile.email ?? 'Guest',
+    displayName: profile.name ?? profile.email ?? 'Member',
     email: profile.email ?? null,
     photoURL: profile.picture?.data?.url ?? null,
   };
 }
 
 export function useAuth(): AuthState {
-  const enabled = config !== null;
+  const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +52,18 @@ export function useAuth(): AuthState {
   const [, facebookResponse, promptFacebook] = Facebook.useAuthRequest({
     clientId: config?.facebookAppId ?? undefined,
   });
+
+  useEffect(() => {
+    const token = readSessionToken();
+    if (!token) {
+      setInitializing(false);
+      return;
+    }
+    void restoreAccount(token)
+      .then((restored) => setUser(restored))
+      .catch(() => clearSessionToken())
+      .finally(() => setInitializing(false));
+  }, []);
 
   const resolve = useCallback(
     async (result: AuthSessionResult | null, fetchUser: (token: string) => Promise<AuthUser>) => {
@@ -88,9 +101,44 @@ export function useAuth(): AuthState {
     [promptGoogle, promptFacebook],
   );
 
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    setError(null);
+    try {
+      const session = await loginAccount(email, password);
+      writeSessionToken(session.token);
+      setUser(session.user);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : SIGN_IN_ERROR);
+    }
+  }, []);
+
+  const createAccount = useCallback(
+    async (input: { displayName: string; email: string; password: string }) => {
+      setError(null);
+      try {
+        const session = await registerAccount(input);
+        writeSessionToken(session.token);
+        setUser(session.user);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Could not create your account.');
+      }
+    },
+    [],
+  );
+
   const signOut = useCallback(async () => {
+    clearSessionToken();
     setUser(null);
   }, []);
 
-  return { enabled, initializing: false, user, error, signIn, signOut };
+  return {
+    initializing,
+    user,
+    error,
+    social: { google: Boolean(config?.google), facebook: Boolean(config?.facebookAppId) },
+    signIn,
+    signInWithEmail,
+    createAccount,
+    signOut,
+  };
 }

@@ -21,6 +21,9 @@ desktop/dist/
 desktop/out/
 desktop/web/
 
+# Local account store used by the signaling server
+data/
+
 # Environment
 .env
 .env.local
