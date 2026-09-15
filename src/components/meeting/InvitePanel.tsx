@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { createElement, useState } from 'react';
+import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { InviteError, type ParsedContact } from '../../meeting/contact';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
 import { colors } from '../../theme';
@@ -76,9 +76,28 @@ export function InvitePanel({ roomId, onSend, onClose }: InvitePanelProps) {
         {error && <Text style={styles.error}>{error}</Text>}
         <View style={styles.copy}>
           <Text style={styles.copyHint}>Or share this link yourself.</Text>
-          <Text selectable style={styles.link}>
-            {buildInviteLink(roomId)}
-          </Text>
+          {Platform.OS === 'web' ? (
+            createElement(
+              'a',
+              {
+                href: buildInviteLink(roomId),
+                target: '_blank',
+                rel: 'noopener noreferrer',
+                style: {
+                  color: '#93c5fd',
+                  fontSize: 13,
+                  lineHeight: '18px',
+                  textDecoration: 'underline',
+                  wordBreak: 'break-all',
+                },
+              },
+              buildInviteLink(roomId),
+            )
+          ) : (
+            <Text selectable style={styles.link}>
+              {buildInviteLink(roomId)}
+            </Text>
+          )}
           <Button
             label={copied ? 'Copied' : 'Copy link'}
             icon={copied ? 'checkmark' : 'link-outline'}
