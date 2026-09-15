@@ -8,7 +8,7 @@ export interface ChatDraft {
   readonly file: FileAttachment | null;
 }
 
-function isFileAttachment(value: unknown): value is FileAttachment {
+export function isFileAttachment(value: unknown): value is FileAttachment {
   const { id, name, mimeType, size, url } = (value ?? {}) as Partial<FileAttachment>;
   return (
     typeof id === 'string' &&

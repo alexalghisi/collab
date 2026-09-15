@@ -118,6 +118,7 @@ export interface RoomJoinedPayload {
    * here, the way they do for whiteboard strokes.
    */
   readonly transcript: TranscriptSegment[];
+  readonly messages: ChatMessage[];
 }
 
 export interface OutgoingSdpPayload {
