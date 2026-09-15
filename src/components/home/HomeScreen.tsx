@@ -11,7 +11,6 @@ import type { IconName } from '../ui/icons';
 
 export interface HomeScreenProps {
   displayName: string;
-  onDisplayNameChange: (value: string) => void;
   roomId: string;
   onRoomIdChange: (value: string) => void;
   onJoin: (roomId: string, video: boolean) => void;
@@ -58,7 +57,6 @@ function ActionCard({ icon, title, subtitle, color, onPress, disabled = false }:
 
 export function HomeScreen({
   displayName,
-  onDisplayNameChange,
   roomId,
   onRoomIdChange,
   onJoin,
@@ -85,15 +83,6 @@ export function HomeScreen({
           {formatLongDay(now)} · {formatTime(now.getTime())}
         </Text>
       </View>
-
-      <TextInput
-        style={styles.input}
-        value={displayName}
-        onChangeText={onDisplayNameChange}
-        placeholder="Your name (shown to other participants)"
-        placeholderTextColor={colors.textSubtle}
-        autoCapitalize="words"
-      />
 
       <View style={styles.cards}>
         <ActionCard
@@ -140,6 +129,11 @@ export function HomeScreen({
             disabled={!canJoin}
           />
         </View>
+        {connecting && (
+          <Text style={styles.connecting}>
+            Connecting… allow the camera and microphone if the browser asks.
+          </Text>
+        )}
         {error && <Text style={styles.error}>{error}</Text>}
       </View>
 
@@ -236,6 +230,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+  },
+  connecting: {
+    color: colors.textMuted,
   },
   error: {
     color: '#f87171',

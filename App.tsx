@@ -13,7 +13,7 @@ import { useMeetingSearch } from './src/search/useMeetingSearch';
 import { CalendarScreen } from './src/components/calendar/CalendarScreen';
 import { TeamChatScreen } from './src/components/chat/TeamChatScreen';
 import { HomeScreen } from './src/components/home/HomeScreen';
-import { LoginScreen } from './src/components/LoginScreen';
+import { AuthScreen } from './src/components/auth/AuthScreen';
 import { MeetingScreen } from './src/components/meeting/MeetingScreen';
 import { WaitingScreen } from './src/components/meeting/WaitingScreen';
 import { MeetingsScreen } from './src/components/meetings/MeetingsScreen';
@@ -39,7 +39,7 @@ export default function App() {
   useEffect(() => {
     const name = auth.user?.displayName;
     if (name) {
-      setDisplayName((current) => current || name);
+      setDisplayName(name);
     }
   }, [auth.user]);
 
@@ -81,7 +81,7 @@ export default function App() {
     setView('meetings');
   };
 
-  if (auth.enabled && auth.initializing) {
+  if (auth.initializing) {
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
@@ -89,8 +89,16 @@ export default function App() {
     );
   }
 
-  if (auth.enabled && !auth.user) {
-    return <LoginScreen onSignIn={auth.signIn} error={auth.error} />;
+  if (!auth.user) {
+    return (
+      <AuthScreen
+        onSignIn={(provider) => void auth.signIn(provider)}
+        onSignInWithEmail={auth.signInWithEmail}
+        onCreateAccount={auth.createAccount}
+        social={auth.social}
+        error={auth.error}
+      />
+    );
   }
 
   if (session.status === 'waiting') {
@@ -123,7 +131,6 @@ export default function App() {
         {view === 'home' && (
           <HomeScreen
             displayName={displayName}
-            onDisplayNameChange={setDisplayName}
             roomId={roomId}
             onRoomIdChange={setRoomId}
             onJoin={(nextRoomId, video) => void joinRoom(nextRoomId, video)}
