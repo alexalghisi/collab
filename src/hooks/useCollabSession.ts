@@ -359,10 +359,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         selfPeerIdRef.current = room.selfPeerId;
         setSelfPeerId(room.selfPeerId);
         setHostPeerId(room.hostPeerId);
-        setParticipants(room.peers.map(toParticipant));
-        setStrokes(room.strokes);
-        setNotes(room.notes);
-        setTranscript(room.transcript);
+        setParticipants((room.peers ?? []).map(toParticipant));
+        setStrokes(room.strokes ?? []);
+        setNotes(room.notes ?? '');
+        setTranscript(room.transcript ?? []);
         setMessages((current) => {
           const next = mergeChatHistory(current, room.messages);
           saveChatHistory(nextRoomId, next);
