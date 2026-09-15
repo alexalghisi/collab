@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
-import { loadChatHistory, mergeChatHistory, saveChatHistory } from '../chat/history';
+import { mergeChatHistory } from '../chat/history';
 import type { ChatDraft } from '../chat/messages';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
@@ -10,6 +10,12 @@ import { AttachmentError, type UploadableFile, type UploadProgress } from '../fi
 import { InviteError, type ParsedContact } from '../meeting/contact';
 import { buildInviteLink } from '../meeting/invite';
 import { clearLiveMeeting, readLiveMeeting, writeLiveMeeting } from '../meeting/resume';
+import {
+  loadRoomSnapshot,
+  mergeStrokes,
+  mergeTranscript,
+  saveRoomSnapshot,
+} from '../meeting/snapshot';
 import { createSpeechCapture } from '../transcript/speech';
 import type { TranscriptSegment } from '../transcript/segments';
 import {
@@ -107,7 +113,8 @@ export interface CollabSession {
   readonly waiting: WaitingPeer[];
   /** Resolves to true once connected, false when media or signaling failed. */
   join: (options: JoinOptions) => Promise<boolean>;
-  leave: () => void;
+  /** `keepLive` leaves media so a refresh can put this participant back in the same room. */
+  leave: (options?: { keepLive?: boolean }) => void;
   returnToMain: () => void;
   toggleMic: () => void;
   toggleCamera: () => Promise<void>;
@@ -192,6 +199,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const settingsRef = useRef<RoomSettings>(DEFAULT_ROOM_SETTINGS);
   const displayNameRef = useRef('');
   const sessionIdRef = useRef('');
+  const roomIdRef = useRef<string | null>(null);
   /** Room handlers need APIs defined after them; the effect below keeps this current. */
   const commandRef = useRef<(command: HostCommand) => void>(() => {});
   /** Camera track parked while the screen is being shared. */
@@ -298,33 +306,39 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     setCaptionsOn(true);
   }, []);
 
-  const leave = useCallback(() => {
-    disconnectRoom();
+  const leave = useCallback(
+    (options?: { keepLive?: boolean }) => {
+      disconnectRoom();
 
-    if (reactionTimerRef.current) {
-      clearTimeout(reactionTimerRef.current);
-      reactionTimerRef.current = null;
-    }
+      if (reactionTimerRef.current) {
+        clearTimeout(reactionTimerRef.current);
+        reactionTimerRef.current = null;
+      }
 
-    for (const track of [
-      ...(streamRef.current?.getTracks() ?? []),
-      parkedCameraRef.current,
-      screenTrackRef.current,
-    ]) {
-      track?.stop();
-    }
-    streamRef.current = null;
-    parkedCameraRef.current = null;
-    screenTrackRef.current = null;
-    selfRef.current = INITIAL_PEER_STATE;
+      for (const track of [
+        ...(streamRef.current?.getTracks() ?? []),
+        parkedCameraRef.current,
+        screenTrackRef.current,
+      ]) {
+        track?.stop();
+      }
+      streamRef.current = null;
+      parkedCameraRef.current = null;
+      screenTrackRef.current = null;
+      selfRef.current = INITIAL_PEER_STATE;
 
-    setLocalStream(null);
-    setSelf(INITIAL_PEER_STATE);
-    setRoomId(null);
-    setBreakoutOf(null);
-    setStatus('idle');
-    clearLiveMeeting();
-  }, [disconnectRoom]);
+      setLocalStream(null);
+      setSelf(INITIAL_PEER_STATE);
+      setRoomId(null);
+      roomIdRef.current = null;
+      setBreakoutOf(null);
+      setStatus('idle');
+      if (!options?.keepLive) {
+        clearLiveMeeting();
+      }
+    },
+    [disconnectRoom],
+  );
 
   /** Connects the already acquired local media to `nextRoomId`. */
   const connectRoom = useCallback(
@@ -344,7 +358,18 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         breakoutOf: mainRoomId,
       });
       signalingRef.current = signaling;
-      setMessages(loadChatHistory(nextRoomId));
+      roomIdRef.current = nextRoomId;
+      writeLiveMeeting({
+        roomId: nextRoomId,
+        sessionId: sessionIdRef.current,
+        displayName: displayNameRef.current,
+        video: !selfRef.current.videoOff,
+      });
+      const snapshot = loadRoomSnapshot(nextRoomId);
+      setMessages(snapshot.messages);
+      setStrokes(snapshot.strokes);
+      setNotes(snapshot.notes);
+      setTranscript(snapshot.transcript);
 
       const sharedCode = new SharedCodeDocument(signaling, {
         peerId: sessionIdRef.current,
@@ -360,12 +385,24 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setSelfPeerId(room.selfPeerId);
         setHostPeerId(room.hostPeerId);
         setParticipants((room.peers ?? []).map(toParticipant));
-        setStrokes(room.strokes ?? []);
-        setNotes(room.notes ?? '');
-        setTranscript(room.transcript ?? []);
+        setStrokes((current) => {
+          const next = mergeStrokes(current, room.strokes);
+          saveRoomSnapshot(nextRoomId, { strokes: next });
+          return next;
+        });
+        setNotes((current) => {
+          const next = room.notes && room.notes.length > 0 ? room.notes : current;
+          saveRoomSnapshot(nextRoomId, { notes: next });
+          return next;
+        });
+        setTranscript((current) => {
+          const next = mergeTranscript(current, room.transcript);
+          saveRoomSnapshot(nextRoomId, { transcript: next });
+          return next;
+        });
         setMessages((current) => {
           const next = mergeChatHistory(current, room.messages);
-          saveChatHistory(nextRoomId, next);
+          saveRoomSnapshot(nextRoomId, { messages: next });
           return next;
         });
         if (room.code) {
@@ -393,24 +430,41 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('chat:message', (message) => {
         setMessages((current) => {
           const next = mergeChatHistory(current, [message]);
-          saveChatHistory(nextRoomId, next);
+          saveRoomSnapshot(nextRoomId, { messages: next });
           return next;
         });
       });
       // Firestore echoes our own strokes back, so adding is keyed by id.
       signaling.on('board:stroke', (stroke) => {
-        setStrokes((current) =>
-          current.some((existing) => existing.id === stroke.id) ? current : [...current, stroke],
-        );
+        setStrokes((current) => {
+          if (current.some((existing) => existing.id === stroke.id)) {
+            return current;
+          }
+          const next = [...current, stroke];
+          saveRoomSnapshot(nextRoomId, { strokes: next });
+          return next;
+        });
       });
       signaling.on('board:remove', (strokeIds) => {
-        setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
+        setStrokes((current) => {
+          const next = current.filter((stroke) => !strokeIds.includes(stroke.id));
+          saveRoomSnapshot(nextRoomId, { strokes: next });
+          return next;
+        });
       });
-      signaling.on('notes:update', setNotes);
+      signaling.on('notes:update', (text) => {
+        setNotes(text);
+        saveRoomSnapshot(nextRoomId, { notes: text });
+      });
       signaling.on('transcript:segment', (segment) => {
-        setTranscript((current) =>
-          current.some((existing) => existing.id === segment.id) ? current : [...current, segment],
-        );
+        setTranscript((current) => {
+          if (current.some((existing) => existing.id === segment.id)) {
+            return current;
+          }
+          const next = [...current, segment];
+          saveRoomSnapshot(nextRoomId, { transcript: next });
+          return next;
+        });
       });
       signaling.on('assistant:token', ({ requestId, text }) => {
         setAssistantTurns((current) =>
@@ -478,7 +532,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         beginCaptions();
         return true;
       } catch (cause) {
-        leave();
+        leave({ keepLive: true });
         setError(joinErrorMessage(cause));
         setStatus('error');
         return false;
@@ -509,7 +563,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       displayNameRef.current = displayName;
       const live = readLiveMeeting();
       sessionIdRef.current = live?.roomId === nextRoomId ? live.sessionId : randomUUID();
-      writeLiveMeeting({ roomId: nextRoomId, sessionId: sessionIdRef.current });
+      writeLiveMeeting({
+        roomId: nextRoomId,
+        sessionId: sessionIdRef.current,
+        displayName,
+        video,
+      });
 
       return connectRoom(nextRoomId);
     },
@@ -638,20 +697,38 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const addStroke = useCallback(
     (draft: Omit<Stroke, 'id' | 'peerId'>) => {
       const stroke: Stroke = { ...draft, id: randomUUID(), peerId: selfPeerId ?? 'self' };
-      setStrokes((current) => [...current, stroke]);
+      setStrokes((current) => {
+        const next = [...current, stroke];
+        const id = roomIdRef.current;
+        if (id) {
+          saveRoomSnapshot(id, { strokes: next });
+        }
+        return next;
+      });
       signalingRef.current?.emit('board:stroke', stroke);
     },
     [selfPeerId],
   );
 
   const removeStrokes = useCallback((strokeIds: string[]) => {
-    setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
+    setStrokes((current) => {
+      const next = current.filter((stroke) => !strokeIds.includes(stroke.id));
+      const id = roomIdRef.current;
+      if (id) {
+        saveRoomSnapshot(id, { strokes: next });
+      }
+      return next;
+    });
     signalingRef.current?.emit('board:remove', strokeIds);
   }, []);
 
   /** Shows the change at once and sends it after a short pause in typing. */
   const updateNotes = useCallback((text: string) => {
     setNotes(text);
+    const id = roomIdRef.current;
+    if (id) {
+      saveRoomSnapshot(id, { notes: text });
+    }
     if (notesTimerRef.current) {
       clearTimeout(notesTimerRef.current);
     }
