@@ -49,7 +49,9 @@ export default function App() {
   const inMeeting = session.roomId !== null;
 
   useEffect(() => {
-    syncRoomInLink(inMeeting ? roomId : null);
+    if (inMeeting || roomId.trim()) {
+      syncRoomInLink(roomId.trim() || null);
+    }
   }, [inMeeting, roomId]);
 
   const joinRoom = async (nextRoomId: string, video: boolean) => {
