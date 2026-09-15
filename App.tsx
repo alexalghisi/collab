@@ -10,6 +10,7 @@ import { readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
 import { readLiveMeeting } from './src/meeting/resume';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
 import { useMeetings } from './src/meeting/useMeetings';
+import { useGoogleCalendar } from './src/meeting/useGoogleCalendar';
 import { useMeetingSearch } from './src/search/useMeetingSearch';
 import { CalendarScreen } from './src/components/calendar/CalendarScreen';
 import { TeamChatScreen } from './src/components/chat/TeamChatScreen';
@@ -30,6 +31,7 @@ export default function App() {
   const auth = useAuth();
   const session = useCollabSession(createSignaling);
   const meetings = useMeetings(auth.user?.uid ?? 'guest');
+  const googleCalendar = useGoogleCalendar(auth.user?.uid ?? 'guest', meetings);
   const meetingSearch = useMeetingSearch();
   const teamChat = useTeamChat(auth.user);
   const [view, setView] = useState<View>('home');
@@ -68,7 +70,10 @@ export default function App() {
   };
 
   const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
-  const deleteMeeting = (meeting: Meeting) => void meetings.remove(meeting.id);
+  const deleteMeeting = (meeting: Meeting) => {
+    void googleCalendar.retract(meeting);
+    void meetings.remove(meeting.id);
+  };
 
   useEffect(() => {
     if (resumeAttempted.current || !auth.user || session.status !== 'idle') {
@@ -106,7 +111,7 @@ export default function App() {
   };
 
   const saveMeeting = (draft: MeetingDraft) => {
-    void meetings.schedule(draft);
+    void meetings.schedule(draft).then((meeting) => googleCalendar.publish(meeting));
     setView('meetings');
   };
 
@@ -186,6 +191,7 @@ export default function App() {
             onStart={startMeeting}
             onDelete={deleteMeeting}
             onSchedule={openSchedule}
+            google={googleCalendar}
           />
         )}
         {view === 'chat' && <TeamChatScreen chat={teamChat} selfId={auth.user?.uid ?? null} />}
