@@ -206,6 +206,7 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
                 messages={session.messages}
                 selfPeerId={session.selfPeerId}
                 onSend={session.sendMessage}
+                onUpload={session.shareFile}
                 onClose={() => setPanel(null)}
               />
             )}
