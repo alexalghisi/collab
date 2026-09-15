@@ -84,7 +84,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Local recording** (web): captures your video together with the mixed audio of every participant and downloads a `.webm` file when stopped.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
-- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
+- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Connect Google Calendar on the calendar screen to pull existing events in (and push Collab meetings back). Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
 - Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
@@ -377,7 +377,9 @@ In Google Cloud Console → APIs & Services → Credentials, create an OAuth 2.0
 - `https://<user>.github.io` (GitHub Pages)
 
 Authorized redirect URIs can match those origins. Enable the People API if
-Google asks for it.
+Google asks for it. Calendar sync uses the same Web client: enable the
+**Google Calendar API** under APIs & Services → Library, then open Calendar in
+Collab and press **Connect**.
 
 Facebook and Firebase remain optional:
 
