@@ -5,10 +5,20 @@ export interface MediaConstraintsOptions {
 
 const CAMERA_CONSTRAINTS: MediaTrackConstraints = { facingMode: 'user' };
 
+/**
+ * Ask the capture stack to clean the mic: echo from speakers, fan/keyboard
+ * noise, and wild gain swings. Browsers ignore keys they do not implement.
+ */
+export const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
+
 export function acquireLocalStream(options: MediaConstraintsOptions): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
     video: options.video ? CAMERA_CONSTRAINTS : false,
-    audio: options.audio,
+    audio: options.audio ? AUDIO_CONSTRAINTS : false,
   });
 }
 
@@ -18,7 +28,10 @@ export async function acquireCameraTrack(): Promise<MediaStreamTrack> {
 }
 
 export async function acquireScreenTrack(): Promise<MediaStreamTrack> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true,
+    audio: false,
+  });
   return stream.getVideoTracks()[0];
 }
 

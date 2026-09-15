@@ -131,6 +131,7 @@ export default function App() {
         {view === 'home' && (
           <HomeScreen
             displayName={displayName}
+            ownerId={auth.user.uid}
             roomId={roomId}
             onRoomIdChange={setRoomId}
             onJoin={(nextRoomId, video) => void joinRoom(nextRoomId, video)}
