@@ -38,6 +38,7 @@ const RUNTIMES: Record<CodeLanguage, { language: string; file: string }> = {
   typescript: { language: 'typescript', file: 'main.ts' },
   python: { language: 'python', file: 'main.py' },
   go: { language: 'go', file: 'main.go' },
+  cpp: { language: 'c++', file: 'main.cpp' },
 };
 
 /**
