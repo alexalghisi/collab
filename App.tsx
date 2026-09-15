@@ -49,7 +49,9 @@ export default function App() {
   const inMeeting = session.roomId !== null;
 
   useEffect(() => {
-    syncRoomInLink(inMeeting ? roomId : null);
+    if (inMeeting || roomId.trim()) {
+      syncRoomInLink(roomId.trim() || null);
+    }
   }, [inMeeting, roomId]);
 
   const joinRoom = async (nextRoomId: string, video: boolean) => {
@@ -73,11 +75,24 @@ export default function App() {
       return;
     }
     const live = readLiveMeeting();
-    if (!live || !displayName.trim()) {
+    if (!live) {
       return;
     }
+    const name = (live.displayName || displayName || auth.user.displayName || 'Guest').trim();
     resumeAttempted.current = true;
-    void joinRoom(live.roomId, true);
+    setDisplayName(name);
+    setRoomId(live.roomId);
+    void session
+      .join({
+        roomId: live.roomId,
+        displayName: name,
+        video: live.video,
+      })
+      .then((joined) => {
+        if (joined) {
+          void meetings.recordInstant(live.roomId);
+        }
+      });
   }, [auth.user, displayName, session.status]);
 
   /** Opens the form at the next half hour, on `day` when one was picked in the calendar. */

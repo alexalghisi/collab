@@ -51,7 +51,9 @@ function columnsFor(tileCount: number, width: number): number {
 
 export function MeetingScreen({ session, roomId, displayName }: MeetingScreenProps) {
   const { width } = useWindowDimensions();
-  const [panel, setPanel] = useState<Panel>('invite');
+  const [panel, setPanel] = useState<Panel>(() =>
+    session.messages.length > 0 ? 'chat' : 'invite',
+  );
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [stage, setStage] = useState<Stage>('grid');
   const [readCount, setReadCount] = useState(0);
@@ -62,6 +64,12 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
   const tileCount = session.participants.length + 1;
   const cellWidth = `${100 / columnsFor(tileCount, gridWidth)}%` as const;
   const unread = session.messages.length - readCount;
+
+  useEffect(() => {
+    if (session.messages.length > 0) {
+      setPanel((current) => (current === 'invite' ? 'chat' : current));
+    }
+  }, [session.messages.length]);
 
   useEffect(() => {
     if (panel === 'chat') {
