@@ -66,4 +66,10 @@ describe('chat history', () => {
     expect(merged[0].id).toBe('old-1');
     expect(merged.at(-1)).toEqual(extra);
   });
+
+  it('ignores a missing list so an older signaling server can still join', () => {
+    const thread = [message('a', 1, 'hello')];
+
+    expect(mergeChatHistory(thread, undefined, null)).toEqual(thread);
+  });
 });

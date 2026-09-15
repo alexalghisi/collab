@@ -38,9 +38,14 @@ export function parseChatMessages(raw: string | null): ChatMessage[] {
   }
 }
 
-export function mergeChatHistory(...lists: readonly ChatMessage[][]): ChatMessage[] {
+export function mergeChatHistory(
+  ...lists: readonly (readonly ChatMessage[] | null | undefined)[]
+): ChatMessage[] {
   const byId = new Map<string, ChatMessage>();
   for (const list of lists) {
+    if (!Array.isArray(list)) {
+      continue;
+    }
     for (const message of list) {
       if (!byId.has(message.id)) {
         byId.set(message.id, message);
