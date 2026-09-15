@@ -505,6 +505,7 @@ class FirestoreChannel implements SignalingChannel {
               settings,
               code: null,
               transcript: [],
+              messages: [],
             });
             resolve();
             return;
