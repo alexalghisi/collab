@@ -11,6 +11,15 @@ describe('validateExecutionRequest', () => {
     });
   });
 
+  it('accepts C++ as a runnable language', () => {
+    expect(
+      validateExecutionRequest({
+        language: 'cpp',
+        code: '#include <iostream>\nint main() { std::cout << 1; }\n',
+      }).ok,
+    ).toBe(true);
+  });
+
   it('rejects a language the sandbox has no image for', () => {
     expect(validateExecutionRequest({ language: 'ruby', code: 'puts 1' })).toEqual({
       ok: false,

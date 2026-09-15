@@ -50,6 +50,15 @@ describe('PistonRunner', () => {
     expect(sent[0].run_timeout).toBe(DEFAULT_PISTON_OPTIONS.timeoutMs);
   });
 
+  it('asks Piston for C++ with a .cpp file', async () => {
+    const { runner, sent } = stub({ run: { stdout: '', code: 0 } });
+
+    await runner.run({ ...request, language: 'cpp', code: 'int main() {}' }, () => {});
+
+    expect(sent[0].language).toBe('c++');
+    expect(sent[0].files).toEqual([{ name: 'main.cpp', content: 'int main() {}' }]);
+  });
+
   it('reports a compile failure without pretending the program ran', async () => {
     const { runner } = stub({
       compile: { stderr: 'main.go:2: undefined: foo', code: 2 },
