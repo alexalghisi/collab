@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { formatTime } from '../../meeting/calendar';
 import type { ChatMessage } from '../../signaling/events';
 import { colors } from '../../theme';
+import { LinkedText } from './LinkedText';
 
 export interface MessageThreadProps {
   messages: ChatMessage[];
@@ -49,7 +50,7 @@ export function MessageThread({
                 <Text style={styles.author}>{mine ? 'You' : message.displayName}</Text>
                 <Text style={styles.time}>{formatTime(message.sentAt)}</Text>
               </View>
-              <Text style={styles.text}>{message.text}</Text>
+              <LinkedText text={message.text} />
             </View>
           );
         })}
@@ -114,10 +115,6 @@ const styles = StyleSheet.create({
   time: {
     color: 'rgba(249, 250, 251, 0.7)',
     fontSize: 12,
-  },
-  text: {
-    color: colors.text,
-    fontSize: 14,
   },
   composer: {
     flexDirection: 'row',
