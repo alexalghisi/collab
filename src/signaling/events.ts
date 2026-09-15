@@ -99,6 +99,16 @@ export interface Stroke {
   readonly points: number[];
 }
 
+export interface BoardFile {
+  readonly id: string;
+  readonly peerId: string;
+  readonly file: FileAttachment;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
 export interface RoomJoinedPayload {
   readonly selfPeerId: string;
   readonly selfJoinedAt: number;
@@ -119,6 +129,7 @@ export interface RoomJoinedPayload {
    */
   readonly transcript: TranscriptSegment[];
   readonly messages: ChatMessage[];
+  readonly boardFiles: BoardFile[];
 }
 
 export interface OutgoingSdpPayload {
@@ -149,6 +160,7 @@ export interface ClientToServerEvents {
   'peer:state': (state: PeerState) => void;
   'chat:message': (draft: ChatDraft) => void;
   'board:stroke': (stroke: Stroke) => void;
+  'board:file': (item: BoardFile) => void;
   'board:remove': (strokeIds: string[]) => void;
   'notes:update': (text: string) => void;
   /** Base64-encoded Yjs document update for the shared code editor. */
@@ -177,6 +189,7 @@ export interface ServerToClientEvents {
   'signal:ice': (payload: IncomingIcePayload) => void;
   'chat:message': (message: ChatMessage) => void;
   'board:stroke': (stroke: Stroke) => void;
+  'board:file': (item: BoardFile) => void;
   'board:remove': (strokeIds: string[]) => void;
   'notes:update': (text: string) => void;
   'code:update': (update: string) => void;

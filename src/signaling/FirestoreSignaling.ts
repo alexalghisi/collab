@@ -43,6 +43,7 @@ import { sendContactInvite } from '../meeting/sendInvite';
 import { normalizeTranscriptSegment } from '../transcript/segments';
 import {
   DEFAULT_ROOM_SETTINGS,
+  type BoardFile,
   type ChatMessage,
   type HostCommand,
   type PeerInfo,
@@ -153,6 +154,7 @@ class FirestoreChannel implements SignalingChannel {
   private readonly participants: CollectionReference;
   private readonly messages: CollectionReference;
   private readonly strokes: CollectionReference;
+  private readonly boardFiles: CollectionReference;
   private readonly codeUpdates: CollectionReference;
   private readonly codeRuns: CollectionReference;
   private readonly transcript: CollectionReference;
@@ -199,10 +201,14 @@ class FirestoreChannel implements SignalingChannel {
     'board:stroke': (stroke) => {
       void setDoc(doc(this.strokes, stroke.id), stroke);
     },
-    'board:remove': (strokeIds) => {
+    'board:file': (item) => {
+      void setDoc(doc(this.boardFiles, item.id), item);
+    },
+    'board:remove': (ids) => {
       const batch = writeBatch(this.room.firestore);
-      for (const id of strokeIds) {
+      for (const id of ids) {
         batch.delete(doc(this.strokes, id));
+        batch.delete(doc(this.boardFiles, id));
       }
       void batch.commit();
     },
@@ -262,6 +268,7 @@ class FirestoreChannel implements SignalingChannel {
     this.participants = collection(this.room, 'participants');
     this.messages = collection(this.room, 'messages');
     this.strokes = collection(this.room, 'strokes');
+    this.boardFiles = collection(this.room, 'boardFiles');
     this.codeUpdates = collection(this.room, 'codeUpdates');
     this.codeRuns = collection(this.room, 'runs');
     this.transcript = collection(this.room, 'transcript');
@@ -309,6 +316,7 @@ class FirestoreChannel implements SignalingChannel {
     await this.subscribeParticipants(room);
     // After room:joined, so the existing drawing streams in as board:stroke events.
     this.subscribeStrokes();
+    this.subscribeBoardFiles();
     this.subscribeCodeUpdates();
     this.subscribeCodeRuns();
     this.subscribeTranscript();
@@ -506,6 +514,7 @@ class FirestoreChannel implements SignalingChannel {
               code: null,
               transcript: [],
               messages: [],
+              boardFiles: [],
             });
             resolve();
             return;
@@ -596,6 +605,23 @@ class FirestoreChannel implements SignalingChannel {
       for (const change of snapshot.docChanges()) {
         if (change.type === 'added') {
           this.emitter.dispatch('board:stroke', change.doc.data() as Stroke);
+        } else if (change.type === 'removed') {
+          removed.push(change.doc.id);
+        }
+      }
+      if (removed.length > 0) {
+        this.emitter.dispatch('board:remove', removed);
+      }
+    });
+    this.unsubscribers.push(unsubscribe);
+  }
+
+  private subscribeBoardFiles(): void {
+    const unsubscribe = onSnapshot(this.boardFiles, (snapshot) => {
+      const removed: string[] = [];
+      for (const change of snapshot.docChanges()) {
+        if (change.type === 'added') {
+          this.emitter.dispatch('board:file', change.doc.data() as BoardFile);
         } else if (change.type === 'removed') {
           removed.push(change.doc.id);
         }

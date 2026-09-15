@@ -17,24 +17,50 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_ROOM_FILE_BYTES = 64 * 1024 * 1024;
 export const MAX_FILE_NAME_LENGTH = 120;
 
-/**
- * An allow-list rather than a block-list: a room is a group of people who were
- * invited to talk, not a file host, and everything outside this set is a way to
- * hand someone something they did not ask for.
- */
-export const ALLOWED_MIME_TYPES: readonly string[] = [
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'application/pdf',
-  'application/json',
-  'application/zip',
-  'text/plain',
-  'text/csv',
-  'text/markdown',
-];
+const BLOCKED_MIME_TYPES = new Set([
+  'text/html',
+  'application/xhtml+xml',
+  'text/javascript',
+  'application/javascript',
+  'application/x-javascript',
+  'application/x-sh',
+  'application/x-bat',
+  'application/x-csh',
+  'application/x-msdownload',
+  'application/x-msdos-program',
+  'application/vnd.microsoft.portable-executable',
+  'application/x-dosexec',
+  'application/wasm',
+]);
+
+const EXTENSION_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+  heic: 'image/heic',
+  pdf: 'application/pdf',
+  json: 'application/json',
+  zip: 'application/zip',
+  txt: 'text/plain',
+  csv: 'text/csv',
+  md: 'text/markdown',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+};
 
 export type AttachmentRejection =
   'no-file' | 'unsupported-type' | 'file-too-large' | 'room-full' | 'not-in-room' | 'rate-limited';
@@ -49,7 +75,29 @@ export const ATTACHMENT_REJECTION_MESSAGES: Record<AttachmentRejection, string> 
 };
 
 export function isAllowedMimeType(mimeType: unknown): boolean {
-  return typeof mimeType === 'string' && ALLOWED_MIME_TYPES.includes(mimeType.toLowerCase());
+  if (typeof mimeType !== 'string') {
+    return false;
+  }
+  const mime = mimeType.toLowerCase().split(';')[0].trim();
+  return mime !== '' && !BLOCKED_MIME_TYPES.has(mime);
+}
+
+export function mimeOf(name: string, declared: string): string {
+  const type = declared.toLowerCase().split(';')[0].trim();
+  if (type !== '' && type !== 'application/octet-stream') {
+    return type;
+  }
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  return EXTENSION_MIME[ext] ?? (type || 'application/octet-stream');
+}
+
+export function isPreviewableMime(mimeType: string): boolean {
+  return (
+    mimeType.startsWith('image/') ||
+    mimeType.startsWith('audio/') ||
+    mimeType.startsWith('video/') ||
+    mimeType === 'application/pdf'
+  );
 }
 
 /**

@@ -10,9 +10,11 @@ import { attachmentPath, FileStore } from './files/FileStore';
 import { normalizeChatDraft } from '../../src/chat/messages';
 import type { FileAttachment } from '../../src/files/attachments';
 import { normalizeTranscriptSegment, type TranscriptSegment } from '../../src/transcript/segments';
+import { normalizeBoardFile } from '../../src/whiteboard/boardFiles';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
+  type BoardFile,
   type ChatMessage,
   type ClientToServerEvents,
   type PeerInfo,
@@ -54,6 +56,7 @@ type CollabServerSocket = Socket<
 interface RoomState {
   hostPeerId: string;
   strokes: Stroke[];
+  boardFiles: BoardFile[];
   notes: string;
   /** Recent chat, kept so the assistant can read what the room said. */
   messages: ChatMessage[];
@@ -97,6 +100,7 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
     room = {
       hostPeerId: firstPeerId,
       strokes: [],
+      boardFiles: [],
       notes: '',
       messages: [],
       transcript: [],
@@ -157,6 +161,7 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     code: room.codeEdited ? encodeUpdate(Y.encodeStateAsUpdate(room.code)) : null,
     transcript: room.transcript,
     messages: room.messages,
+    boardFiles: room.boardFiles,
   });
   socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
 }
@@ -344,11 +349,37 @@ function registerSocket(
     }
   });
 
-  socket.on('board:remove', (strokeIds) => {
+  socket.on('board:file', (draft) => {
+    const { roomId, sessionId } = socket.data;
+    const room = currentRoom();
+    if (!room || !roomId || !draft?.file) {
+      return;
+    }
+    const stored = files.get(draft.file.id);
+    if (!stored || stored.roomId !== roomId || stored.uploadedBy !== sessionId) {
+      return;
+    }
+    const file: FileAttachment = {
+      id: stored.id,
+      name: stored.name,
+      mimeType: stored.mimeType,
+      size: stored.bytes.byteLength,
+      url: attachmentPath(stored.id),
+    };
+    const entry = normalizeBoardFile(draft, file, socket.id);
+    if (!entry) {
+      return;
+    }
+    room.boardFiles.push(entry);
+    socket.to(roomId).emit('board:file', entry);
+  });
+
+  socket.on('board:remove', (ids) => {
     const room = currentRoom();
     if (room && socket.data.roomId) {
-      room.strokes = room.strokes.filter((stroke) => !strokeIds.includes(stroke.id));
-      socket.to(socket.data.roomId).emit('board:remove', strokeIds);
+      room.strokes = room.strokes.filter((stroke) => !ids.includes(stroke.id));
+      room.boardFiles = room.boardFiles.filter((item) => !ids.includes(item.id));
+      socket.to(socket.data.roomId).emit('board:remove', ids);
     }
   });
 

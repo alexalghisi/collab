@@ -12,9 +12,11 @@ import { buildInviteLink } from '../meeting/invite';
 import { clearLiveMeeting, readLiveMeeting, writeLiveMeeting } from '../meeting/resume';
 import { createSpeechCapture } from '../transcript/speech';
 import type { TranscriptSegment } from '../transcript/segments';
+import { normalizeBoardFile } from '../whiteboard/boardFiles';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
+  type BoardFile,
   type ChatMessage,
   type HostCommand,
   type PeerInfo,
@@ -83,6 +85,7 @@ export interface CollabSession {
   readonly participants: RemoteParticipant[];
   readonly messages: ChatMessage[];
   readonly strokes: Stroke[];
+  readonly boardFiles: BoardFile[];
   readonly notes: string;
   /** Spoken turns in this room, oldest first. */
   readonly transcript: TranscriptSegment[];
@@ -120,7 +123,9 @@ export interface CollabSession {
   /** Delivers an email or SMS invite for this meeting. */
   sendInvite: (input: string) => Promise<ParsedContact>;
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
+  addBoardFile: (item: Omit<BoardFile, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
+  removeBoardFiles: (ids: string[]) => void;
   updateNotes: (text: string) => void;
   /** Starts or stops live captions for this participant. */
   toggleCaptions: () => void;
@@ -169,6 +174,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [boardFiles, setBoardFiles] = useState<BoardFile[]>([]);
   const [notes, setNotes] = useState('');
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [captionsOn, setCaptionsOn] = useState(false);
@@ -257,6 +263,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     setParticipants([]);
     setMessages([]);
     setStrokes([]);
+    setBoardFiles([]);
     setNotes('');
     setTranscript([]);
     setCaptionError(null);
@@ -361,6 +368,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setHostPeerId(room.hostPeerId);
         setParticipants((room.peers ?? []).map(toParticipant));
         setStrokes(room.strokes ?? []);
+        setBoardFiles(room.boardFiles ?? []);
         setNotes(room.notes ?? '');
         setTranscript(room.transcript ?? []);
         setMessages((current) => {
@@ -403,8 +411,14 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           current.some((existing) => existing.id === stroke.id) ? current : [...current, stroke],
         );
       });
-      signaling.on('board:remove', (strokeIds) => {
-        setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
+      signaling.on('board:file', (item) => {
+        setBoardFiles((current) =>
+          current.some((existing) => existing.id === item.id) ? current : [...current, item],
+        );
+      });
+      signaling.on('board:remove', (ids) => {
+        setStrokes((current) => current.filter((stroke) => !ids.includes(stroke.id)));
+        setBoardFiles((current) => current.filter((item) => !ids.includes(item.id)));
       });
       signaling.on('notes:update', setNotes);
       signaling.on('transcript:segment', (segment) => {
@@ -644,9 +658,26 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     [selfPeerId],
   );
 
-  const removeStrokes = useCallback((strokeIds: string[]) => {
-    setStrokes((current) => current.filter((stroke) => !strokeIds.includes(stroke.id)));
-    signalingRef.current?.emit('board:remove', strokeIds);
+  const addBoardFile = useCallback(
+    (draft: Omit<BoardFile, 'id' | 'peerId'>) => {
+      const item = normalizeBoardFile(
+        { ...draft, id: randomUUID() },
+        draft.file,
+        selfPeerId ?? 'self',
+      );
+      if (!item) {
+        return;
+      }
+      setBoardFiles((current) => [...current, item]);
+      signalingRef.current?.emit('board:file', item);
+    },
+    [selfPeerId],
+  );
+
+  const removeFromBoard = useCallback((ids: string[]) => {
+    setStrokes((current) => current.filter((stroke) => !ids.includes(stroke.id)));
+    setBoardFiles((current) => current.filter((item) => !ids.includes(item.id)));
+    signalingRef.current?.emit('board:remove', ids);
   }, []);
 
   /** Shows the change at once and sends it after a short pause in typing. */
@@ -774,6 +805,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     participants,
     messages,
     strokes,
+    boardFiles,
     notes,
     transcript,
     captionsOn,
@@ -801,7 +833,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     shareFile,
     sendInvite,
     addStroke,
-    removeStrokes,
+    addBoardFile,
+    removeStrokes: removeFromBoard,
+    removeBoardFiles: removeFromBoard,
     updateNotes,
     toggleCaptions,
     askAssistant,

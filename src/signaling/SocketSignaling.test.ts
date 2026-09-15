@@ -75,6 +75,37 @@ describe('SocketSignaling against the signaling server', () => {
     expect(late.joined.strokes).toEqual([stroke]);
   });
 
+  it('replays a pasted file to a late joiner', async () => {
+    const host = await server.join('a', 'Ada');
+    const form = new FormData();
+    form.append('roomId', 'room');
+    form.append('sessionId', 'a');
+    form.append('file', new Blob(['png'], { type: 'image/png' }), 'shot.png');
+    const attachment = (await (
+      await fetch(`${server.url}/files`, { method: 'POST', body: form })
+    ).json()) as {
+      id: string;
+      name: string;
+      mimeType: string;
+      size: number;
+      url: string;
+    };
+    host.channel.emit('board:file', {
+      id: 'file-1',
+      peerId: host.joined.selfPeerId,
+      file: attachment,
+      x: 0.1,
+      y: 0.1,
+      w: 0.3,
+      h: 0.3,
+    });
+    await settle();
+
+    const late = await server.join('b', 'Linus');
+
+    expect(late.joined.boardFiles).toMatchObject([{ file: { name: 'shot.png' } }]);
+  });
+
   it('replays chat to a late joiner', async () => {
     const host = await server.join('a', 'Ada');
     host.channel.emit('chat:message', { text: 'stay after refresh', file: null });
