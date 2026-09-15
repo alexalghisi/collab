@@ -8,11 +8,15 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { authRouter } from './router';
 import { UserStore } from './store';
+import type { GoogleTokenLookup } from './google';
 
-async function start(dir: string): Promise<{ url: string; close: () => Promise<void> }> {
+async function start(
+  dir: string,
+  googleLookup?: GoogleTokenLookup,
+): Promise<{ url: string; close: () => Promise<void> }> {
   const app = express();
   app.use(express.json());
-  app.use(authRouter({ store: new UserStore(join(dir, 'users.json')) }));
+  app.use(authRouter({ store: new UserStore(join(dir, 'users.json')), googleLookup }));
   const server = createServer(app);
   server.listen(0);
   await once(server, 'listening');
@@ -99,6 +103,66 @@ describe('auth router', () => {
         body: JSON.stringify({ email: 'linus@example.com', password: 'nope-nope' }),
       });
       expect(bad.status).toBe(401);
+    } finally {
+      await close();
+    }
+  });
+
+  it('creates an account from a verified Google credential', async () => {
+    const previous = process.env.GOOGLE_CLIENT_ID;
+    process.env.GOOGLE_CLIENT_ID = 'test.apps.googleusercontent.com';
+    const dir = mkdtempSync(join(tmpdir(), 'collab-auth-'));
+    dirs.push(dir);
+    const { url, close } = await start(dir, async () => ({
+      aud: 'test.apps.googleusercontent.com',
+      email: 'Student@University.edu',
+      email_verified: 'true',
+      name: 'Alex Student',
+      picture: 'https://example.com/a.png',
+      sub: 'google-sub-1',
+    }));
+    try {
+      const created = await fetch(`${url}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: 'valid-google-token' }),
+      });
+      expect(created.status).toBe(200);
+      const body = (await created.json()) as {
+        token: string;
+        user: { email: string; displayName: string };
+      };
+      expect(body.user.email).toBe('student@university.edu');
+      expect(body.user.displayName).toBe('Alex Student');
+      expect(typeof body.token).toBe('string');
+
+      const passwordLogin = await fetch(`${url}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'student@university.edu', password: 'password1' }),
+      });
+      expect(passwordLogin.status).toBe(401);
+    } finally {
+      await close();
+      if (previous === undefined) {
+        delete process.env.GOOGLE_CLIENT_ID;
+      } else {
+        process.env.GOOGLE_CLIENT_ID = previous;
+      }
+    }
+  });
+
+  it('rejects Google sign-in without a credential', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'collab-auth-'));
+    dirs.push(dir);
+    const { url, close } = await start(dir);
+    try {
+      const missing = await fetch(`${url}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(missing.status).toBe(400);
     } finally {
       await close();
     }
