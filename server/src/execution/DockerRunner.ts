@@ -68,6 +68,11 @@ const IMAGES: Record<CodeLanguage, LanguageImage> = {
     command: ['go', 'run', `${SANDBOX_DIR}/main.go`],
     writable: ['/gocache', '/gopath'],
   },
+  cpp: {
+    image: 'collab-sandbox-cpp',
+    file: 'main.cpp',
+    command: ['/usr/local/bin/run-cpp', `${SANDBOX_DIR}/main.cpp`],
+  },
 };
 
 export type Spawn = (command: string, args: string[]) => ChildProcess;

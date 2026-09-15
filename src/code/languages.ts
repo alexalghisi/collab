@@ -1,5 +1,5 @@
 /** Languages the shared editor offers and the execution service can run. */
-export const CODE_LANGUAGES = ['javascript', 'typescript', 'python', 'go'] as const;
+export const CODE_LANGUAGES = ['javascript', 'typescript', 'python', 'go', 'cpp'] as const;
 
 export type CodeLanguage = (typeof CODE_LANGUAGES)[number];
 
@@ -10,6 +10,7 @@ export const LANGUAGE_LABELS: Record<CodeLanguage, string> = {
   typescript: 'TypeScript',
   python: 'Python',
   go: 'Go',
+  cpp: 'C++',
 };
 
 export function isCodeLanguage(value: unknown): value is CodeLanguage {
