@@ -1,12 +1,5 @@
 import { useState } from 'react';
-import {
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import type { SocialProvider } from '../../auth/types';
 import { colors } from '../../theme';
@@ -77,6 +70,18 @@ export function AuthScreen({
           </Text>
         </View>
 
+        <Pressable
+          style={[styles.button, styles.google]}
+          onPress={() => onSignIn('google')}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel="Continue with Google"
+        >
+          <Text style={[styles.buttonText, styles.googleText]}>Continue with Google</Text>
+        </Pressable>
+
+        <Text style={styles.divider}>or use email</Text>
+
         <View style={styles.tabs}>
           <Pressable
             style={[styles.tab, !creating && styles.tabActive]}
@@ -144,28 +149,16 @@ export function AuthScreen({
           </Text>
         </Pressable>
 
-        {(social.google || social.facebook) && (
-          <>
-            <Text style={styles.divider}>or</Text>
-            {social.google && (
-              <Pressable
-                style={[styles.button, styles.google]}
-                onPress={() => onSignIn('google')}
-                disabled={busy}
-              >
-                <Text style={[styles.buttonText, styles.googleText]}>Continue with Google</Text>
-              </Pressable>
-            )}
-            {social.facebook && (
-              <Pressable
-                style={[styles.button, styles.facebook]}
-                onPress={() => onSignIn('facebook')}
-                disabled={busy}
-              >
-                <Text style={[styles.buttonText, styles.facebookText]}>Continue with Facebook</Text>
-              </Pressable>
-            )}
-          </>
+        {social.facebook && (
+          <Pressable
+            style={[styles.button, styles.facebook]}
+            onPress={() => onSignIn('facebook')}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Facebook"
+          >
+            <Text style={[styles.buttonText, styles.facebookText]}>Continue with Facebook</Text>
+          </Pressable>
         )}
 
         {error && <Text style={styles.error}>{error}</Text>}

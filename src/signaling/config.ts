@@ -1,13 +1,7 @@
 const DEFAULT_PORT = '4000';
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 /** Static hosts cannot run the signaling process, so they must not same-origin. */
-const STATIC_HOST_SUFFIXES = [
-  'github.io',
-  'gitlab.io',
-  'netlify.app',
-  'vercel.app',
-  'pages.dev',
-];
+const STATIC_HOST_SUFFIXES = ['github.io', 'gitlab.io', 'netlify.app', 'vercel.app', 'pages.dev'];
 
 function isStaticHost(hostname: string): boolean {
   return STATIC_HOST_SUFFIXES.some(

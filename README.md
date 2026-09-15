@@ -328,24 +328,41 @@ port 4000 (and `http://localhost:4000` from a loopback preview). A phone on
 the LAN therefore reaches the desktop running the server instead of its own
 loopback. Override the URL when the server lives somewhere else.
 
-### Social sign-in (Google / Facebook)
+### Sign in (Google or email)
 
-Sign-in is optional: with no credentials configured the app runs as an open
-guest lobby. Copy [`.env.example`](.env.example) to `.env` and fill in the
-values below to enable "Continue with Google" and "Continue with Facebook".
+An account is required to start or join a meeting. **Continue with Google**
+is the fastest path for students; email and password remain available on the
+same screen.
 
-- **Web** uses Firebase, so it reads the Firebase web config:
+Copy [`.env.example`](.env.example) to `.env` and set a Web OAuth client ID:
+
+- `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` — baked into the web app (also add it as
+  the GitHub Actions variable of the same name so Pages can sign in)
+- `GOOGLE_CLIENT_ID` — same value on the signaling server (Render dashboard),
+  so the server will accept the Google credential
+
+In Google Cloud Console → APIs & Services → Credentials, create an OAuth 2.0
+**Web application** client. Authorized JavaScript origins:
+
+- `http://localhost:8081` (Expo web)
+- `https://<user>.github.io` (GitHub Pages)
+
+Authorized redirect URIs can match those origins. Enable the People API if
+Google asks for it.
+
+Facebook and Firebase remain optional:
+
+- **Web Facebook** uses Firebase:
   - `EXPO_PUBLIC_FIREBASE_API_KEY`
   - `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
   - `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
   - `EXPO_PUBLIC_FIREBASE_APP_ID`
-- **Mobile (iOS / Android)** signs in through Expo AuthSession, so it reads the
-  OAuth client IDs directly:
-  - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`,
-    `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
+- **Mobile (iOS / Android)** also reads:
+  - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
   - `EXPO_PUBLIC_FACEBOOK_APP_ID`
 
-Redirects use the app's `collab` scheme, which is already declared in `app.json`.
+Redirects on device use the app's `collab` scheme, which is already declared in
+`app.json`.
 
 ### 4. Run the desktop shell locally
 
@@ -377,7 +394,9 @@ builds [`server/Dockerfile`](server/Dockerfile) and health-checks `/health`.
 Then add the public URL as the repository **variable**
 `EXPO_PUBLIC_SIGNALING_URL` (for example `https://collab-signaling.onrender.com`)
 and re-run the workflow. Restrict the server to your own origin with the
-`CORS_ORIGIN` environment variable; it defaults to `*`.
+`CORS_ORIGIN` environment variable; it defaults to `*`. For **Continue with
+Google**, set the repository variable `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` and
+the Render environment variable `GOOGLE_CLIENT_ID` to the same Web client ID.
 
 In-call **SMS and email invites** go through that same server. Set Twilio
 (`TWILIO_ACCOUNT_SID`, plus either `TWILIO_AUTH_TOKEN` or an API key
