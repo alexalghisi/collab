@@ -175,9 +175,13 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
             {stage === 'whiteboard' ? (
               <Whiteboard
                 strokes={session.strokes}
+                boardFiles={session.boardFiles}
                 selfPeerId={session.selfPeerId}
                 onAddStroke={session.addStroke}
                 onRemoveStrokes={session.removeStrokes}
+                onAddBoardFile={session.addBoardFile}
+                onRemoveBoardFiles={session.removeBoardFiles}
+                onUploadFile={session.shareFile}
               />
             ) : (
               session.code && (
