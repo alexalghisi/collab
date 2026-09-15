@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AUDIO_CONSTRAINTS, acquireLocalStream, acquireScreenTrack } from './media';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('media capture', () => {
   it('asks the microphone for echo cancellation and noise suppression', async () => {
@@ -7,10 +11,7 @@ describe('media capture', () => {
       getVideoTracks: () => [],
       getAudioTracks: () => [],
     }));
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: { getUserMedia },
-    });
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
 
     await acquireLocalStream({ video: true, audio: true });
 
@@ -30,10 +31,7 @@ describe('media capture', () => {
       getVideoTracks: () => [{ kind: 'video' }],
       getAudioTracks: () => [],
     }));
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: { getDisplayMedia },
-    });
+    vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia } });
 
     await acquireScreenTrack();
 
