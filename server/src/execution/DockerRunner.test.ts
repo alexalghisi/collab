@@ -126,6 +126,14 @@ describe('dockerCreateArgs', () => {
       expect(args).not.toContain('-c');
     }
   });
+
+  it('compiles C++ through the sandbox wrapper rather than a shell', () => {
+    const args = dockerCreateArgs('cpp', 'run-1', DEFAULT_LIMITS);
+
+    expect(args).toContain('collab-sandbox-cpp');
+    expect(args.at(-2)).toBe('/usr/local/bin/run-cpp');
+    expect(args.at(-1)).toBe('/sandbox/main.cpp');
+  });
 });
 
 describe('DockerRunner', () => {
