@@ -56,6 +56,17 @@ describe('the file endpoint', () => {
     expect(download.headers.get('x-content-type-options')).toBe('nosniff');
   });
 
+  it('serves an image so the whiteboard can preview it', async () => {
+    const store = new FileStore();
+    await serve(store, inRoom);
+
+    const response = await send(new Blob(['png'], { type: 'image/png' }), { name: 'shot.png' });
+    const attachment = (await response.json()) as FileAttachment;
+    const download = await fetch(`${base}${attachment.url}`);
+
+    expect(download.headers.get('content-disposition')).toBe('inline; filename="shot.png"');
+  });
+
   it('refuses a sender who is no longer in the room', async () => {
     const store = new FileStore();
     await serve(store, inRoom);

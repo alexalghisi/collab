@@ -4,6 +4,8 @@ import {
   ATTACHMENT_REJECTION_MESSAGES,
   MAX_FILE_BYTES,
   isAllowedMimeType,
+  isPreviewableMime,
+  mimeOf,
   type AttachmentRejection,
 } from '../../../src/files/attachments';
 import { RateLimiter } from '../execution/RateLimiter';
@@ -80,7 +82,8 @@ export function filesRouter({
         refuse(response, 'no-file');
         return;
       }
-      if (!isAllowedMimeType(file.mimetype)) {
+      const mimeType = mimeOf(file.originalname, file.mimetype);
+      if (!isAllowedMimeType(mimeType)) {
         refuse(response, 'unsupported-type');
         return;
       }
@@ -93,7 +96,7 @@ export function filesRouter({
         roomId,
         sessionId,
         name: file.originalname,
-        mimeType: file.mimetype,
+        mimeType,
         bytes: file.buffer,
       });
       if (!stored.ok) {
@@ -110,11 +113,10 @@ export function filesRouter({
       response.status(404).json({ error: 'That file is no longer available.' });
       return;
     }
-    // The declared type is the sender's word, so the browser is told not to go
-    // looking for a better one and to download rather than render.
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Content-Type', file.mimeType);
-    response.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+    const disposition = isPreviewableMime(file.mimeType) ? 'inline' : 'attachment';
+    response.setHeader('Content-Disposition', `${disposition}; filename="${file.name}"`);
     response.send(file.bytes);
   });
 
