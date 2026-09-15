@@ -7,7 +7,9 @@ import {
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth';
-import { firebaseAuth as auth } from '../firebase/app';
+import { firebaseAuth as firebase } from '../firebase/app';
+import { loginAccount, registerAccount, restoreAccount } from './serverAccount';
+import { clearSessionToken, readSessionToken, writeSessionToken } from './session';
 import type { AuthState, AuthUser, SocialProvider } from './types';
 
 const providerFactories: Record<SocialProvider, () => GoogleAuthProvider | FacebookAuthProvider> = {
@@ -18,45 +20,105 @@ const providerFactories: Record<SocialProvider, () => GoogleAuthProvider | Faceb
 function toAuthUser(user: User): AuthUser {
   return {
     uid: user.uid,
-    displayName: user.displayName ?? user.email ?? 'Guest',
+    displayName: user.displayName ?? user.email ?? 'Member',
     email: user.email,
     photoURL: user.photoURL,
   };
 }
 
 export function useAuth(): AuthState {
-  const enabled = auth !== null;
-  const [initializing, setInitializing] = useState(enabled);
+  const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!auth) {
+    let cancelled = false;
+    const finish = (next: AuthUser | null) => {
+      if (!cancelled) {
+        setUser(next);
+        setInitializing(false);
+      }
+    };
+
+    if (firebase) {
+      return onAuthStateChanged(firebase, (next) => {
+        finish(next ? toAuthUser(next) : null);
+      });
+    }
+
+    const token = readSessionToken();
+    if (!token) {
+      finish(null);
       return;
     }
-    return onAuthStateChanged(auth, (next) => {
-      setUser(next ? toAuthUser(next) : null);
-      setInitializing(false);
-    });
+    void restoreAccount(token)
+      .then((restored) => finish(restored))
+      .catch(() => {
+        clearSessionToken();
+        finish(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const signIn = useCallback(async (provider: SocialProvider) => {
-    if (!auth) {
+    if (!firebase) {
+      setError('Social sign-in is not configured on this deployment.');
       return;
     }
     setError(null);
     try {
-      await signInWithPopup(auth, providerFactories[provider]());
+      await signInWithPopup(firebase, providerFactories[provider]());
     } catch {
       setError('Sign-in failed. Please try again.');
     }
   }, []);
 
-  const signOut = useCallback(async () => {
-    if (auth) {
-      await firebaseSignOut(auth);
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    setError(null);
+    try {
+      const session = await loginAccount(email, password);
+      writeSessionToken(session.token);
+      setUser(session.user);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Sign-in failed. Please try again.');
     }
   }, []);
 
-  return { enabled, initializing, user, error, signIn, signOut };
+  const createAccount = useCallback(
+    async (input: { displayName: string; email: string; password: string }) => {
+      setError(null);
+      try {
+        const session = await registerAccount(input);
+        writeSessionToken(session.token);
+        setUser(session.user);
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : 'Could not create your account. Please try again.',
+        );
+      }
+    },
+    [],
+  );
+
+  const signOut = useCallback(async () => {
+    clearSessionToken();
+    setUser(null);
+    if (firebase) {
+      await firebaseSignOut(firebase);
+    }
+  }, []);
+
+  return {
+    initializing,
+    user,
+    error,
+    social: { google: firebase !== null, facebook: firebase !== null },
+    signIn,
+    signInWithEmail,
+    createAccount,
+    signOut,
+  };
 }

@@ -51,4 +51,10 @@ describe('resolveSignalingUrl', () => {
       'http://localhost:4000',
     );
   });
+
+  it('uses the page origin when a tunnel or custom host served the app', () => {
+    expect(resolveSignalingUrl(undefined, page('demo.trycloudflare.com', '', 'https:'))).toBe(
+      'https://demo.trycloudflare.com',
+    );
+  });
 });
