@@ -9,6 +9,7 @@ import {
   isSameDay,
   monthGrid,
 } from '../../meeting/calendar';
+import type { GoogleCalendarSync } from '../../meeting/useGoogleCalendar';
 import type { Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
 import { MeetingList } from '../meetings/MeetingList';
@@ -20,9 +21,16 @@ export interface CalendarScreenProps {
   onStart: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onSchedule: (day: Date) => void;
+  google: GoogleCalendarSync;
 }
 
-export function CalendarScreen({ meetings, onStart, onDelete, onSchedule }: CalendarScreenProps) {
+export function CalendarScreen({
+  meetings,
+  onStart,
+  onDelete,
+  onSchedule,
+  google,
+}: CalendarScreenProps) {
   const today = new Date();
   const [month, setMonth] = useState(() => addMonths(today, 0));
   const [selected, setSelected] = useState(today);
@@ -37,6 +45,38 @@ export function CalendarScreen({ meetings, onStart, onDelete, onSchedule }: Cale
         <Text style={styles.title}>Calendar</Text>
         <Button label="Schedule" icon="add" compact onPress={() => onSchedule(selected)} />
       </View>
+
+      {google.available && (
+        <View style={styles.syncBar}>
+          <View style={styles.syncCopy}>
+            <Text style={styles.syncTitle}>Google Calendar</Text>
+            <Text style={styles.syncHint}>
+              {google.connected
+                ? 'Events from your Google account appear here.'
+                : 'Bring your Google events into this calendar.'}
+            </Text>
+            {google.error ? <Text style={styles.syncError}>{google.error}</Text> : null}
+          </View>
+          <View style={styles.syncActions}>
+            <Button
+              label={google.syncing ? 'Syncing…' : google.connected ? 'Sync now' : 'Connect'}
+              icon="logo-google"
+              compact
+              disabled={google.syncing}
+              onPress={() => void (google.connected ? google.sync() : google.connect())}
+            />
+            {google.connected ? (
+              <Pressable
+                onPress={google.disconnect}
+                accessibilityRole="button"
+                accessibilityLabel="Disconnect Google Calendar"
+              >
+                <Text style={styles.disconnect}>Disconnect</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      )}
 
       <View style={styles.monthBar}>
         <IconButton
@@ -133,6 +173,43 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 28,
     fontWeight: '800',
+  },
+  syncBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    padding: 16,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 14,
+  },
+  syncCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  syncTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  syncHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  syncError: {
+    color: colors.danger,
+    fontSize: 13,
+  },
+  syncActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  disconnect: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
   },
   monthBar: {
     flexDirection: 'row',
