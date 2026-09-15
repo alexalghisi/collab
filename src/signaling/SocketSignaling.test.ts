@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { startRoomServer, type RoomServer } from '../testing/roomServer';
+import { settle, startRoomServer, type RoomServer } from '../testing/roomServer';
 import {
   INITIAL_PEER_STATE,
   type RoomJoinedPayload,
@@ -73,6 +73,16 @@ describe('SocketSignaling against the signaling server', () => {
     const late = await server.join('b', 'Linus');
 
     expect(late.joined.strokes).toEqual([stroke]);
+  });
+
+  it('replays chat to a late joiner', async () => {
+    const host = await server.join('a', 'Ada');
+    host.channel.emit('chat:message', { text: 'stay after refresh', file: null });
+    await settle();
+
+    const late = await server.join('b', 'Linus');
+
+    expect(late.joined.messages.map((entry) => entry.text)).toEqual(['stay after refresh']);
   });
 
   it('holds a joiner in the waiting room until the host decides', async () => {

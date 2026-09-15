@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
+import { loadChatHistory, mergeChatHistory, saveChatHistory } from '../chat/history';
 import type { ChatDraft } from '../chat/messages';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
@@ -8,6 +9,7 @@ import type { FileAttachment } from '../files/attachments';
 import { AttachmentError, type UploadableFile, type UploadProgress } from '../files/upload';
 import { InviteError, type ParsedContact } from '../meeting/contact';
 import { buildInviteLink } from '../meeting/invite';
+import { clearLiveMeeting, readLiveMeeting, writeLiveMeeting } from '../meeting/resume';
 import { createSpeechCapture } from '../transcript/speech';
 import type { TranscriptSegment } from '../transcript/segments';
 import {
@@ -321,6 +323,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     setRoomId(null);
     setBreakoutOf(null);
     setStatus('idle');
+    clearLiveMeeting();
   }, [disconnectRoom]);
 
   /** Connects the already acquired local media to `nextRoomId`. */
@@ -341,6 +344,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         breakoutOf: mainRoomId,
       });
       signalingRef.current = signaling;
+      setMessages(loadChatHistory(nextRoomId));
 
       const sharedCode = new SharedCodeDocument(signaling, {
         peerId: sessionIdRef.current,
@@ -359,6 +363,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setStrokes(room.strokes);
         setNotes(room.notes);
         setTranscript(room.transcript);
+        setMessages((current) => {
+          const next = mergeChatHistory(current, room.messages);
+          saveChatHistory(nextRoomId, next);
+          return next;
+        });
         if (room.code) {
           sharedCode.applyState(room.code);
         }
@@ -382,7 +391,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('peer:left', dropParticipant);
       signaling.on('peer:state', ({ peerId, state }) => patchParticipant(peerId, { state }));
       signaling.on('chat:message', (message) => {
-        setMessages((current) => [...current, message]);
+        setMessages((current) => {
+          const next = mergeChatHistory(current, [message]);
+          saveChatHistory(nextRoomId, next);
+          return next;
+        });
       });
       // Firestore echoes our own strokes back, so adding is keyed by id.
       signaling.on('board:stroke', (stroke) => {
@@ -494,7 +507,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       selfRef.current = initialState;
       setSelf(initialState);
       displayNameRef.current = displayName;
-      sessionIdRef.current = randomUUID();
+      const live = readLiveMeeting();
+      sessionIdRef.current = live?.roomId === nextRoomId ? live.sessionId : randomUUID();
+      writeLiveMeeting({ roomId: nextRoomId, sessionId: sessionIdRef.current });
 
       return connectRoom(nextRoomId);
     },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useCollabSession } from './src/hooks/useCollabSession';
@@ -7,6 +7,7 @@ import { useTeamChat } from './src/chat/useTeamChat';
 import { createSignaling } from './src/signaling';
 import { nextHalfHour } from './src/meeting/calendar';
 import { readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
+import { readLiveMeeting } from './src/meeting/resume';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
 import { useMeetings } from './src/meeting/useMeetings';
 import { useMeetingSearch } from './src/search/useMeetingSearch';
@@ -35,6 +36,7 @@ export default function App() {
   const [scheduleStart, setScheduleStart] = useState(() => nextHalfHour());
   const [roomId, setRoomId] = useState(() => readRoomFromLink() ?? '');
   const [displayName, setDisplayName] = useState('');
+  const resumeAttempted = useRef(false);
 
   useEffect(() => {
     const name = auth.user?.displayName;
@@ -65,6 +67,18 @@ export default function App() {
 
   const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
   const deleteMeeting = (meeting: Meeting) => void meetings.remove(meeting.id);
+
+  useEffect(() => {
+    if (resumeAttempted.current || !auth.user || session.status !== 'idle') {
+      return;
+    }
+    const live = readLiveMeeting();
+    if (!live || !displayName.trim()) {
+      return;
+    }
+    resumeAttempted.current = true;
+    void joinRoom(live.roomId, true);
+  }, [auth.user, displayName, session.status]);
 
   /** Opens the form at the next half hour, on `day` when one was picked in the calendar. */
   const openSchedule = (day?: Date) => {

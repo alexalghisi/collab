@@ -156,6 +156,7 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     settings: room.settings,
     code: room.codeEdited ? encodeUpdate(Y.encodeStateAsUpdate(room.code)) : null,
     transcript: room.transcript,
+    messages: room.messages,
   });
   socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
 }
