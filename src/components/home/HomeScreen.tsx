@@ -6,11 +6,13 @@ import type { Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
 import { MeetingList } from '../meetings/MeetingList';
 import { splitByTime } from '../meetings/MeetingsScreen';
+import { FilesCard } from './FilesCard';
 import { Button } from '../ui/Button';
 import type { IconName } from '../ui/icons';
 
 export interface HomeScreenProps {
   displayName: string;
+  ownerId: string;
   roomId: string;
   onRoomIdChange: (value: string) => void;
   onJoin: (roomId: string, video: boolean) => void;
@@ -57,6 +59,7 @@ function ActionCard({ icon, title, subtitle, color, onPress, disabled = false }:
 
 export function HomeScreen({
   displayName,
+  ownerId,
   roomId,
   onRoomIdChange,
   onJoin,
@@ -136,6 +139,8 @@ export function HomeScreen({
         )}
         {error && <Text style={styles.error}>{error}</Text>}
       </View>
+
+      <FilesCard ownerId={ownerId} />
 
       <MeetingList
         title="Up next"
