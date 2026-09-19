@@ -35,6 +35,14 @@ describe('executeInCloud', () => {
     expect(run.stdout).toBe('42\n');
   });
 
+  it('reads program_message when program_output is missing', async () => {
+    const fetchImpl = stub({ status: '0', program_message: 'hello\n' });
+
+    const run = await executeInCloud(request, fetchImpl);
+
+    expect(run.stdout).toBe('hello\n');
+  });
+
   it('surfaces compiler diagnostics on stderr', async () => {
     const fetchImpl = stub({
       status: '1',
