@@ -3,6 +3,8 @@ import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
 import { mergeChatHistory } from '../chat/history';
 import type { ChatDraft } from '../chat/messages';
+import { REJECTION_MESSAGES, validateExecutionRequest } from '../code/execution';
+import { completeCloudUiRun } from '../code/runInCloudUi';
 import type { WorkspaceFile } from '../code/workspaceFiles';
 import { mergeWorkspaceFiles } from '../code/workspaceFiles';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
@@ -835,11 +837,50 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     if (!document) {
       return;
     }
-    signalingRef.current?.emit('code:run', {
+    const payload = {
       language: document.language,
       code: document.text.toString(),
       stdin,
       files: [...files],
+    };
+    const runId = randomUUID();
+    const meta = {
+      runId,
+      byPeerId: sessionIdRef.current,
+      byDisplayName: displayNameRef.current,
+    };
+    setRuns((current) => [
+      ...current,
+      {
+        ...meta,
+        language: payload.language,
+        stdout: '',
+        stderr: '',
+        exitCode: null,
+        timedOut: false,
+        error: null,
+        running: true,
+        files: [],
+      },
+    ]);
+    const checked = validateExecutionRequest(payload);
+    if (!checked.ok) {
+      setRuns((current) =>
+        current.map((run) =>
+          run.runId === runId
+            ? { ...run, running: false, error: REJECTION_MESSAGES[checked.reason] }
+            : run,
+        ),
+      );
+      return;
+    }
+    void completeCloudUiRun(checked.request, meta).then((done) => {
+      setRuns((current) =>
+        current.map((run) => (run.runId === runId ? { ...done, running: false } : run)),
+      );
+      if (done.files.length > 0) {
+        setWorkspaceFiles((current) => mergeWorkspaceFiles(current, done.files));
+      }
     });
   }, []);
 
