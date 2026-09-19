@@ -59,3 +59,17 @@ export function attachMediaStream(
     element.srcObject = null;
   };
 }
+
+export function attachRemoteAudio(stream: MediaStream): () => void {
+  const audio = document.createElement('audio');
+  audio.autoplay = true;
+  audio.setAttribute('playsinline', '');
+  audio.setAttribute('webkit-playsinline', '');
+  audio.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
+  document.body.appendChild(audio);
+  const detach = attachMediaStream(audio, stream);
+  return () => {
+    detach();
+    audio.remove();
+  };
+}
