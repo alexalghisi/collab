@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CALENDAR_API_DISABLED,
+  calendarApiLibraryUrl,
+  calendarError,
   calendarWindow,
   eventDurationMinutes,
   eventStartsAt,
+  listGoogleEvents,
   meetingFromGoogleEvent,
   roomIdFromEvent,
   type GoogleCalendarEvent,
@@ -64,5 +68,37 @@ describe('google calendar mapping', () => {
     const window = calendarWindow(Date.parse('2026-09-16T12:00:00.000Z'));
     expect(window.timeMin).toBe('2026-08-17T12:00:00.000Z');
     expect(window.timeMax).toBe('2027-09-16T12:00:00.000Z');
+  });
+
+  it('points the OAuth project at the Calendar API library page', () => {
+    expect(
+      calendarApiLibraryUrl(
+        '560742571865-eqeojukg2kqm2gmaumm79n2606e75pus.apps.googleusercontent.com',
+      ),
+    ).toBe(
+      'https://console.cloud.google.com/apis/library/calendar.googleapis.com?project=560742571865',
+    );
+  });
+
+  it('explains a missing Calendar API so Connect is not mistaken for a bad token', () => {
+    expect(calendarError(403, { error: { errors: [{ reason: 'accessNotConfigured' }] } })).toBe(
+      CALENDAR_API_DISABLED,
+    );
+  });
+
+  it('refuses to list events when the project has not enabled the Calendar API', async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ error: { errors: [{ reason: 'accessNotConfigured' }] } }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
+
+    await expect(
+      listGoogleEvents(
+        'ya29.token',
+        calendarWindow(Date.parse('2026-09-16T12:00:00.000Z')),
+        fetchImpl,
+      ),
+    ).rejects.toThrow(CALENDAR_API_DISABLED);
   });
 });
