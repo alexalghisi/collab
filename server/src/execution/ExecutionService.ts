@@ -92,8 +92,5 @@ export function createRunnerFromEnv(
       memoryBytes: Number(env.EXECUTION_MEMORY_MB ?? 256) * 1024 * 1024,
     });
   }
-  if (backend === 'local' || env.NODE_ENV === 'production') {
-    return localRunner(env);
-  }
-  return null;
+  return localRunner(env);
 }
