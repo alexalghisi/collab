@@ -15,6 +15,7 @@ interface CloudResponse {
   readonly status?: string;
   readonly signal?: string;
   readonly program_output?: string;
+  readonly program_message?: string;
   readonly program_error?: string;
   readonly compiler_error?: string;
   readonly compiler_output?: string;
@@ -52,7 +53,10 @@ export async function executeInCloud(
     throw new Error(`the cloud sandbox answered ${response.status}`);
   }
   const payload = (await response.json()) as CloudResponse;
-  const stdout = (payload.program_output ?? '').slice(0, MAX_OUTPUT_BYTES);
+  const stdout = (payload.program_output || payload.program_message || '').slice(
+    0,
+    MAX_OUTPUT_BYTES,
+  );
   const compiled = payload.compiler_error || payload.compiler_output || '';
   const stderr = (payload.program_error || compiled).slice(0, MAX_OUTPUT_BYTES);
   const parsed =

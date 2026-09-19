@@ -1,4 +1,5 @@
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { consoleText } from '../../code/consoleText';
 import type { CodeRun } from '../../hooks/useCollabSession';
 import { LANGUAGE_LABELS } from '../../code/languages';
 import { colors } from '../../theme';
@@ -45,8 +46,10 @@ export function CodeOutput({ runs }: CodeOutputProps) {
               {run.running && <ActivityIndicator size="small" color={colors.textMuted} />}
               <Text style={[styles.status, { color: status.color }]}>{status.text}</Text>
             </View>
-            {run.stdout !== '' && <Text style={styles.stdout}>{run.stdout}</Text>}
-            {run.stderr !== '' && <Text style={styles.stderr}>{run.stderr}</Text>}
+            <Text style={styles.streamLabel}>stdout</Text>
+            <Text style={styles.stdout}>{consoleText(run.stdout)}</Text>
+            <Text style={styles.streamLabel}>stderr</Text>
+            <Text style={styles.stderr}>{consoleText(run.stderr)}</Text>
             {run.files?.length > 0 && (
               <Text style={styles.files}>
                 wrote {run.files.map((file) => file.name).join(', ')}
@@ -95,6 +98,12 @@ const styles = StyleSheet.create({
   },
   status: {
     fontSize: 12,
+  },
+  streamLabel: {
+    color: colors.textSubtle,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
   },
   stdout: {
     color: colors.text,
