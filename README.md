@@ -177,18 +177,19 @@ Late joiners are served the same way whiteboard strokes are, per transport:
 
 ### Running code
 
-Running a submission uses a sandbox so the room cannot execute whatever landed
-on the host. A laptop `npm run server` does not compile anything. The hosted
-signaling server (`NODE_ENV=production`) runs the compilers so your machine
-is not the sandbox. Override `EXECUTION_BACKEND` when you need a different one:
+Running a submission goes to a remote compiler (Wandbox), not `g++` or Node on
+your laptop. GitHub Pages rooms call that service from the browser. A laptop
+`npm run server` does the same. Override `EXECUTION_BACKEND` only if you really
+want another sandbox:
 
 | Value    | Sandbox                                                                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _unset_  | Off on a laptop. On the production host, same as `local`.                                                                                         |
-| `local`  | Host compilers on that process. Used by the Render image. The child does not inherit server secrets.                                              |
+| _unset_  | Wandbox. Default for local development, CI, Pages, and Render.                                                                                    |
+| `cloud`  | Same as unset.                                                                                                                                    |
+| `local`  | Host compilers on that process. The child does not inherit server secrets. Do not use this on a laptop.                                           |
 | `piston` | A [Piston](https://github.com/engineer-man/piston) instance. Set `EXECUTION_PISTON_URL` to your own; the public `emkc.org` API is whitelist-only. |
 | `docker` | One throwaway container per run, for a host that can reach a Docker daemon.                                                                       |
-| `off`    | Off on a laptop. On the production host, same as `local` so a stale dashboard value cannot disable Run.                                           |
+| `off`    | Same as unset. A stale dashboard value cannot disable Run.                                                                                        |
 
 The Docker sandbox runs each submission with no network (`--network none`), a
 read-only root filesystem, capped memory, swap, CPU and process count, all
@@ -216,12 +217,11 @@ throwaway copy — around three seconds for a Go submission instead of a minute.
 The C++ image ships `g++` and a tiny wrapper that writes the binary to `/tmp`
 and execs it.
 
-Both transports use the same service: the Socket.IO path relays `code:run` and
-streams `code:output` to everyone in the room, and the Firestore path posts to
-`POST /execute` on the same server and publishes the run as a document the room
-watches. `EXPO_PUBLIC_EXECUTION_URL` overrides where the client posts, which is
-what a Firestore deployment needs since it has no signaling URL of its own.
-`GET /execute` reports whether execution is enabled and which sandbox is in use.
+The Socket.IO path relays `code:run` through the signaling server, which then
+calls the same hosted compiler. The Firestore path (GitHub Pages) calls that
+compiler from the browser and writes the run document the room already watches.
+`GET /execute` still reports whether the signaling process has a sandbox, for
+Socket.IO rooms.
 
 ```mermaid
 flowchart LR

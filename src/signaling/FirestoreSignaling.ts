@@ -21,13 +21,13 @@ import {
 import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
+import { executeInCloud } from '../code/cloudExecute';
 import { EXECUTION_URL } from '../code/config';
 import { MAX_MESSAGE_CHARS, type ChatDraft } from '../chat/messages';
-import type { ExecutionRequest, ExecutionResult } from '../code/execution';
+import type { ExecutionRequest } from '../code/execution';
 import type { CodeLanguage } from '../code/languages';
 import { mergeEncodedUpdates } from '../code/updates';
 import {
-  mergeWorkspaceFiles,
   normalizeWorkspaceFiles,
   sameWorkspaceFiles,
   type WorkspaceFile,
@@ -768,40 +768,17 @@ class FirestoreChannel implements SignalingChannel {
     };
     await setDoc(entry, started);
     try {
-      const response = await fetch(`${EXECUTION_URL}/execute`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...request, roomId: this.options.roomId }),
-      });
-      const body = (await response.json()) as ExecutionResult & {
-        stdout?: string;
-        stderr?: string;
-        error?: string;
-        files?: WorkspaceFile[];
-      };
-      if (!response.ok) {
-        throw new Error(body.error ?? `The sandbox answered ${response.status}.`);
-      }
-      const files = normalizeWorkspaceFiles(body.files);
-      if (files.length > 0) {
-        const roomSnap = await getDoc(this.room);
-        const current = normalizeWorkspaceFiles(
-          (roomSnap.data() as RoomDoc | undefined)?.workspaceFiles,
-        );
-        const next = mergeWorkspaceFiles(current, files);
-        this.lastSentWorkspaceFiles = next;
-        void setDoc(this.room, { workspaceFiles: next }, { merge: true });
-      }
+      const { result, stdout, stderr } = await executeInCloud(request);
       await setDoc(
         entry,
         {
-          stdout: body.stdout ?? '',
-          stderr: body.stderr ?? '',
-          exitCode: body.exitCode ?? null,
-          timedOut: body.timedOut ?? false,
+          stdout,
+          stderr,
+          exitCode: result.exitCode,
+          timedOut: result.timedOut,
           error: null,
           finished: true,
-          files,
+          files: result.files ?? [],
         },
         { merge: true },
       );
