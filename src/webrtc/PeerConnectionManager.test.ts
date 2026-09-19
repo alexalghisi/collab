@@ -19,6 +19,17 @@ class FakeStream {
   }
 }
 
+class FakeSender {
+  parameters: RTCRtpSendParameters = { encodings: [{}] } as RTCRtpSendParameters;
+  readonly replaceTrack = vi.fn(async () => undefined);
+  getParameters() {
+    return this.parameters;
+  }
+  readonly setParameters = vi.fn(async (next: RTCRtpSendParameters) => {
+    this.parameters = next;
+  });
+}
+
 class FakePeerConnection {
   connectionState = 'new';
   remoteDescription: RTCSessionDescriptionInit | null = null;
@@ -28,12 +39,19 @@ class FakePeerConnection {
     sdp: options?.iceRestart ? 'restart' : 'offer',
   }));
   readonly createAnswer = vi.fn(async () => ({ type: 'answer' as const, sdp: 'answer' }));
-  readonly setLocalDescription = vi.fn(async () => undefined);
+  readonly setLocalDescription = vi.fn(
+    async (_description?: RTCSessionDescriptionInit) => undefined,
+  );
   readonly setRemoteDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
     this.remoteDescription = description;
   });
   readonly addIceCandidate = vi.fn(async () => undefined);
-  readonly addTransceiver = vi.fn(() => ({ sender: { replaceTrack: vi.fn() } }));
+  readonly senders: FakeSender[] = [];
+  readonly addTransceiver = vi.fn(() => {
+    const sender = new FakeSender();
+    this.senders.push(sender);
+    return { sender };
+  });
   readonly addTrack = vi.fn();
   readonly close = vi.fn();
 
@@ -104,6 +122,114 @@ describe('PeerConnectionManager', () => {
       expect(signaling.emit).toHaveBeenLastCalledWith('signal:offer', {
         targetPeerId: 'peer-b',
         description: { type: 'offer', sdp: 'restart' },
+      });
+    });
+  });
+
+  it('offers tuned audio and caps the outgoing bitrates', async () => {
+    const connection = new FakePeerConnection();
+    connection.createOffer.mockImplementation(async () => ({
+      type: 'offer' as const,
+      sdp: 'v=0\r\na=rtpmap:111 opus/48000/2\r\n',
+    }));
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return new FakeStream();
+      }),
+    );
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      vi.fn(function RTCPeerConnection() {
+        return connection;
+      }),
+    );
+
+    const handlers = new Map<string, (payload: never) => void>();
+    const signaling = {
+      on: (event: string, handler: (payload: never) => void) => {
+        handlers.set(event, handler);
+      },
+      emit: vi.fn(),
+    };
+    const manager = new PeerConnectionManager({
+      signaling: signaling as never,
+      localStream: new FakeStream() as unknown as MediaStream,
+      onRemoteStream: vi.fn(),
+      onPeerClosed: vi.fn(),
+    });
+    manager.start();
+
+    handlers.get('peer:joined')?.({
+      peerId: 'peer-b',
+      displayName: 'Bea',
+      joinedAt: -1,
+      state: INITIAL_PEER_STATE,
+    } as never);
+
+    await vi.waitFor(() => {
+      expect(signaling.emit).toHaveBeenCalledWith('signal:offer', {
+        targetPeerId: 'peer-b',
+        description: {
+          type: 'offer',
+          sdp: expect.stringContaining('a=fmtp:111 maxaveragebitrate=64000'),
+        },
+      });
+      const bitrates = connection.senders.map(
+        (sender) => sender.parameters.encodings?.[0]?.maxBitrate,
+      );
+      expect(bitrates).toEqual([64_000, 2_500_000]);
+    });
+  });
+
+  it('falls back to the untouched offer when the stack refuses edited SDP', async () => {
+    const connection = new FakePeerConnection();
+    const original = { type: 'offer' as const, sdp: 'v=0\r\na=rtpmap:111 opus/48000/2\r\n' };
+    connection.createOffer.mockImplementation(async () => original);
+    connection.setLocalDescription.mockImplementation(async (description) => {
+      if (description !== original) {
+        throw new Error('munged sdp');
+      }
+    });
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return new FakeStream();
+      }),
+    );
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      vi.fn(function RTCPeerConnection() {
+        return connection;
+      }),
+    );
+
+    const handlers = new Map<string, (payload: never) => void>();
+    const signaling = {
+      on: (event: string, handler: (payload: never) => void) => {
+        handlers.set(event, handler);
+      },
+      emit: vi.fn(),
+    };
+    const manager = new PeerConnectionManager({
+      signaling: signaling as never,
+      localStream: new FakeStream() as unknown as MediaStream,
+      onRemoteStream: vi.fn(),
+      onPeerClosed: vi.fn(),
+    });
+    manager.start();
+
+    handlers.get('peer:joined')?.({
+      peerId: 'peer-b',
+      displayName: 'Bea',
+      joinedAt: -1,
+      state: INITIAL_PEER_STATE,
+    } as never);
+
+    await vi.waitFor(() => {
+      expect(signaling.emit).toHaveBeenCalledWith('signal:offer', {
+        targetPeerId: 'peer-b',
+        description: original,
       });
     });
   });
