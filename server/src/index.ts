@@ -16,6 +16,7 @@ import { verifyToken } from './auth/tokens';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
 import { filesRouter } from './files/router';
+import { sendAppHome } from './home';
 import { ReminderBook } from './invite/reminders';
 import { inviteRouter } from './invite/router';
 import { transportFromEnv } from './invite/senders';
@@ -68,6 +69,9 @@ const userStore = createUserStoreFromEnv(join(ROOT, 'data', 'users.json'));
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
 });
+if (!existsSync(join(WEB_ROOT, 'index.html'))) {
+  app.get('/', sendAppHome);
+}
 app.use(authRouter({ store: userStore, root: ROOT }));
 app.use(executionRouter(execution));
 app.use(assistantRouter(assistant));
