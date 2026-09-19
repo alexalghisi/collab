@@ -4,6 +4,8 @@ import { firestore } from '../firebase/app';
 import type { ChatMessage } from '../signaling/events';
 import {
   createChannel,
+  deleteMessage,
+  editMessage,
   sendMessage,
   subscribeChannels,
   subscribeMessages,
@@ -19,6 +21,8 @@ export interface TeamChat {
   selectChannel: (channelId: string | null) => void;
   createChannel: (name: string) => Promise<void>;
   send: (text: string) => Promise<void>;
+  edit: (id: string, text: string) => Promise<void>;
+  remove: (id: string) => Promise<void>;
 }
 
 export function useTeamChat(user: AuthUser | null): TeamChat {
@@ -60,6 +64,24 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
     [db, user, activeChannelId],
   );
 
+  const edit = useCallback(
+    async (id: string, text: string) => {
+      if (db && user && activeChannelId) {
+        await editMessage(db, activeChannelId, user, id, text);
+      }
+    },
+    [db, user, activeChannelId],
+  );
+
+  const remove = useCallback(
+    async (id: string) => {
+      if (db && user && activeChannelId) {
+        await deleteMessage(db, activeChannelId, user, id);
+      }
+    },
+    [db, user, activeChannelId],
+  );
+
   return {
     enabled: db !== null,
     channels,
@@ -68,5 +90,7 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
     selectChannel: setActiveChannelId,
     createChannel: create,
     send,
+    edit,
+    remove,
   };
 }

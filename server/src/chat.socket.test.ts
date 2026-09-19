@@ -90,3 +90,68 @@ describe('sending a message with a file', () => {
     expect(seen).toHaveLength(0);
   });
 });
+
+describe('editing and deleting a message', () => {
+  let server: RoomServer;
+  const roomId = 'chat-edit-room';
+
+  beforeEach(async () => {
+    server = await startRoomServer();
+  });
+
+  afterEach(async () => {
+    await server.stop();
+  });
+
+  it('lets the sender change their own message', async () => {
+    const host = await server.join('a', 'Ada', roomId);
+    const guest = await server.join('b', 'Linus', roomId);
+    const posted: ChatMessage[] = [];
+    const seen: ChatMessage[] = [];
+    guest.channel.on('chat:message', (message) => posted.push(message));
+    host.channel.on('chat:edited', (message) => seen.push(message));
+
+    guest.channel.emit('chat:message', { text: 'typo', file: null });
+    await settle();
+    guest.channel.emit('chat:edit', { id: posted[0].id, text: 'fixed' });
+    await settle();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ id: posted[0].id, text: 'fixed' });
+    expect(seen[0].editedAt).toEqual(expect.any(Number));
+  });
+
+  it('lets the sender delete their own message', async () => {
+    const host = await server.join('a', 'Ada', roomId);
+    const guest = await server.join('b', 'Linus', roomId);
+    const posted: ChatMessage[] = [];
+    const seen: ChatMessage[] = [];
+    guest.channel.on('chat:message', (message) => posted.push(message));
+    host.channel.on('chat:deleted', (message) => seen.push(message));
+
+    guest.channel.emit('chat:message', { text: 'never mind', file: null });
+    await settle();
+    guest.channel.emit('chat:delete', { id: posted[0].id });
+    await settle();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ id: posted[0].id, text: '', file: null });
+    expect(seen[0].deletedAt).toEqual(expect.any(Number));
+  });
+
+  it('ignores an edit from someone else', async () => {
+    const host = await server.join('a', 'Ada', roomId);
+    const guest = await server.join('b', 'Linus', roomId);
+    const posted: ChatMessage[] = [];
+    const seen: ChatMessage[] = [];
+    host.channel.on('chat:message', (message) => posted.push(message));
+    host.channel.on('chat:edited', (message) => seen.push(message));
+
+    host.channel.emit('chat:message', { text: 'mine', file: null });
+    await settle();
+    guest.channel.emit('chat:edit', { id: posted[0].id, text: 'hijacked' });
+    await settle();
+
+    expect(seen).toHaveLength(0);
+  });
+});

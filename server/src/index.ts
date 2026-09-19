@@ -6,10 +6,12 @@ import cors from 'cors';
 import express from 'express';
 import { Server } from 'socket.io';
 import { MAX_CODE_BYTES, MAX_STDIN_BYTES } from '../../src/code/execution';
+import { MAX_WORKSPACE_BYTES } from '../../src/code/workspaceFiles';
 import { assistantRouter } from './assistant/router';
 import { searchRouter } from './assistant/searchRouter';
 import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
 import { authRouter } from './auth/router';
+import { createUserStoreFromEnv } from './auth/store';
 import { verifyToken } from './auth/tokens';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
@@ -56,15 +58,16 @@ const WEB_ROOT = join(ROOT, 'dist-web');
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN }));
 // Generous enough for a source file and its input, small enough to be no target.
-app.use(express.json({ limit: MAX_CODE_BYTES + MAX_STDIN_BYTES + 4096 }));
+app.use(express.json({ limit: MAX_CODE_BYTES + MAX_STDIN_BYTES + MAX_WORKSPACE_BYTES + 4096 }));
 
 const execution = new ExecutionService(createRunnerFromEnv());
 const assistant = createMeetingAssistant();
+const userStore = createUserStoreFromEnv(join(ROOT, 'data', 'users.json'));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
 });
-app.use(authRouter({ root: ROOT }));
+app.use(authRouter({ store: userStore, root: ROOT }));
 app.use(executionRouter(execution));
 app.use(assistantRouter(assistant));
 app.use(searchRouter(meetingIndexStore()));
@@ -108,6 +111,13 @@ io.use((socket, next) => {
 
 registerSignalingHandlers(io, execution, assistant);
 
-httpServer.listen(PORT, () => {
-  console.info(`Collab signaling server listening on port ${PORT}`);
-});
+void userStore
+  .ready()
+  .catch((cause) => {
+    console.error('Could not load the account store', cause);
+  })
+  .finally(() => {
+    httpServer.listen(PORT, () => {
+      console.info(`Collab signaling server listening on port ${PORT}`);
+    });
+  });

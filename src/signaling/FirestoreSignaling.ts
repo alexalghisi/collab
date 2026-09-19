@@ -22,10 +22,16 @@ import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebas
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
 import { EXECUTION_URL } from '../code/config';
-import type { ChatDraft } from '../chat/messages';
+import { MAX_MESSAGE_CHARS, type ChatDraft } from '../chat/messages';
 import type { ExecutionRequest, ExecutionResult } from '../code/execution';
 import type { CodeLanguage } from '../code/languages';
 import { mergeEncodedUpdates } from '../code/updates';
+import {
+  mergeWorkspaceFiles,
+  normalizeWorkspaceFiles,
+  sameWorkspaceFiles,
+  type WorkspaceFile,
+} from '../code/workspaceFiles';
 import {
   ATTACHMENT_REJECTION_MESSAGES,
   safeFileName,
@@ -88,12 +94,14 @@ interface CodeRunDoc {
   readonly timedOut?: boolean;
   readonly error?: string | null;
   readonly finished?: boolean;
+  readonly files?: WorkspaceFile[];
 }
 
 interface RoomDoc {
   readonly hostPeerId: string;
   readonly notes?: string;
   readonly settings?: RoomSettings;
+  readonly workspaceFiles?: WorkspaceFile[];
 }
 
 /** Room state as seen by a joiner, with defaults filled in. */
@@ -101,6 +109,7 @@ interface RoomSnapshot {
   readonly hostPeerId: string;
   readonly notes: string;
   readonly settings: RoomSettings;
+  readonly workspaceFiles: WorkspaceFile[];
 }
 
 interface WaitingDoc {
@@ -173,6 +182,7 @@ class FirestoreChannel implements SignalingChannel {
   private lastSettings = DEFAULT_ROOM_SETTINGS;
   /** Our own notes writes echo back through the room snapshot; they must not overwrite newer typing. */
   private lastSentNotes: string | null = null;
+  private lastSentWorkspaceFiles: readonly WorkspaceFile[] = [];
   private readonly pageHide = {
     handler: () => this.disconnect(),
     attach: () => window.addEventListener('pagehide', this.pageHide.handler),
@@ -197,6 +207,30 @@ class FirestoreChannel implements SignalingChannel {
         sentAt: Date.now(),
       };
       void addDoc(this.messages, message);
+    },
+    'chat:edit': ({ id, text }) => {
+      const trimmed = text.trim().slice(0, MAX_MESSAGE_CHARS);
+      const ref = doc(this.messages, id);
+      void getDoc(ref).then((snapshot) => {
+        const data = snapshot.data() as MessageDoc | undefined;
+        if (!snapshot.exists() || !data || data.peerId !== this.peerId || data.deletedAt) {
+          return;
+        }
+        if (trimmed === '' && !data.file) {
+          return;
+        }
+        void updateDoc(ref, { text: trimmed, editedAt: Date.now() });
+      });
+    },
+    'chat:delete': ({ id }) => {
+      const ref = doc(this.messages, id);
+      void getDoc(ref).then((snapshot) => {
+        const data = snapshot.data() as MessageDoc | undefined;
+        if (!snapshot.exists() || !data || data.peerId !== this.peerId || data.deletedAt) {
+          return;
+        }
+        void updateDoc(ref, { deletedAt: Date.now(), text: '', file: null });
+      });
     },
     'board:stroke': (stroke) => {
       void setDoc(doc(this.strokes, stroke.id), stroke);
@@ -223,6 +257,10 @@ class FirestoreChannel implements SignalingChannel {
     'code:awareness': (update) => this.sendAwareness(update),
     'code:run': (request) => {
       void this.runCode(request);
+    },
+    'code:files': (files) => {
+      this.lastSentWorkspaceFiles = files;
+      void setDoc(this.room, { workspaceFiles: files }, { merge: true });
     },
     'assistant:ask': (ask) => {
       void this.askAssistant(ask);
@@ -299,8 +337,20 @@ class FirestoreChannel implements SignalingChannel {
       state: this.options.state,
     };
     await setDoc(this.selfRef(), self);
+    const occupants = await getDocs(this.participants);
+    const mine = this.options.displayName.trim().toLowerCase();
+    for (const occupant of occupants.docs) {
+      if (occupant.id === this.peerId) {
+        continue;
+      }
+      const data = occupant.data() as ParticipantDoc;
+      if (data.displayName.trim().toLowerCase() === mine) {
+        void deleteDoc(occupant.ref);
+      }
+    }
     const room = await this.syncRoom(true);
     this.lastSettings = room.settings;
+    this.lastSentWorkspaceFiles = room.workspaceFiles;
 
     this.heartbeat = setInterval(() => {
       void updateDoc(this.selfRef(), { lastSeen: Date.now() });
@@ -423,17 +473,18 @@ class FirestoreChannel implements SignalingChannel {
       const data = (await transaction.get(this.room)).data() as RoomDoc | undefined;
       const notes = data?.notes ?? '';
       const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
+      const workspaceFiles = normalizeWorkspaceFiles(data?.workspaceFiles);
       if (data?.hostPeerId) {
         const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
-          return { hostPeerId: data.hostPeerId, notes, settings };
+          return { hostPeerId: data.hostPeerId, notes, settings, workspaceFiles };
         }
       }
       if (!claim) {
-        return { hostPeerId: '', notes, settings };
+        return { hostPeerId: '', notes, settings, workspaceFiles };
       }
       transaction.set(this.room, { hostPeerId: this.peerId }, { merge: true });
-      return { hostPeerId: this.peerId, notes, settings };
+      return { hostPeerId: this.peerId, notes, settings, workspaceFiles };
     });
   }
 
@@ -482,15 +533,29 @@ class FirestoreChannel implements SignalingChannel {
     }
   }
 
-  private subscribeParticipants({ hostPeerId, notes, settings }: RoomSnapshot): Promise<void> {
+  private subscribeParticipants({
+    hostPeerId,
+    notes,
+    settings,
+    workspaceFiles,
+  }: RoomSnapshot): Promise<void> {
     return new Promise((resolve, reject) => {
       let initial = true;
       const unsubscribe = onSnapshot(
         this.participants,
         (snapshot) => {
+          const now = Date.now();
+          for (const participant of snapshot.docs) {
+            if (participant.id === this.peerId) {
+              continue;
+            }
+            const seen = (participant.data() as ParticipantDoc).lastSeen ?? 0;
+            if (now - seen > STALE_AFTER_MS) {
+              void deleteDoc(participant.ref);
+            }
+          }
           if (initial) {
             initial = false;
-            const now = Date.now();
             const peers: PeerInfo[] = [];
             for (const participant of snapshot.docs) {
               if (participant.id === this.peerId) {
@@ -498,7 +563,6 @@ class FirestoreChannel implements SignalingChannel {
               }
               const data = participant.data() as ParticipantDoc;
               if (now - data.lastSeen > STALE_AFTER_MS) {
-                void deleteDoc(participant.ref);
                 continue;
               }
               peers.push(toPeerInfo(participant));
@@ -515,6 +579,7 @@ class FirestoreChannel implements SignalingChannel {
               transcript: [],
               messages: [],
               boardFiles: [],
+              workspaceFiles,
             });
             resolve();
             return;
@@ -558,6 +623,11 @@ class FirestoreChannel implements SignalingChannel {
       if (!sameSettings(settings, this.lastSettings)) {
         this.lastSettings = settings;
         this.emitter.dispatch('room:settings', settings);
+      }
+      const workspaceFiles = normalizeWorkspaceFiles(data?.workspaceFiles);
+      if (!sameWorkspaceFiles(workspaceFiles, this.lastSentWorkspaceFiles)) {
+        this.lastSentWorkspaceFiles = workspaceFiles;
+        this.emitter.dispatch('code:files', workspaceFiles);
       }
     });
     this.unsubscribers.push(unsubscribe);
@@ -695,9 +765,20 @@ class FirestoreChannel implements SignalingChannel {
         stdout?: string;
         stderr?: string;
         error?: string;
+        files?: WorkspaceFile[];
       };
       if (!response.ok) {
         throw new Error(body.error ?? `The sandbox answered ${response.status}.`);
+      }
+      const files = normalizeWorkspaceFiles(body.files);
+      if (files.length > 0) {
+        const roomSnap = await getDoc(this.room);
+        const current = normalizeWorkspaceFiles(
+          (roomSnap.data() as RoomDoc | undefined)?.workspaceFiles,
+        );
+        const next = mergeWorkspaceFiles(current, files);
+        this.lastSentWorkspaceFiles = next;
+        void setDoc(this.room, { workspaceFiles: next }, { merge: true });
       }
       await setDoc(
         entry,
@@ -708,6 +789,7 @@ class FirestoreChannel implements SignalingChannel {
           timedOut: body.timedOut ?? false,
           error: null,
           finished: true,
+          files,
         },
         { merge: true },
       );
@@ -747,6 +829,7 @@ class FirestoreChannel implements SignalingChannel {
             exitCode: run.exitCode ?? null,
             timedOut: run.timedOut ?? false,
             error: run.error ?? null,
+            files: run.files ?? [],
           });
         }
       }
@@ -811,10 +894,10 @@ class FirestoreChannel implements SignalingChannel {
               startedAt: segment.startedAt,
             })),
           notes: ((roomSnap.data() as RoomDoc | undefined)?.notes ?? '') as string,
-          messages: chats.docs.map((item) => {
-            const data = item.data() as MessageDoc;
-            return { text: data.text, sentAt: data.sentAt };
-          }),
+          messages: chats.docs
+            .map((item) => item.data() as MessageDoc)
+            .filter((data) => !data.deletedAt)
+            .map((data) => ({ text: data.text, sentAt: data.sentAt })),
         }),
       });
       const body = (await response.json()) as {
@@ -887,9 +970,19 @@ class FirestoreChannel implements SignalingChannel {
     const ordered = query(this.messages, orderBy('sentAt'));
     const unsubscribe = onSnapshot(ordered, (snapshot) => {
       for (const change of snapshot.docChanges()) {
+        const data = change.doc.data() as MessageDoc;
+        const message: ChatMessage = { id: change.doc.id, ...data };
         if (change.type === 'added') {
-          const data = change.doc.data() as MessageDoc;
-          this.emitter.dispatch('chat:message', { id: change.doc.id, ...data });
+          this.emitter.dispatch(message.deletedAt ? 'chat:deleted' : 'chat:message', message);
+        } else if (change.type === 'modified') {
+          this.emitter.dispatch(message.deletedAt ? 'chat:deleted' : 'chat:edited', message);
+        } else if (change.type === 'removed') {
+          this.emitter.dispatch('chat:deleted', {
+            ...message,
+            text: '',
+            file: null,
+            deletedAt: message.deletedAt ?? Date.now(),
+          });
         }
       }
     });
