@@ -1,17 +1,51 @@
 import { DEFAULT_ICE_SERVERS, type IceServerConfig } from './config';
 
+const ICE_WAIT_MS = 2500;
+const PUBLIC_TURN_URL = 'https://turn.elixir-webrtc.org/?service=turn&username=collab';
+
 export async function loadIceServers(
   baseUrl: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<readonly IceServerConfig[]> {
+  const hosted = await readJson(
+    fetchImpl,
+    `${baseUrl.replace(/\/$/, '')}/ice`,
+    (body: { iceServers?: IceServerConfig[] }) =>
+      body.iceServers && body.iceServers.length > 0 ? body.iceServers : null,
+  );
+  if (hosted) {
+    return hosted;
+  }
+  const relay = await readJson(
+    fetchImpl,
+    PUBLIC_TURN_URL,
+    (body: { uris?: string[]; username?: string; password?: string }) => {
+      if (!body.uris?.length || !body.username || !body.password) {
+        return null;
+      }
+      return [
+        ...DEFAULT_ICE_SERVERS,
+        { urls: body.uris, username: body.username, credential: body.password },
+      ];
+    },
+    'POST',
+  );
+  return relay ?? DEFAULT_ICE_SERVERS;
+}
+
+async function readJson<T>(
+  fetchImpl: typeof fetch,
+  url: string,
+  pick: (body: T) => IceServerConfig[] | null,
+  method = 'GET',
+): Promise<IceServerConfig[] | null> {
   try {
-    const response = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/ice`);
+    const response = await fetchImpl(url, { method, signal: AbortSignal.timeout(ICE_WAIT_MS) });
     if (!response.ok) {
-      return DEFAULT_ICE_SERVERS;
+      return null;
     }
-    const body = (await response.json()) as { iceServers?: IceServerConfig[] };
-    return body.iceServers && body.iceServers.length > 0 ? body.iceServers : DEFAULT_ICE_SERVERS;
+    return pick((await response.json()) as T);
   } catch {
-    return DEFAULT_ICE_SERVERS;
+    return null;
   }
 }
