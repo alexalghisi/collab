@@ -83,7 +83,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared notes** that every participant can edit, and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in).
-- **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that executes the room's code — JavaScript, TypeScript, Python, Go or C++ — in a network-less, resource-capped, throwaway sandbox and streams the output to everyone.
+- **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that sends the room's code — JavaScript, TypeScript, Python, Go or C++ — to a hosted compiler (Wandbox) from the browser, so GitHub Pages does not depend on the signaling sandbox.
 - **Meeting assistant**: an in-call panel that answers questions from the live transcript, notes and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Local recording** (web): captures your video together with the mixed audio of every participant and downloads a `.webm` file when stopped.
@@ -217,11 +217,8 @@ throwaway copy — around three seconds for a Go submission instead of a minute.
 The C++ image ships `g++` and a tiny wrapper that writes the binary to `/tmp`
 and execs it.
 
-The Socket.IO path relays `code:run` through the signaling server, which then
-calls the same hosted compiler. The Firestore path (GitHub Pages) calls that
-compiler from the browser and writes the run document the room already watches.
-`GET /execute` still reports whether the signaling process has a sandbox, for
-Socket.IO rooms.
+Run always calls that hosted compiler from the browser. `GET /execute` on the
+signaling process is leftover for older clients and is not required for Pages.
 
 ```mermaid
 flowchart LR
