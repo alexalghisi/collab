@@ -90,10 +90,22 @@ export class MonacoTextBinding {
       throw new Error('the editor has no model to bind');
     }
     this.seed(model);
-    this.disposables.push(model.onDidChangeContent((event) => this.onModelChange(model, event)));
+    this.disposables.push(
+      model.onDidChangeContent((event) => {
+        const current = this.editor.getModel();
+        if (current) {
+          this.onModelChange(current, event);
+        }
+      }),
+    );
     this.document.text.observe(this.onTextChange);
     this.disposables.push(
-      editor.onDidChangeCursorSelection(() => this.publishSelection(model)),
+      editor.onDidChangeCursorSelection(() => {
+        const current = this.editor.getModel();
+        if (current) {
+          this.publishSelection(current);
+        }
+      }),
       { dispose: () => this.document.text.unobserve(this.onTextChange) },
     );
   }
@@ -104,7 +116,6 @@ export class MonacoTextBinding {
     }
   }
 
-  /** The shared text is the source of truth; a fresh editor starts from it. */
   private seed(model: EditorModel): void {
     const shared = this.document.text.toString();
     if (shared === model.getValue()) {
@@ -114,23 +125,18 @@ export class MonacoTextBinding {
       this.document.text.insert(0, model.getValue());
       return;
     }
-    this.applyingRemote = true;
-    model.applyEdits([
-      {
-        range: new this.monaco.Range(1, 1, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
-        text: shared,
-      },
-    ]);
-    this.applyingRemote = false;
+    this.writeModel(model, shared);
   }
 
   private onModelChange(model: EditorModel, event: ModelContentChangedEvent): void {
     if (this.applyingRemote) {
       return;
     }
+    const changes = event.changes
+      .slice()
+      .sort((left, right) => right.rangeOffset - left.rangeOffset);
     this.document.doc.transact(() => {
-      // Monaco reports changes back to front, which keeps earlier offsets valid.
-      for (const change of event.changes) {
+      for (const change of changes) {
         if (change.rangeLength > 0) {
           this.document.text.delete(change.rangeOffset, change.rangeLength);
         }
@@ -170,10 +176,30 @@ export class MonacoTextBinding {
           ]);
         }
       }
+      this.alignModel(model);
     } finally {
       this.applyingRemote = false;
     }
   };
+
+  private alignModel(model: EditorModel): void {
+    const shared = this.document.text.toString();
+    if (model.getValue() === shared) {
+      return;
+    }
+    this.writeModel(model, shared);
+  }
+
+  private writeModel(model: EditorModel, text: string): void {
+    this.applyingRemote = true;
+    model.applyEdits([
+      {
+        range: new this.monaco.Range(1, 1, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+        text,
+      },
+    ]);
+    this.applyingRemote = false;
+  }
 
   private rangeOf(model: EditorModel, from: number, to: number): CursorRange {
     const start = model.getPositionAt(from);
