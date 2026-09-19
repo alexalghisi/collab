@@ -60,7 +60,7 @@ function fakeDocker(fails?: { command: string; stderr?: string; error?: Error })
   return { spawn, calls, runs };
 }
 
-const request = { language: 'python', code: 'print(1)', stdin: '' } as const;
+const request = { language: 'python' as const, code: 'print(1)', stdin: '', files: [] };
 
 /** run() writes a file and creates the container before the run itself starts. */
 async function started(runs: FakeProcess[]): Promise<FakeProcess> {
@@ -145,10 +145,33 @@ describe('DockerRunner', () => {
     (await started(docker.runs)).emit('close', 0);
     await running;
 
-    expect(docker.calls.map((call) => call.args[0])).toEqual(['create', 'cp', 'start', 'rm']);
+    expect(docker.calls.map((call) => call.args[0])).toEqual(['create', 'cp', 'start', 'cp', 'rm']);
     const container = docker.calls[0].args[docker.calls[0].args.indexOf('--name') + 1];
     expect(docker.calls[1].args[2]).toBe(`${container}:/sandbox/main.py`);
-    expect(docker.calls[3].args).toEqual(['rm', '--force', '--volumes', container]);
+    expect(docker.calls[3].args[1]).toBe(`${container}:/tmp`);
+    expect(docker.calls[4].args).toEqual(['rm', '--force', '--volumes', container]);
+  });
+
+  it('copies extra files into the working directory so the program can open them', async () => {
+    const docker = fakeDocker();
+    const runner = new DockerRunner(DEFAULT_LIMITS, docker.spawn);
+    const files = [{ name: 'date.in', content: '3\n1 2 3\n' }];
+
+    const running = runner.run({ ...request, language: 'cpp', files }, () => {});
+    (await started(docker.runs)).emit('close', 0);
+    await running;
+
+    const container = docker.calls[0].args[docker.calls[0].args.indexOf('--name') + 1];
+    expect(docker.calls.map((call) => call.args[0])).toEqual([
+      'create',
+      'cp',
+      'cp',
+      'start',
+      'cp',
+      'rm',
+    ]);
+    expect(docker.calls[1].args[2]).toBe(`${container}:/sandbox/main.cpp`);
+    expect(docker.calls[2].args[2]).toBe(`${container}:/tmp/date.in`);
   });
 
   it('streams stdout and stderr as they arrive and reports the exit code', async () => {
@@ -162,7 +185,7 @@ describe('DockerRunner', () => {
     child.stderr.write('a warning\n');
     child.emit('close', 3);
 
-    expect(await running).toEqual({ exitCode: 3, timedOut: false });
+    expect(await running).toEqual({ exitCode: 3, timedOut: false, files: [] });
     expect(chunks).toEqual([
       { stream: 'stdout', text: '1\n' },
       { stream: 'stderr', text: 'a warning\n' },
@@ -191,7 +214,7 @@ describe('DockerRunner', () => {
     // A killed container closes its stream; the runner reports the timeout.
     setTimeout(() => child.emit('close', null), 60);
 
-    expect(await running).toEqual({ exitCode: null, timedOut: true });
+    expect(await running).toEqual({ exitCode: null, timedOut: true, files: [] });
     const container = docker.calls[0].args[docker.calls[0].args.indexOf('--name') + 1];
     expect(docker.calls.filter((call) => call.args[0] === 'kill')).toEqual([
       { command: 'docker', args: ['kill', container] },

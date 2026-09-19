@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Linking,
   Platform,
   Pressable,
@@ -10,7 +11,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { ChatDraft } from '../../chat/messages';
+import {
+  isOwnChatMessage,
+  MAX_MESSAGE_CHARS,
+  visibleChatMessages,
+  type ChatDraft,
+} from '../../chat/messages';
 import { formatBytes } from '../../files/attachments';
 import { pickBrowserFiles, uploadableFromBrowserFile } from '../../files/browser';
 import type { FileAttachment } from '../../files/attachments';
@@ -27,7 +33,11 @@ export interface MessageThreadProps {
   messages: ChatMessage[];
   /** Messages whose `peerId` matches are rendered as our own. */
   selfId: string | null;
+  /** Extra ids that also count as "me" (meeting session id vs live socket id). */
+  selfIds?: readonly (string | null)[];
   onSend: (draft: ChatDraft) => void;
+  onEdit?: (id: string, text: string) => void;
+  onDelete?: (id: string) => void;
   uploadFile?: (file: UploadableFile, onProgress: UploadProgress) => Promise<FileAttachment>;
   placeholder: string;
   emptyText: string;
@@ -41,11 +51,27 @@ function openHref(href: string): void {
   void Linking.openURL(href);
 }
 
+function confirmDelete(onConfirm: () => void): void {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (window.confirm('Delete this message?')) {
+      onConfirm();
+    }
+    return;
+  }
+  Alert.alert('Delete message?', 'This cannot be undone.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Delete', style: 'destructive', onPress: onConfirm },
+  ]);
+}
+
 /** Scrolling message list with a composer; used by the meeting chat and team channels. */
 export function MessageThread({
   messages,
   selfId,
+  selfIds,
   onSend,
+  onEdit,
+  onDelete,
   uploadFile,
   placeholder,
   emptyText,
@@ -53,11 +79,14 @@ export function MessageThread({
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
   const listRef = useRef<ScrollView>(null);
+  const visible = visibleChatMessages(messages);
 
   useEffect(() => {
     listRef.current?.scrollToEnd({ animated: true });
-  }, [messages.length]);
+  }, [visible.length]);
 
   const submit = (): void => {
     const text = draft.trim();
@@ -136,30 +165,110 @@ export function MessageThread({
   return (
     <>
       <ScrollView ref={listRef} contentContainerStyle={styles.list}>
-        {messages.length === 0 && <Text style={styles.empty}>{emptyText}</Text>}
-        {messages.map((message) => {
-          const mine = message.peerId === selfId;
+        {visible.length === 0 && <Text style={styles.empty}>{emptyText}</Text>}
+        {visible.map((message) => {
+          const mine = isOwnChatMessage(message, selfId, ...(selfIds ?? []));
           const file = message.file;
+          const editing = editingId === message.id;
+          const canSaveEdit = editDraft.trim() !== '' || Boolean(file);
           return (
             <View key={message.id} style={[styles.message, mine && styles.messageMine]}>
               <View style={styles.meta}>
                 <Text style={styles.author}>{mine ? 'You' : message.displayName}</Text>
                 <Text style={styles.time}>{formatTime(message.sentAt)}</Text>
+                {message.editedAt && !editing && <Text style={styles.time}>edited</Text>}
+                {mine && (onEdit || onDelete) && !editing && (
+                  <View style={styles.actions}>
+                    {onEdit && (
+                      <Pressable
+                        style={styles.action}
+                        onPress={() => {
+                          setEditingId(message.id);
+                          setEditDraft(message.text);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Edit message"
+                      >
+                        <Ionicons name="create-outline" size={14} color={colors.text} />
+                      </Pressable>
+                    )}
+                    {onDelete && (
+                      <Pressable
+                        style={styles.action}
+                        onPress={() => confirmDelete(() => onDelete(message.id))}
+                        accessibilityRole="button"
+                        accessibilityLabel="Delete message"
+                      >
+                        <Ionicons name="trash-outline" size={14} color={colors.text} />
+                      </Pressable>
+                    )}
+                  </View>
+                )}
               </View>
-              {message.text.length > 0 && <LinkedText text={message.text} />}
-              {file && (
-                <Pressable
-                  style={styles.file}
-                  onPress={() => openHref(attachmentHref(file.url))}
-                  accessibilityRole="link"
-                  accessibilityLabel={`Download ${file.name}`}
-                >
-                  <Ionicons name="document-outline" size={16} color={colors.text} />
-                  <Text style={styles.fileName} numberOfLines={1}>
-                    {file.name}
-                  </Text>
-                  <Text style={styles.fileSize}>{formatBytes(file.size)}</Text>
-                </Pressable>
+              {editing ? (
+                <>
+                  <TextInput
+                    style={styles.editInput}
+                    value={editDraft}
+                    onChangeText={setEditDraft}
+                    onSubmitEditing={() => {
+                      if (!canSaveEdit || !onEdit) {
+                        return;
+                      }
+                      onEdit(message.id, editDraft.trim());
+                      setEditingId(null);
+                    }}
+                    maxLength={MAX_MESSAGE_CHARS}
+                    autoFocus
+                    returnKeyType="done"
+                    blurOnSubmit
+                  />
+                  <View style={styles.editActions}>
+                    <Pressable
+                      onPress={() => setEditingId(null)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel edit"
+                    >
+                      <Text style={styles.editActionText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        if (!canSaveEdit || !onEdit) {
+                          return;
+                        }
+                        onEdit(message.id, editDraft.trim());
+                        setEditingId(null);
+                      }}
+                      disabled={!canSaveEdit}
+                      accessibilityRole="button"
+                      accessibilityLabel="Save edit"
+                    >
+                      <Text
+                        style={[styles.editActionText, !canSaveEdit && styles.editActionDisabled]}
+                      >
+                        Save
+                      </Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  {message.text.length > 0 && <LinkedText text={message.text} />}
+                  {file && (
+                    <Pressable
+                      style={styles.file}
+                      onPress={() => openHref(attachmentHref(file.url))}
+                      accessibilityRole="link"
+                      accessibilityLabel={`Download ${file.name}`}
+                    >
+                      <Ionicons name="document-outline" size={16} color={colors.text} />
+                      <Text style={styles.fileName} numberOfLines={1}>
+                        {file.name}
+                      </Text>
+                      <Text style={styles.fileSize}>{formatBytes(file.size)}</Text>
+                    </Pressable>
+                  )}
+                </>
               )}
             </View>
           );
@@ -202,6 +311,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   author: {
@@ -212,6 +322,35 @@ const styles = StyleSheet.create({
   time: {
     color: 'rgba(249, 250, 251, 0.7)',
     fontSize: 12,
+  },
+  actions: {
+    flexDirection: 'row',
+    marginLeft: 'auto',
+    gap: 2,
+  },
+  action: {
+    padding: 2,
+  },
+  editInput: {
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderRadius: 8,
+    color: colors.text,
+    fontSize: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  editActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  editActionText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  editActionDisabled: {
+    opacity: 0.5,
   },
   file: {
     flexDirection: 'row',

@@ -12,6 +12,8 @@ services:
     envVars:
       - key: PORT
         value: '4000'
+      - key: EXECUTION_BACKEND
+        value: local
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: AUTH_SECRET

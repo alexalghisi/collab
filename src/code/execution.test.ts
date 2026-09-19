@@ -7,7 +7,7 @@ describe('validateExecutionRequest', () => {
 
     expect(result).toEqual({
       ok: true,
-      request: { language: 'python', code: 'print(1)', stdin: '' },
+      request: { language: 'python', code: 'print(1)', stdin: '', files: [] },
     });
   });
 
@@ -58,5 +58,23 @@ describe('validateExecutionRequest', () => {
     for (const payload of [undefined, null, 'run this', { code: 'print(1)' }]) {
       expect(validateExecutionRequest(payload).ok).toBe(false);
     }
+  });
+
+  it('sends named files along with the program', () => {
+    const result = validateExecutionRequest({
+      language: 'cpp',
+      code: 'int main() {}',
+      files: [{ name: 'date.in', content: '7\n' }],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      request: {
+        language: 'cpp',
+        code: 'int main() {}',
+        stdin: '',
+        files: [{ name: 'date.in', content: '7\n' }],
+      },
+    });
   });
 });

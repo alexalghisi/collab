@@ -1,14 +1,19 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
+  updateDoc,
   type Firestore,
   type Unsubscribe,
 } from 'firebase/firestore';
 import type { AuthUser } from '../auth/types';
 import type { ChatMessage } from '../signaling/events';
+import { MAX_MESSAGE_CHARS } from './messages';
 
 /** A persistent team conversation, shared by everyone signed in to this deployment. */
 export interface Channel {
@@ -60,4 +65,39 @@ export function sendMessage(
     sentAt: Date.now(),
   };
   return addDoc(collection(db, 'channels', channelId, 'messages'), message);
+}
+
+export async function editMessage(
+  db: Firestore,
+  channelId: string,
+  user: AuthUser,
+  id: string,
+  text: string,
+): Promise<void> {
+  const trimmed = text.trim().slice(0, MAX_MESSAGE_CHARS);
+  if (!trimmed) {
+    return;
+  }
+  const ref = doc(db, 'channels', channelId, 'messages', id);
+  const snapshot = await getDoc(ref);
+  const data = snapshot.data() as MessageDoc | undefined;
+  if (!snapshot.exists() || !data || data.peerId !== user.uid) {
+    return;
+  }
+  await updateDoc(ref, { text: trimmed, editedAt: Date.now() });
+}
+
+export async function deleteMessage(
+  db: Firestore,
+  channelId: string,
+  user: AuthUser,
+  id: string,
+): Promise<void> {
+  const ref = doc(db, 'channels', channelId, 'messages', id);
+  const snapshot = await getDoc(ref);
+  const data = snapshot.data() as MessageDoc | undefined;
+  if (!snapshot.exists() || !data || data.peerId !== user.uid) {
+    return;
+  }
+  await deleteDoc(ref);
 }

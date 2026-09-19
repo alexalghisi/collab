@@ -47,6 +47,11 @@ export function CodeOutput({ runs }: CodeOutputProps) {
             </View>
             {run.stdout !== '' && <Text style={styles.stdout}>{run.stdout}</Text>}
             {run.stderr !== '' && <Text style={styles.stderr}>{run.stderr}</Text>}
+            {run.files?.length > 0 && (
+              <Text style={styles.files}>
+                wrote {run.files.map((file) => file.name).join(', ')}
+              </Text>
+            )}
           </View>
         );
       })}
@@ -98,6 +103,11 @@ const styles = StyleSheet.create({
   },
   stderr: {
     color: colors.danger,
+    fontFamily: 'monospace',
+    fontSize: 12,
+  },
+  files: {
+    color: colors.success,
     fontFamily: 'monospace',
     fontSize: 12,
   },
