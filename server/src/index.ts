@@ -17,6 +17,7 @@ import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionServ
 import { executionRouter } from './execution/router';
 import { filesRouter } from './files/router';
 import { sendAppHome } from './home';
+import { resolveIceServers } from './ice';
 import { ReminderBook } from './invite/reminders';
 import { inviteRouter } from './invite/router';
 import { transportFromEnv } from './invite/senders';
@@ -68,6 +69,9 @@ const userStore = createUserStoreFromEnv(join(ROOT, 'data', 'users.json'));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
+});
+app.get('/ice', async (_req, res) => {
+  res.json({ iceServers: await resolveIceServers() });
 });
 if (!existsSync(join(WEB_ROOT, 'index.html'))) {
   app.get('/', sendAppHome);

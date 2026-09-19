@@ -1,3 +1,5 @@
+const UNLOCK_EVENTS = ['pointerdown', 'click', 'keydown', 'touchstart'] as const;
+
 export function attachMediaStream(
   element: HTMLMediaElement,
   stream: MediaStream | null,
@@ -8,7 +10,9 @@ export function attachMediaStream(
     if (!resume) {
       return;
     }
-    document.removeEventListener('pointerdown', resume);
+    for (const event of UNLOCK_EVENTS) {
+      document.removeEventListener(event, resume);
+    }
     resume = null;
   };
 
@@ -25,7 +29,9 @@ export function attachMediaStream(
         stopResume();
         void element.play().catch(() => undefined);
       };
-      document.addEventListener('pointerdown', resume);
+      for (const event of UNLOCK_EVENTS) {
+        document.addEventListener(event, resume);
+      }
     });
   };
 

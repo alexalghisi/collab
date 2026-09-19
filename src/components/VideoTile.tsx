@@ -2,7 +2,7 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { PeerState } from '../signaling/events';
 import { colors } from '../theme';
-import { attachMediaStream, attachRemoteAudio } from '../webrtc/attachMedia';
+import { attachMediaStream } from '../webrtc/attachMedia';
 import { TileOverlay, showsPlaceholder } from './TileOverlay';
 
 export interface VideoTileProps {
@@ -40,13 +40,6 @@ export function VideoTile({
     }
     return attachMediaStream(video, stream ?? null);
   }, [stream]);
-
-  useEffect(() => {
-    if (mirror || !stream) {
-      return;
-    }
-    return attachRemoteAudio(stream);
-  }, [mirror, stream]);
 
   return (
     <View style={styles.tile}>
