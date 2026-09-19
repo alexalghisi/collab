@@ -2,14 +2,8 @@ import { readGoogleWebClientId } from './config';
 import type { GoogleCredential } from './types';
 
 interface GoogleIdentity {
-  id: {
-    initialize(config: {
-      client_id: string;
-      callback: (response: { credential?: string }) => void;
-    }): void;
-    prompt(
-      callback?: (notification: { isNotDisplayed(): boolean; isSkippedMoment(): boolean }) => void,
-    ): void;
+  id?: {
+    cancel?: () => void;
   };
   oauth2?: {
     initTokenClient(config: {
@@ -22,7 +16,7 @@ interface GoogleIdentity {
 
 function googleApi(): GoogleIdentity | undefined {
   const candidate = (globalThis as { google?: { accounts?: GoogleIdentity } }).google?.accounts;
-  return candidate?.id ? candidate : undefined;
+  return candidate?.oauth2 || candidate?.id ? candidate : undefined;
 }
 
 function loadScript(): Promise<void> {
@@ -46,26 +40,6 @@ function loadScript(): Promise<void> {
     script.onload = () => resolve();
     script.onerror = () => reject(new Error('Could not load Google Sign-In.'));
     document.head.appendChild(script);
-  });
-}
-
-function requestIdToken(api: GoogleIdentity, clientId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    api.id.initialize({
-      client_id: clientId,
-      callback: (response) => {
-        if (response.credential) {
-          resolve(response.credential);
-          return;
-        }
-        reject(new Error('Google sign-in was cancelled.'));
-      },
-    });
-    api.id.prompt((notification) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        reject(new Error('one-tap-unavailable'));
-      }
-    });
   });
 }
 
@@ -115,7 +89,7 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
         reject(
           new Error(
             response.error === 'access_denied'
-              ? 'Google Calendar access was not granted.'
+              ? 'Google Calendar access was not granted. If Google says the app is unverified, press Continue — this OAuth client is still in testing.'
               : response.error || 'Google Calendar access was cancelled.',
           ),
         );
@@ -125,22 +99,26 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
   });
 }
 
+let credentialInFlight: Promise<GoogleCredential> | null = null;
+
 export async function requestGoogleCredential(): Promise<GoogleCredential> {
+  if (credentialInFlight) {
+    return credentialInFlight;
+  }
   const clientId = readGoogleWebClientId();
   if (!clientId) {
     throw new Error('Google sign-in is not configured on this deployment.');
   }
-  await loadScript();
-  const api = googleApi();
-  if (!api) {
-    throw new Error('Could not load Google Sign-In.');
-  }
-  try {
-    return { idToken: await requestIdToken(api, clientId) };
-  } catch (cause) {
-    if (!(cause instanceof Error) || cause.message !== 'one-tap-unavailable') {
-      throw cause instanceof Error ? cause : new Error('Google sign-in failed.');
+  credentialInFlight = (async () => {
+    await loadScript();
+    const api = googleApi();
+    if (!api) {
+      throw new Error('Could not load Google Sign-In.');
     }
+    api.id?.cancel?.();
     return { accessToken: await requestAccessToken(api, clientId) };
-  }
+  })().finally(() => {
+    credentialInFlight = null;
+  });
+  return credentialInFlight;
 }

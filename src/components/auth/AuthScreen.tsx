@@ -38,26 +38,37 @@ export function AuthScreen({
     (!creating || displayName.trim().length >= 2) &&
     !busy;
 
-  const submit = async (): Promise<void> => {
-    if (!canSubmit || inFlight.current) {
+  const runExclusive = async (work: () => void | Promise<void>): Promise<void> => {
+    if (inFlight.current) {
       return;
     }
     inFlight.current = true;
     setBusy(true);
     try {
-      if (creating) {
-        await onCreateAccount({
-          displayName: displayName.trim(),
-          email: email.trim(),
-          password,
-        });
-      } else {
-        await onSignInWithEmail(email.trim(), password);
-      }
+      await work();
     } finally {
       inFlight.current = false;
       setBusy(false);
     }
+  };
+
+  const submit = (): Promise<void> => {
+    if (!canSubmit) {
+      return Promise.resolve();
+    }
+    return runExclusive(() =>
+      creating
+        ? onCreateAccount({
+            displayName: displayName.trim(),
+            email: email.trim(),
+            password,
+          })
+        : onSignInWithEmail(email.trim(), password),
+    );
+  };
+
+  const startSocial = (provider: SocialProvider): void => {
+    void runExclusive(() => onSignIn(provider));
   };
 
   return (
@@ -75,7 +86,7 @@ export function AuthScreen({
 
         <Pressable
           style={[styles.button, styles.google]}
-          onPress={() => onSignIn('google')}
+          onPress={() => startSocial('google')}
           disabled={busy}
           accessibilityRole="button"
           accessibilityLabel="Continue with Google"
@@ -155,7 +166,7 @@ export function AuthScreen({
         {social.facebook && (
           <Pressable
             style={[styles.button, styles.facebook]}
-            onPress={() => onSignIn('facebook')}
+            onPress={() => startSocial('facebook')}
             disabled={busy}
             accessibilityRole="button"
             accessibilityLabel="Continue with Facebook"

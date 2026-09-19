@@ -387,6 +387,12 @@ Google asks for it. Calendar sync uses the same Web client: enable the
 **Google Calendar API** under APIs & Services → Library, then open Calendar in
 Collab and press **Connect**.
 
+While the OAuth consent screen is in **Testing**, Google shows “This app
+hasn’t been verified”. That page is Google’s, not Collab’s. Add your Google
+account under **Audience → Test users**, then press **Continue**. The warning
+goes away only after you publish the client and finish Google’s verification
+for the Calendar scope.
+
 Facebook and Firebase remain optional:
 
 - **Web Facebook** uses Firebase:

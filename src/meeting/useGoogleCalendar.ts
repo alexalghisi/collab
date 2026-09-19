@@ -92,7 +92,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     setError(null);
     setSyncing(true);
     try {
-      const accessToken = await token('consent');
+      const accessToken = await token('');
       writeConnected(uid, true);
       setConnected(true);
       await pull(accessToken);
