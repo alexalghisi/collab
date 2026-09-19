@@ -16,9 +16,9 @@ describe('createRunnerFromEnv', () => {
     expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'docker' })).toBeInstanceOf(DockerRunner);
   });
 
-  it('stays off when a deployment opts out', () => {
-    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'off' })).toBeNull();
-    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'none' })).toBeNull();
+  it('still uses the host compilers when a host left EXECUTION_BACKEND at off', () => {
+    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'off' })).toBeInstanceOf(LocalRunner);
+    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'none' })).toBeInstanceOf(LocalRunner);
   });
 
   it('honours a private Piston URL', () => {

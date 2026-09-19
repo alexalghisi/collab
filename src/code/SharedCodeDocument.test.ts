@@ -186,6 +186,19 @@ describe('SharedCodeDocument', () => {
     expect(late.document.language).toBe('go');
   });
 
+  it('loads the room snapshot before publishing so a joiner cannot blank it', () => {
+    const ada = attach('a', 'Ada');
+    ada.document.text.insert(0, 'function main() {}');
+    const snapshot = ada.document.encodeState();
+    ada.channel.sent.length = 0;
+
+    const late = attach('c', 'Grace');
+    late.channel.deliver('room:joined', { code: snapshot });
+
+    expect(late.document.text.toString()).toBe('function main() {}');
+    expect(ada.document.text.toString()).toBe('function main() {}');
+  });
+
   it('shares the selected language with the room', () => {
     const ada = attach('a', 'Ada');
     const linus = attach('b', 'Linus');
