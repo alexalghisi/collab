@@ -26,6 +26,8 @@ Open the hosted app in a browser. No install.
 | **Signaling server** | https://collab-signaling.onrender.com        |
 | Server health        | https://collab-signaling.onrender.com/health |
 
+Opening the signaling host in a browser sends you to the app. Talk to `/health` or `/socket.io` on that host; do not expect a page at `/`.
+
 The web app already points at that server (`EXPO_PUBLIC_SIGNALING_URL`). You do not type the server URL into the meeting screen.
 
 **Call someone (for example a child on another phone or laptop):**
