@@ -42,6 +42,7 @@ export class PeerConnectionManager {
   private readonly onRemoteStream: (peerId: string, stream: MediaStream) => void;
   private readonly onPeerClosed: (peerId: string) => void;
   private readonly peers = new Map<string, PeerEntry>();
+  private readonly earlyIce = new Map<string, RTCIceCandidateInit[]>();
   private selfPeerId = '';
   private selfJoinedAt = 0;
 
@@ -84,10 +85,13 @@ export class PeerConnectionManager {
     this.signaling.on('signal:ice', ({ fromPeerId, candidate }) => {
       const entry = this.peers.get(fromPeerId);
       if (!entry) {
+        const queued = this.earlyIce.get(fromPeerId) ?? [];
+        queued.push(candidate);
+        this.earlyIce.set(fromPeerId, queued);
         return;
       }
       if (entry.connection.remoteDescription) {
-        void entry.connection.addIceCandidate(candidate);
+        void this.addCandidate(entry, candidate);
       } else {
         entry.pendingCandidates.push(candidate);
       }
@@ -176,8 +180,21 @@ export class PeerConnectionManager {
       offerer: false,
       restarted: false,
     };
+    const queued = this.earlyIce.get(peerId);
+    if (queued) {
+      entry.pendingCandidates.push(...queued);
+      this.earlyIce.delete(peerId);
+    }
     this.peers.set(peerId, entry);
     return entry;
+  }
+
+  private async addCandidate(entry: PeerEntry, candidate: RTCIceCandidateInit): Promise<void> {
+    try {
+      await entry.connection.addIceCandidate(candidate);
+    } catch {
+      return;
+    }
   }
 
   private async applyRemoteDescription(
@@ -186,7 +203,7 @@ export class PeerConnectionManager {
   ): Promise<void> {
     await entry.connection.setRemoteDescription(description);
     for (const candidate of entry.pendingCandidates.splice(0)) {
-      await entry.connection.addIceCandidate(candidate);
+      await this.addCandidate(entry, candidate);
     }
   }
 
@@ -206,6 +223,9 @@ export class PeerConnectionManager {
   }
 
   private async callPeer(peerId: string): Promise<void> {
+    if (this.peers.has(peerId)) {
+      return;
+    }
     const entry = this.createEntry(peerId);
     entry.offerer = true;
     const offer = await entry.connection.createOffer();
@@ -228,6 +248,7 @@ export class PeerConnectionManager {
     }
     entry.connection.close();
     this.peers.delete(peerId);
+    this.earlyIce.delete(peerId);
     stopPeerAudio(peerId);
     this.onPeerClosed(peerId);
   }
