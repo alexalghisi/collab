@@ -186,6 +186,14 @@ describe('SharedCodeDocument', () => {
     expect(late.document.language).toBe('go');
   });
 
+  it('does not publish an empty document when the room has no code yet', () => {
+    const ada = attach('a', 'Ada');
+    ada.channel.sent.length = 0;
+    ada.channel.deliver('room:joined', { code: null });
+
+    expect(ada.channel.sent.filter((entry) => entry.event === 'code:update')).toEqual([]);
+  });
+
   it('loads the room snapshot before publishing so a joiner cannot blank it', () => {
     const ada = attach('a', 'Ada');
     ada.document.text.insert(0, 'function main() {}');
