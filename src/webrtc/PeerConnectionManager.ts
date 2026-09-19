@@ -2,6 +2,7 @@ import { buildRtcConfiguration, type IceServerConfig } from './config';
 import type { PeerInfo } from '../signaling/events';
 import type { SignalingChannel } from '../signaling/SignalingChannel';
 import { playPeerAudio, stopAllPeerAudio, stopPeerAudio } from './remotePlayback';
+import { tuneAudioSender, tuneVideoSender, videoContentOf, withClearAudio } from './quality';
 
 export interface PeerConnectionManagerOptions {
   readonly signaling: SignalingChannel;
@@ -111,8 +112,13 @@ export class PeerConnectionManager {
 
   /** Swaps the outgoing video (camera, screen, or nothing) on every connection. */
   async replaceVideoTrack(track: MediaStreamTrack | null): Promise<void> {
+    const content = videoContentOf(track);
     await Promise.all(
-      [...this.peers.values()].map((entry) => entry.senders.video.replaceTrack(track)),
+      [...this.peers.values()].map(async (entry) => {
+        await entry.senders.video.replaceTrack(track);
+        // A screen needs a different bitrate split than a face does.
+        await tuneVideoSender(entry.senders.video, content);
+      }),
     );
   }
 
@@ -141,6 +147,12 @@ export class PeerConnectionManager {
         return [kind, sender];
       }),
     ) as Record<MediaKind, RTCRtpSender>;
+
+    void tuneAudioSender(senders.audio);
+    void tuneVideoSender(
+      senders.video,
+      videoContentOf(this.localStream.getTracks().find((track) => track.kind === 'video') ?? null),
+    );
 
     connection.addEventListener('icecandidate', (event) => {
       if (event.candidate) {
@@ -207,6 +219,28 @@ export class PeerConnectionManager {
     }
   }
 
+  /**
+   * Applies our voice preferences before the description leaves this peer, so
+   * the answer we get back commits the other side to sending clean audio.
+   */
+  private async publishLocalDescription(
+    entry: PeerEntry,
+    peerId: string,
+    event: 'signal:offer' | 'signal:answer',
+    description: RTCSessionDescriptionInit,
+  ): Promise<void> {
+    const tuned = withClearAudio(description);
+    let published = tuned;
+    try {
+      await entry.connection.setLocalDescription(tuned);
+    } catch {
+      // A stack that refuses edited SDP still gets to make the call.
+      published = description;
+      await entry.connection.setLocalDescription(description);
+    }
+    this.signaling.emit(event, { targetPeerId: peerId, description: published });
+  }
+
   private async recover(peerId: string): Promise<void> {
     const entry = this.peers.get(peerId);
     if (!entry?.offerer || entry.restarted) {
@@ -215,8 +249,7 @@ export class PeerConnectionManager {
     entry.restarted = true;
     try {
       const offer = await entry.connection.createOffer({ iceRestart: true });
-      await entry.connection.setLocalDescription(offer);
-      this.signaling.emit('signal:offer', { targetPeerId: peerId, description: offer });
+      await this.publishLocalDescription(entry, peerId, 'signal:offer', offer);
     } catch {
       this.closePeer(peerId);
     }
@@ -229,16 +262,14 @@ export class PeerConnectionManager {
     const entry = this.createEntry(peerId);
     entry.offerer = true;
     const offer = await entry.connection.createOffer();
-    await entry.connection.setLocalDescription(offer);
-    this.signaling.emit('signal:offer', { targetPeerId: peerId, description: offer });
+    await this.publishLocalDescription(entry, peerId, 'signal:offer', offer);
   }
 
   private async answerPeer(peerId: string, description: RTCSessionDescriptionInit): Promise<void> {
     const entry = this.peers.get(peerId) ?? this.createEntry(peerId);
     await this.applyRemoteDescription(entry, description);
     const answer = await entry.connection.createAnswer();
-    await entry.connection.setLocalDescription(answer);
-    this.signaling.emit('signal:answer', { targetPeerId: peerId, description: answer });
+    await this.publishLocalDescription(entry, peerId, 'signal:answer', answer);
   }
 
   private closePeer(peerId: string): void {
