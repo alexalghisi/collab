@@ -26,6 +26,21 @@ describe('media capture', () => {
     });
   });
 
+  it('leaves the camera out when joining as audio only', async () => {
+    const getUserMedia = vi.fn(async () => ({
+      getVideoTracks: () => [],
+      getAudioTracks: () => [],
+    }));
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    await acquireLocalStream({ video: false, audio: true });
+
+    expect(getUserMedia).toHaveBeenCalledWith({
+      video: false,
+      audio: AUDIO_CONSTRAINTS,
+    });
+  });
+
   it('does not capture tab audio when sharing the screen', async () => {
     const getDisplayMedia = vi.fn(async () => ({
       getVideoTracks: () => [{ kind: 'video' }],
