@@ -269,25 +269,43 @@ describe('decorationsFor', () => {
   });
 
   it('places a remote selection on the right lines and columns', () => {
-    const [decoration] = decorationsFor(
+    const [highlight] = decorationsFor(
       [presence({ start: 19, end: 25 })],
       model,
       monaco,
       () => 'x',
     );
 
-    expect(decoration.range).toMatchObject({
+    expect(highlight.range).toMatchObject({
       startLineNumber: 2,
       startColumn: 1,
       endLineNumber: 2,
       endColumn: 7,
     });
+    expect(highlight.options.className).toBe('x');
   });
 
-  it('labels the decoration with the participant name', () => {
-    const [decoration] = decorationsFor([presence({ start: 0, end: 0 })], model, monaco, () => 'x');
+  it('pins the name to one caret so a wide selection does not stamp every line', () => {
+    const marks = decorationsFor([presence({ start: 0, end: 25 })], model, monaco, () => 'x');
 
-    expect(decoration.options.hoverMessage.value).toBe('Linus');
+    expect(marks).toHaveLength(2);
+    expect(marks[0].options.className).toBe('x');
+    expect(marks[1].options.className).toBe('x-label');
+    expect(marks[1].range).toMatchObject({
+      startLineNumber: 2,
+      startColumn: 7,
+      endLineNumber: 2,
+      endColumn: 7,
+    });
+    expect(marks[1].options.hoverMessage.value).toBe('Linus');
+  });
+
+  it('labels a collapsed caret without a highlight', () => {
+    const marks = decorationsFor([presence({ start: 0, end: 0 })], model, monaco, () => 'x');
+
+    expect(marks).toHaveLength(1);
+    expect(marks[0].options.className).toBe('x-label');
+    expect(marks[0].options.hoverMessage.value).toBe('Linus');
   });
 
   it('skips a participant who has no cursor yet', () => {
