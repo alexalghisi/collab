@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   FacebookAuthProvider,
   GoogleAuthProvider,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
+  updateProfile,
   type User,
 } from 'firebase/auth';
 import { firebaseAuth as firebase } from '../firebase/app';
@@ -27,6 +30,40 @@ function toAuthUser(user: User): AuthUser {
   };
 }
 
+function firebaseCode(cause: unknown): string | undefined {
+  return cause && typeof cause === 'object' && 'code' in cause
+    ? String((cause as { code: unknown }).code)
+    : undefined;
+}
+
+function isRecoverableFirebaseAuthError(cause: unknown): boolean {
+  const code = firebaseCode(cause);
+  return (
+    code === 'auth/user-not-found' ||
+    code === 'auth/wrong-password' ||
+    code === 'auth/invalid-credential' ||
+    code === 'auth/invalid-email'
+  );
+}
+
+async function attachSignalingSession(
+  email: string,
+  password: string,
+  displayName: string,
+): Promise<void> {
+  try {
+    const session = await loginAccount(email, password);
+    writeSessionToken(session.token);
+  } catch {
+    try {
+      const session = await registerAccount({ displayName, email, password });
+      writeSessionToken(session.token);
+    } catch {
+      return;
+    }
+  }
+}
+
 export function useAuth(): AuthState {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -41,23 +78,31 @@ export function useAuth(): AuthState {
       }
     };
 
+    const token = readSessionToken();
+    const restore = (fallback: AuthUser | null) => {
+      if (!token) {
+        finish(fallback);
+        return;
+      }
+      void restoreAccount(token)
+        .then((restored) => finish(restored))
+        .catch(() => {
+          clearSessionToken();
+          finish(fallback);
+        });
+    };
+
     if (firebase) {
       return onAuthStateChanged(firebase, (next) => {
-        finish(next ? toAuthUser(next) : null);
+        if (next) {
+          finish(toAuthUser(next));
+          return;
+        }
+        restore(null);
       });
     }
 
-    const token = readSessionToken();
-    if (!token) {
-      finish(null);
-      return;
-    }
-    void restoreAccount(token)
-      .then((restored) => finish(restored))
-      .catch(() => {
-        clearSessionToken();
-        finish(null);
-      });
+    restore(null);
 
     return () => {
       cancelled = true;
@@ -94,6 +139,18 @@ export function useAuth(): AuthState {
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     setError(null);
     try {
+      if (firebase) {
+        try {
+          const cred = await signInWithEmailAndPassword(firebase, email, password);
+          await attachSignalingSession(email, password, cred.user.displayName ?? email);
+          setUser(toAuthUser(cred.user));
+          return;
+        } catch (cause) {
+          if (!isRecoverableFirebaseAuthError(cause)) {
+            throw cause;
+          }
+        }
+      }
       const session = await loginAccount(email, password);
       writeSessionToken(session.token);
       setUser(session.user);
@@ -106,6 +163,26 @@ export function useAuth(): AuthState {
     async (input: { displayName: string; email: string; password: string }) => {
       setError(null);
       try {
+        if (firebase) {
+          try {
+            const cred = await createUserWithEmailAndPassword(
+              firebase,
+              input.email,
+              input.password,
+            );
+            await updateProfile(cred.user, { displayName: input.displayName });
+            await attachSignalingSession(input.email, input.password, input.displayName);
+            setUser({
+              ...toAuthUser(cred.user),
+              displayName: input.displayName,
+            });
+            return;
+          } catch (cause) {
+            if (!isRecoverableFirebaseAuthError(cause)) {
+              throw cause;
+            }
+          }
+        }
         const session = await registerAccount(input);
         writeSessionToken(session.token);
         setUser(session.user);

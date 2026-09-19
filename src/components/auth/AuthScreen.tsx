@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import type { SocialProvider } from '../../auth/types';
@@ -30,6 +30,7 @@ export function AuthScreen({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const creating = mode === 'create';
   const canSubmit =
     email.trim().length > 0 &&
@@ -38,9 +39,10 @@ export function AuthScreen({
     !busy;
 
   const submit = async (): Promise<void> => {
-    if (!canSubmit) {
+    if (!canSubmit || inFlight.current) {
       return;
     }
+    inFlight.current = true;
     setBusy(true);
     try {
       if (creating) {
@@ -53,6 +55,7 @@ export function AuthScreen({
         await onSignInWithEmail(email.trim(), password);
       }
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
