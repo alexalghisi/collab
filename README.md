@@ -1,8 +1,10 @@
 # Collab
 
-![Collab demo: dashboard, calendar, a live call, the shared C++ editor, chat and host tools](./assets/demo.gif)
+[Open the live app](https://alexalghisi.github.io/collab)
 
-_Recorded on a local run — dashboard, calendar, a live call, the shared C++ editor reading `date.in` and writing `date.out`, in-call chat, and the host tools._
+![Collab: sign in, home dashboard, then a two-person call with chat](./assets/demo.gif)
+
+_How the hosted app looks: sign in, the home dashboard, then a two-person call with chat._
 
 > Cross-platform video conferencing built with React Native, Expo, WebRTC, and a Node.js signaling server. One codebase ships to **macOS, Windows, iOS, and Android**.
 
