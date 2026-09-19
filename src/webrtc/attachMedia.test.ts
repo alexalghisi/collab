@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { attachMediaStream } from './attachMedia';
+import { attachMediaStream, attachRemoteAudio } from './attachMedia';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -100,5 +100,44 @@ describe('attachMediaStream', () => {
     expect(element.muted).toBe(false);
     expect(element.volume).toBe(1);
     expect(element.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts the remote speaker in the document so the tab can actually hear it', () => {
+    const audio = {
+      autoplay: false,
+      setAttribute: vi.fn(),
+      style: { cssText: '' },
+      tagName: 'AUDIO',
+      srcObject: null as unknown,
+      muted: true,
+      volume: 0,
+      play: vi.fn(async () => undefined),
+      remove: vi.fn(),
+    };
+    const body = { appendChild: vi.fn() };
+    vi.stubGlobal('document', {
+      createElement: () => audio,
+      body,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return { id: 'voice' };
+      }),
+    );
+    const stream = {
+      getAudioTracks: () => [{ id: 'mic' }],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStream;
+
+    const stop = attachRemoteAudio(stream);
+    stop();
+
+    expect(body.appendChild).toHaveBeenCalledWith(audio);
+    expect(audio.autoplay).toBe(true);
+    expect(audio.remove).toHaveBeenCalledTimes(1);
   });
 });

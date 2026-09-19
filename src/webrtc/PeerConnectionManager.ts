@@ -144,6 +144,7 @@ export class PeerConnectionManager {
     });
 
     connection.addEventListener('track', (event) => {
+      event.track.enabled = true;
       if (!remoteStream.getTracks().some((track) => track.id === event.track.id)) {
         remoteStream.addTrack(event.track);
       }
