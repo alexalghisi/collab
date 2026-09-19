@@ -14,7 +14,10 @@ export interface GoogleCalendarEvent {
 }
 
 interface CalendarErrorBody {
-  readonly error?: { readonly message?: string; readonly status?: string };
+  readonly error?: {
+    readonly message?: string;
+    readonly errors?: ReadonlyArray<{ readonly reason?: string }>;
+  };
 }
 
 export function calendarWindow(now = Date.now()): { timeMin: string; timeMax: string } {
@@ -76,8 +79,8 @@ export function meetingFromGoogleEvent(
 }
 
 function calendarError(status: number, body: CalendarErrorBody): string {
-  const code = body.error?.status;
-  if (status === 403 && (code === 'PERMISSION_DENIED' || code === 'ACCESS_DENIED')) {
+  const reason = body.error?.errors?.[0]?.reason;
+  if (status === 403 && reason === 'accessNotConfigured') {
     return 'Enable the Google Calendar API in Google Cloud Console for this OAuth client.';
   }
   if (status === 401 || status === 403) {
