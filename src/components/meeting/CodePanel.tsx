@@ -46,9 +46,11 @@ function ensureCursorStyles(editors: CodePresence[]): void {
       (editor) => `
         .${cursorClass(editor)} {
           background-color: ${editor.color}44;
+        }
+        .${cursorClass(editor)}-label {
           border-left: 2px solid ${editor.color};
         }
-        .${cursorClass(editor)}::after {
+        .${cursorClass(editor)}-label::after {
           content: '${editor.displayName.replace(/['\\]/g, '')}';
           position: absolute;
           transform: translateY(-100%);
