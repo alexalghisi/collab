@@ -1,5 +1,5 @@
 import type * as Y from 'yjs';
-import type { CodePresence, CodeSelection, SharedCodeDocument } from './SharedCodeDocument';
+import type { CodePresence, SharedCodeDocument } from './SharedCodeDocument';
 
 /**
  * The slice of Monaco's API this binding needs. Typed structurally so the editor
@@ -193,10 +193,6 @@ export class MonacoTextBinding {
   }
 }
 
-/**
- * One decoration per remote participant: a caret when the selection is empty and
- * a highlight when it is not, both carrying the participant's name.
- */
 export function decorationsFor(
   cursors: CodePresence[],
   model: EditorModel,
@@ -204,19 +200,32 @@ export function decorationsFor(
   classNameOf: (presence: CodePresence) => string,
 ): Decoration[] {
   const length = model.getValue().length;
-  return cursors
-    .flatMap((presence) => (presence.selection ? [{ presence, ...presence.selection }] : []))
-    .filter((cursor) => cursor.start <= length && cursor.end <= length)
-    .map(({ presence, start, end }: { presence: CodePresence } & CodeSelection) => {
-      const from = model.getPositionAt(start);
-      const to = model.getPositionAt(end);
-      return {
+  const items: Decoration[] = [];
+  for (const presence of cursors) {
+    const selection = presence.selection;
+    if (!selection || selection.start > length || selection.end > length) {
+      continue;
+    }
+    const lo = Math.min(selection.start, selection.end);
+    const hi = Math.max(selection.start, selection.end);
+    const from = model.getPositionAt(lo);
+    const to = model.getPositionAt(hi);
+    const head = model.getPositionAt(selection.end);
+    const hover = { value: presence.displayName };
+    if (lo !== hi) {
+      items.push({
         range: new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column),
-        options: {
-          className: classNameOf(presence),
-          hoverMessage: { value: presence.displayName },
-          stickiness: 1,
-        },
-      };
+        options: { className: classNameOf(presence), hoverMessage: hover, stickiness: 1 },
+      });
+    }
+    items.push({
+      range: new monaco.Range(head.lineNumber, head.column, head.lineNumber, head.column),
+      options: {
+        className: `${classNameOf(presence)}-label`,
+        hoverMessage: hover,
+        stickiness: 1,
+      },
     });
+  }
+  return items;
 }
