@@ -15,6 +15,7 @@ import type { GoogleCalendarSync } from '../../meeting/useGoogleCalendar';
 import type { Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
 import { MeetingList } from '../meetings/MeetingList';
+import type { MeetingInviteRequest } from '../meetings/MeetingRow';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 
@@ -22,6 +23,7 @@ export interface CalendarScreenProps {
   meetings: Meeting[];
   onStart: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
+  onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
   onSchedule: (day: Date) => void;
   google: GoogleCalendarSync;
 }
@@ -30,6 +32,7 @@ export function CalendarScreen({
   meetings,
   onStart,
   onDelete,
+  onInvite,
   onSchedule,
   google,
 }: CalendarScreenProps) {
@@ -153,6 +156,7 @@ export function CalendarScreen({
         emptyText="No meetings on this day."
         onStart={onStart}
         onDelete={onDelete}
+        onInvite={onInvite}
       />
       {selectedMeetings.length === 0 && (
         <Pressable

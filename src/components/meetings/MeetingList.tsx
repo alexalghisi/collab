@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
-import { MeetingRow } from './MeetingRow';
+import { MeetingRow, type MeetingInviteRequest } from './MeetingRow';
 
 export interface MeetingListProps {
   title: string;
@@ -9,9 +9,17 @@ export interface MeetingListProps {
   emptyText: string;
   onStart: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
+  onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
 }
 
-export function MeetingList({ title, meetings, emptyText, onStart, onDelete }: MeetingListProps) {
+export function MeetingList({
+  title,
+  meetings,
+  emptyText,
+  onStart,
+  onDelete,
+  onInvite,
+}: MeetingListProps) {
   return (
     <View style={styles.section}>
       <Text style={styles.heading}>{title}</Text>
@@ -19,7 +27,13 @@ export function MeetingList({ title, meetings, emptyText, onStart, onDelete }: M
         <Text style={styles.empty}>{emptyText}</Text>
       ) : (
         meetings.map((meeting) => (
-          <MeetingRow key={meeting.id} meeting={meeting} onStart={onStart} onDelete={onDelete} />
+          <MeetingRow
+            key={meeting.id}
+            meeting={meeting}
+            onStart={onStart}
+            onDelete={onDelete}
+            onInvite={onInvite}
+          />
         ))
       )}
     </View>

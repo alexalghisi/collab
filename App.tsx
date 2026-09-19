@@ -6,7 +6,11 @@ import { useAuth } from './src/auth/useAuth';
 import { useTeamChat } from './src/chat/useTeamChat';
 import { createSignaling } from './src/signaling';
 import { nextHalfHour } from './src/meeting/calendar';
-import { readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
+import { readSessionToken } from './src/auth/session';
+import { EXECUTION_URL } from './src/code/config';
+import { InviteError, parseEmailList } from './src/meeting/contact';
+import { buildInviteLink, readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
+import { sendContactInvite } from './src/meeting/sendInvite';
 import { readLiveMeeting } from './src/meeting/resume';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
 import { useMeetings } from './src/meeting/useMeetings';
@@ -18,6 +22,7 @@ import { HomeScreen } from './src/components/home/HomeScreen';
 import { AuthScreen } from './src/components/auth/AuthScreen';
 import { MeetingScreen } from './src/components/meeting/MeetingScreen';
 import { WaitingScreen } from './src/components/meeting/WaitingScreen';
+import type { MeetingInviteRequest } from './src/components/meetings/MeetingRow';
 import { MeetingsScreen } from './src/components/meetings/MeetingsScreen';
 import { ScheduleMeetingScreen } from './src/components/meetings/ScheduleMeetingScreen';
 import { SearchScreen } from './src/components/search/SearchScreen';
@@ -70,6 +75,34 @@ export default function App() {
   };
 
   const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
+  const inviteMeeting = async (meeting: Meeting, invite: MeetingInviteRequest): Promise<string> => {
+    const typed = parseEmailList(invite.emails);
+    const guests = typed.length > 0 ? typed : [...(meeting.guests ?? [])];
+    if (guests.length === 0) {
+      throw new InviteError('Enter an email address or a phone number.');
+    }
+    const token = readSessionToken();
+    if (!token) {
+      throw new InviteError('Sign in again to send email invites.');
+    }
+    await sendContactInvite(EXECUTION_URL, {
+      contact: guests.join(','),
+      roomId: meeting.roomId,
+      sessionId: '',
+      hostName: auth.user?.displayName ?? 'Someone',
+      link: buildInviteLink(meeting.roomId),
+      token,
+      title: meeting.title,
+      startsAt: meeting.startsAt,
+      reminderMinutes: invite.reminderMinutes,
+    });
+    await meetings.save({
+      ...meeting,
+      guests,
+      reminderMinutes: invite.reminderMinutes,
+    });
+    return `Email sent to ${guests.join(', ')}. They get a reminder ${invite.reminderMinutes} minutes before.`;
+  };
   const deleteMeeting = (meeting: Meeting) => {
     void googleCalendar.retract(meeting);
     void meetings.remove(meeting.id);
@@ -175,6 +208,7 @@ export default function App() {
             meetings={meetings.meetings}
             onStartMeeting={startMeeting}
             onDeleteMeeting={deleteMeeting}
+            onInviteMeeting={inviteMeeting}
           />
         )}
         {view === 'meetings' && (
@@ -182,6 +216,7 @@ export default function App() {
             meetings={meetings.meetings}
             onStart={startMeeting}
             onDelete={deleteMeeting}
+            onInvite={inviteMeeting}
             onSchedule={() => openSchedule()}
           />
         )}
@@ -190,6 +225,7 @@ export default function App() {
             meetings={meetings.meetings}
             onStart={startMeeting}
             onDelete={deleteMeeting}
+            onInvite={inviteMeeting}
             onSchedule={openSchedule}
             google={googleCalendar}
           />
