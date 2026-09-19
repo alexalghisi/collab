@@ -116,6 +116,7 @@ export function CodePanel({
     (editor, monaco) => {
       editorRef.current = editor;
       monacoRef.current = monaco;
+      bindingRef.current?.destroy();
       bindingRef.current = new MonacoTextBinding(shared, editor, monaco);
       decorationsRef.current = editor.createDecorationsCollection([]);
     },
