@@ -51,99 +51,99 @@ export function MeetingRow({ meeting, onStart, onDelete, onInvite }: MeetingRowP
 
   return (
     <View style={styles.card}>
-    <View style={styles.row}>
-      <View style={styles.details}>
-        <Text style={styles.title} numberOfLines={1}>
-          {meeting.title}
-        </Text>
-        <Text style={styles.when}>{describeWhen(meeting)}</Text>
-        <Text style={styles.roomId}>ID {meeting.roomId}</Text>
-      </View>
-      <View style={styles.actions}>
-        <Button
-          label={upcoming ? 'Start' : 'Rejoin'}
-          icon="videocam"
-          compact
-          variant={upcoming ? 'primary' : 'secondary'}
-          onPress={() => onStart(meeting)}
-        />
-        {upcoming ? (
+      <View style={styles.row}>
+        <View style={styles.details}>
+          <Text style={styles.title} numberOfLines={1}>
+            {meeting.title}
+          </Text>
+          <Text style={styles.when}>{describeWhen(meeting)}</Text>
+          <Text style={styles.roomId}>ID {meeting.roomId}</Text>
+        </View>
+        <View style={styles.actions}>
           <Button
-            label="Invite"
-            icon="mail-outline"
+            label={upcoming ? 'Start' : 'Rejoin'}
+            icon="videocam"
             compact
-            variant="secondary"
-            onPress={() => setInviting((open) => !open)}
+            variant={upcoming ? 'primary' : 'secondary'}
+            onPress={() => onStart(meeting)}
           />
-        ) : null}
-        <IconButton
-          icon="link"
-          label="Copy invite link"
-          onPress={() => void shareInvite(meeting.roomId)}
-        />
-        {upcoming && (
-          <>
-            <IconButton
-              icon="logo-google"
-              label="Add to Google Calendar"
-              onPress={() => void Linking.openURL(googleCalendarUrl(meeting, inviteLink))}
-            />
-            <IconButton
-              icon="download-outline"
-              label="Download .ics"
-              onPress={() =>
-                downloadTextFile(
-                  `${meeting.roomId}.ics`,
-                  buildIcs(meeting, inviteLink),
-                  'text/calendar',
-                )
-              }
-            />
-          </>
-        )}
-        <IconButton
-          icon="trash-outline"
-          label="Delete meeting"
-          color={colors.danger}
-          onPress={() => onDelete(meeting)}
-        />
-      </View>
-    </View>
-    {inviting ? (
-      <View style={styles.invite}>
-        <TextInput
-          style={styles.inviteInput}
-          value={emails}
-          onChangeText={setEmails}
-          onSubmitEditing={() => void sendInvite()}
-          placeholder="name@email.com, other@email.com"
-          placeholderTextColor={colors.textSubtle}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!busy}
-        />
-        <View style={styles.reminders}>
-          {([15, 30] as const).map((minutes) => (
+          {upcoming ? (
             <Button
-              key={minutes}
-              label={`${minutes} min before`}
+              label="Invite"
+              icon="mail-outline"
               compact
-              variant={reminderMinutes === minutes ? 'primary' : 'secondary'}
-              onPress={() => setReminderMinutes(minutes)}
+              variant="secondary"
+              onPress={() => setInviting((open) => !open)}
             />
-          ))}
-          <Button
-            label={busy ? 'Sending…' : 'Send invite'}
-            icon="send"
-            compact
-            onPress={() => void sendInvite()}
-            disabled={busy}
+          ) : null}
+          <IconButton
+            icon="link"
+            label="Copy invite link"
+            onPress={() => void shareInvite(meeting.roomId)}
+          />
+          {upcoming && (
+            <>
+              <IconButton
+                icon="logo-google"
+                label="Add to Google Calendar"
+                onPress={() => void Linking.openURL(googleCalendarUrl(meeting, inviteLink))}
+              />
+              <IconButton
+                icon="download-outline"
+                label="Download .ics"
+                onPress={() =>
+                  downloadTextFile(
+                    `${meeting.roomId}.ics`,
+                    buildIcs(meeting, inviteLink),
+                    'text/calendar',
+                  )
+                }
+              />
+            </>
+          )}
+          <IconButton
+            icon="trash-outline"
+            label="Delete meeting"
+            color={colors.danger}
+            onPress={() => onDelete(meeting)}
           />
         </View>
-        {status ? <Text style={styles.inviteStatus}>{status}</Text> : null}
-        {error ? <Text style={styles.inviteError}>{error}</Text> : null}
       </View>
-    ) : null}
+      {inviting ? (
+        <View style={styles.invite}>
+          <TextInput
+            style={styles.inviteInput}
+            value={emails}
+            onChangeText={setEmails}
+            onSubmitEditing={() => void sendInvite()}
+            placeholder="name@email.com, other@email.com"
+            placeholderTextColor={colors.textSubtle}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!busy}
+          />
+          <View style={styles.reminders}>
+            {([15, 30] as const).map((minutes) => (
+              <Button
+                key={minutes}
+                label={`${minutes} min before`}
+                compact
+                variant={reminderMinutes === minutes ? 'primary' : 'secondary'}
+                onPress={() => setReminderMinutes(minutes)}
+              />
+            ))}
+            <Button
+              label={busy ? 'Sending…' : 'Send invite'}
+              icon="send"
+              compact
+              onPress={() => void sendInvite()}
+              disabled={busy}
+            />
+          </View>
+          {status ? <Text style={styles.inviteStatus}>{status}</Text> : null}
+          {error ? <Text style={styles.inviteError}>{error}</Text> : null}
+        </View>
+      ) : null}
     </View>
   );
 }

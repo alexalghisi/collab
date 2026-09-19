@@ -20,9 +20,9 @@ describe('parseContact', () => {
   });
 
   it('splits a pasted list of addresses and drops junk', () => {
-    expect(parseEmailList('Ada@Example.com, linus@kernel.org; not-an-email  tom@collab.dev')).toEqual(
-      ['ada@example.com', 'linus@kernel.org', 'tom@collab.dev'],
-    );
+    expect(
+      parseEmailList('Ada@Example.com, linus@kernel.org; not-an-email  tom@collab.dev'),
+    ).toEqual(['ada@example.com', 'linus@kernel.org', 'tom@collab.dev']);
   });
 
   it('rejects an empty field, a broken email, or too few digits', () => {
