@@ -112,7 +112,12 @@ describe('the invite endpoint', () => {
     const sendEmail = vi.fn(async () => undefined);
     const dir = mkdtempSync(join(tmpdir(), 'collab-invite-'));
     const reminders = new ReminderBook(join(dir, 'reminders.json'), () => 1_000);
-    await serve({ sendSms: vi.fn(async () => undefined), sendEmail }, undefined, undefined, reminders);
+    await serve(
+      { sendSms: vi.fn(async () => undefined), sendEmail },
+      undefined,
+      undefined,
+      reminders,
+    );
     const token = issueToken({ uid: 'ada', email: 'ada@example.com', displayName: 'Ada' });
 
     const response = await fetch(`${base}/invite`, {
