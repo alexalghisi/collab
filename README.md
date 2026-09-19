@@ -175,14 +175,18 @@ Late joiners are served the same way whiteboard strokes are, per transport:
 
 ### Running code
 
-Running a submission is off unless a sandbox is configured, because it executes
-whatever a participant typed. Set `EXECUTION_BACKEND` on the server:
+Running a submission uses a sandbox so the room cannot execute whatever landed
+on the host. By default the server uses the compilers already on the machine
+(Node, `python3`, `c++`, `go`). Override `EXECUTION_BACKEND` when you need a
+different sandbox:
 
-| Value    | Sandbox                                                                                                                                                                               |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _unset_  | Disabled. The Run button reports that execution is not enabled on this deployment.                                                                                                    |
-| `docker` | One throwaway container per run, for a host that can reach a Docker daemon.                                                                                                           |
-| `piston` | A [Piston](https://github.com/engineer-man/piston) deployment, for hosts that cannot. Set `EXECUTION_PISTON_URL` to your own instance to keep submissions inside your infrastructure. |
+| Value    | Sandbox                                                                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _unset_  | Host compilers. Run works on a laptop and on Render without a Docker daemon. The child process does not inherit server secrets.                   |
+| `local`  | Same as unset.                                                                                                                                    |
+| `piston` | A [Piston](https://github.com/engineer-man/piston) instance. Set `EXECUTION_PISTON_URL` to your own; the public `emkc.org` API is whitelist-only. |
+| `docker` | One throwaway container per run, for a host that can reach a Docker daemon.                                                                       |
+| `off`    | Disabled. The Run button reports that execution is not enabled on this deployment.                                                                |
 
 The Docker sandbox runs each submission with no network (`--network none`), a
 read-only root filesystem, capped memory, swap, CPU and process count, all

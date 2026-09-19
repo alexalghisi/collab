@@ -21,5 +21,6 @@
     "types": ["node"]
   },
   "include": ["src", "server", "App.tsx", "index.ts", "vitest.config.ts"],
-  "exclude": ["node_modules", "dist-web", "desktop", "**/*.config.js"]
+  "exclude": ["node_modules", "dist-web", "desktop", "**/*.config.js"],
+  "extends": "expo/tsconfig.base"
 }

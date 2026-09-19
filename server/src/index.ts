@@ -6,6 +6,7 @@ import cors from 'cors';
 import express from 'express';
 import { Server } from 'socket.io';
 import { MAX_CODE_BYTES, MAX_STDIN_BYTES } from '../../src/code/execution';
+import { MAX_WORKSPACE_BYTES } from '../../src/code/workspaceFiles';
 import { assistantRouter } from './assistant/router';
 import { searchRouter } from './assistant/searchRouter';
 import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
@@ -57,7 +58,7 @@ const WEB_ROOT = join(ROOT, 'dist-web');
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN }));
 // Generous enough for a source file and its input, small enough to be no target.
-app.use(express.json({ limit: MAX_CODE_BYTES + MAX_STDIN_BYTES + 4096 }));
+app.use(express.json({ limit: MAX_CODE_BYTES + MAX_STDIN_BYTES + MAX_WORKSPACE_BYTES + 4096 }));
 
 const execution = new ExecutionService(createRunnerFromEnv());
 const assistant = createMeetingAssistant();

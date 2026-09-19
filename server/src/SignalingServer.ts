@@ -2,12 +2,18 @@ import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import * as Y from 'yjs';
 import { REJECTION_MESSAGES } from '../../src/code/execution';
+import { mergeWorkspaceFiles, normalizeWorkspaceFiles } from '../../src/code/workspaceFiles';
+import type { WorkspaceFile } from '../../src/code/workspaceFiles';
 import { decodeUpdate, encodeUpdate } from '../../src/code/updates';
 import type { MeetingAssistant } from '../../src/assistant/MeetingAssistant';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { acceptAssistantAsk, createMeetingAssistant, runAssistant } from './assistant/service';
 import { attachmentPath, FileStore } from './files/FileStore';
-import { normalizeChatDraft } from '../../src/chat/messages';
+import {
+  normalizeChatDelete,
+  normalizeChatDraft,
+  normalizeChatEdit,
+} from '../../src/chat/messages';
 import type { FileAttachment } from '../../src/files/attachments';
 import { normalizeTranscriptSegment, type TranscriptSegment } from '../../src/transcript/segments';
 import { normalizeBoardFile } from '../../src/whiteboard/boardFiles';
@@ -65,6 +71,8 @@ interface RoomState {
   /** Merged shared editor document, so a late joiner gets the current code. */
   code: Y.Doc;
   codeEdited: boolean;
+  /** Extra files next to the shared program (`date.in`, `date.out`, …). */
+  workspaceFiles: WorkspaceFile[];
   settings: RoomSettings;
   waiting: Map<string, WaitingPeer>;
   /** Sessions that passed the waiting room (or joined before it was enabled). */
@@ -106,6 +114,7 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
       transcript: [],
       code: new Y.Doc(),
       codeEdited: false,
+      workspaceFiles: [],
       settings: DEFAULT_ROOM_SETTINGS,
       waiting: new Map(),
       admitted: new Set(),
@@ -162,6 +171,7 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     transcript: room.transcript,
     messages: room.messages,
     boardFiles: room.boardFiles,
+    workspaceFiles: room.workspaceFiles,
   });
   socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
 }
@@ -191,6 +201,114 @@ async function evict(
   await target.leave(roomId);
   io.to(roomId).emit('peer:left', targetPeerId);
   await handleLeave(io, roomId, targetPeerId);
+}
+
+export function isSameOccupant(
+  a: { sessionId?: string; accountId?: string; displayName?: string },
+  b: { sessionId?: string; accountId?: string; displayName?: string },
+): boolean {
+  if (a.sessionId && b.sessionId && a.sessionId === b.sessionId) {
+    return true;
+  }
+  if (a.accountId && b.accountId && a.accountId === b.accountId) {
+    return true;
+  }
+  const left = a.displayName?.trim().toLowerCase();
+  const right = b.displayName?.trim().toLowerCase();
+  return Boolean(left && right && left === right);
+}
+
+async function detachSocket(
+  io: CollabServer,
+  roomId: string,
+  target: CollabServerSocket,
+): Promise<void> {
+  const wasHost = rooms.get(roomId)?.hostPeerId === target.id;
+  target.emit('session:replaced');
+  target.data.roomId = undefined;
+  target.data.waitingFor = undefined;
+  await target.leave(roomId);
+  io.to(roomId).emit('peer:left', target.id);
+  if (!wasHost) {
+    await handleLeave(io, roomId, target.id);
+  }
+  target.disconnect(true);
+}
+
+/**
+ * One live socket per person: a refresh or second tab takes the existing seat
+ * instead of leaving a ghost tile (and a second microphone) in the room.
+ */
+async function takeSeat(
+  io: CollabServer,
+  socket: CollabServerSocket,
+  roomId: string,
+): Promise<boolean> {
+  const room = rooms.get(roomId);
+  if (room) {
+    let waitingChanged = false;
+    for (const peerId of [...room.waiting.keys()]) {
+      const waiter = io.sockets.sockets.get(peerId);
+      if (waiter && waiter.id !== socket.id && isSameOccupant(waiter.data, socket.data)) {
+        room.waiting.delete(peerId);
+        waiter.data.waitingFor = undefined;
+        waiter.emit('session:replaced');
+        waiter.disconnect(true);
+        waitingChanged = true;
+      }
+    }
+    if (waitingChanged) {
+      notifyWaitingList(io, room);
+    }
+  }
+
+  const occupants = await io.in(roomId).fetchSockets();
+  let keepHost = false;
+  for (const other of occupants) {
+    if (other.id === socket.id || !isSameOccupant(other.data, socket.data)) {
+      continue;
+    }
+    const live = io.sockets.sockets.get(other.id);
+    if (!live) {
+      continue;
+    }
+    const occupied = rooms.get(roomId);
+    if (occupied?.hostPeerId === live.id) {
+      keepHost = true;
+      occupied.hostPeerId = socket.id;
+    }
+    await detachSocket(io, roomId, live);
+  }
+  if (keepHost) {
+    const current = rooms.get(roomId);
+    if (current) {
+      current.hostPeerId = socket.id;
+    }
+  }
+  return keepHost;
+}
+
+function authorIds(socket: CollabServerSocket): string[] {
+  return [socket.id, socket.data.sessionId].filter((id): id is string => Boolean(id));
+}
+
+function ownChatMessage(
+  room: RoomState,
+  socket: CollabServerSocket,
+  id: string,
+): ChatMessage | undefined {
+  const message = room.messages.find((entry) => entry.id === id);
+  if (!message || message.deletedAt || !authorIds(socket).includes(message.peerId)) {
+    return undefined;
+  }
+  return message;
+}
+
+function replaceChatMessage(room: RoomState, next: ChatMessage): void {
+  const index = room.messages.findIndex((entry) => entry.id === next.id);
+  if (index >= 0) {
+    room.messages[index] = next;
+  }
 }
 
 async function handleLeave(io: CollabServer, roomId: string, peerId: string): Promise<void> {
@@ -237,13 +355,18 @@ function registerSocket(
       return;
     }
     if (room && room.settings.waitingRoom && !room.admitted.has(sessionId)) {
+      await takeSeat(io, socket, roomId);
       socket.data.waitingFor = roomId;
       room.waiting.set(socket.id, { peerId: socket.id, displayName });
       socket.emit('room:waiting');
       notifyWaitingList(io, room);
       return;
     }
+    const keepHost = await takeSeat(io, socket, roomId);
     await admit(io, socket, roomId);
+    if (keepHost) {
+      io.to(roomId).emit('room:host', socket.id);
+    }
   });
 
   socket.on('waiting:decide', async ({ peerId, admit: shouldAdmit }) => {
@@ -325,7 +448,7 @@ function registerSocket(
     }
     const entry: ChatMessage = {
       id: randomUUID(),
-      peerId: socket.id,
+      peerId: sessionId ?? socket.id,
       displayName: displayName ?? 'Guest',
       text: message.text,
       file,
@@ -339,6 +462,38 @@ function registerSocket(
       }
     }
     io.to(roomId).emit('chat:message', entry);
+  });
+
+  socket.on('chat:edit', (payload) => {
+    const edit = normalizeChatEdit(payload);
+    const room = currentRoom();
+    const { roomId } = socket.data;
+    if (!edit || !room || !roomId) {
+      return;
+    }
+    const current = ownChatMessage(room, socket, edit.id);
+    if (!current || (edit.text === '' && !current.file)) {
+      return;
+    }
+    const next: ChatMessage = { ...current, text: edit.text, editedAt: Date.now() };
+    replaceChatMessage(room, next);
+    io.to(roomId).emit('chat:edited', next);
+  });
+
+  socket.on('chat:delete', (payload) => {
+    const request = normalizeChatDelete(payload);
+    const room = currentRoom();
+    const { roomId } = socket.data;
+    if (!request || !room || !roomId) {
+      return;
+    }
+    const current = ownChatMessage(room, socket, request.id);
+    if (!current) {
+      return;
+    }
+    const next: ChatMessage = { ...current, text: '', file: null, deletedAt: Date.now() };
+    replaceChatMessage(room, next);
+    io.to(roomId).emit('chat:deleted', next);
   });
 
   socket.on('board:stroke', (stroke) => {
@@ -399,6 +554,16 @@ function registerSocket(
     }
   });
 
+  socket.on('code:files', (payload) => {
+    const room = currentRoom();
+    const { roomId } = socket.data;
+    if (!room || !roomId) {
+      return;
+    }
+    room.workspaceFiles = normalizeWorkspaceFiles(payload);
+    io.to(roomId).emit('code:files', room.workspaceFiles);
+  });
+
   socket.on('code:run', async (payload) => {
     const roomId = socket.data.roomId;
     const runId = `${socket.id}:${randomUUID()}`;
@@ -438,7 +603,15 @@ function registerSocket(
       const result = await execution.run(request, (chunk) => {
         room.emit('code:output', { runId, ...chunk });
       });
-      room.emit('code:run:finished', { runId, ...result, error: null });
+      const generated = result.files ?? [];
+      if (generated.length > 0) {
+        const state = currentRoom();
+        if (state) {
+          state.workspaceFiles = mergeWorkspaceFiles(state.workspaceFiles, generated);
+          room.emit('code:files', state.workspaceFiles);
+        }
+      }
+      room.emit('code:run:finished', { runId, ...result, files: generated, error: null });
     } catch (cause) {
       room.emit('code:run:finished', {
         runId,
@@ -464,7 +637,9 @@ function registerSocket(
         })) ?? [],
       notes: room?.notes ?? '',
       messages:
-        room?.messages.map((message) => ({ text: message.text, sentAt: message.sentAt })) ?? [],
+        room?.messages
+          .filter((message) => !message.deletedAt)
+          .map((message) => ({ text: message.text, sentAt: message.sentAt })) ?? [],
     };
     const accepted = acceptAssistantAsk(
       context,

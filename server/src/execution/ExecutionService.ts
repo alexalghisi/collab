@@ -8,6 +8,7 @@ import {
 import { RateLimiter } from './RateLimiter';
 import { SandboxUnavailableError, type SandboxRunner } from './SandboxRunner';
 import { DockerRunner } from './DockerRunner';
+import { LocalRunner } from './LocalRunner';
 import { PistonRunner } from './PistonRunner';
 
 export type Accepted =
@@ -71,21 +72,28 @@ export class ExecutionService {
 }
 
 /**
- * Docker where the server can reach a daemon, a Piston deployment where it
- * cannot (a container platform's free tier, typically), and off when neither is
- * configured — running untrusted code is opt-in.
+ * Host compilers by default (public Piston is whitelist-only). Docker and a
+ * private Piston URL remain opt-in. `off` keeps Run disabled.
  */
-export function createRunnerFromEnv(env = process.env): SandboxRunner | null {
-  switch (env.EXECUTION_BACKEND) {
-    case 'docker':
-      return new DockerRunner();
-    case 'piston':
-      return new PistonRunner({
-        url: env.EXECUTION_PISTON_URL ?? 'https://emkc.org/api/v2/piston',
-        timeoutMs: Number(env.EXECUTION_TIMEOUT_MS ?? 8000),
-        memoryBytes: Number(env.EXECUTION_MEMORY_MB ?? 256) * 1024 * 1024,
-      });
-    default:
-      return null;
+export function createRunnerFromEnv(
+  env: Partial<NodeJS.ProcessEnv> = process.env,
+): SandboxRunner | null {
+  const backend = env.EXECUTION_BACKEND?.trim().toLowerCase();
+  if (backend === 'off' || backend === 'none' || backend === 'disabled') {
+    return null;
   }
+  if (backend === 'docker') {
+    return new DockerRunner();
+  }
+  if (backend === 'piston') {
+    return new PistonRunner({
+      url: env.EXECUTION_PISTON_URL ?? 'https://emkc.org/api/v2/piston',
+      timeoutMs: Number(env.EXECUTION_TIMEOUT_MS ?? 8000),
+      memoryBytes: Number(env.EXECUTION_MEMORY_MB ?? 256) * 1024 * 1024,
+    });
+  }
+  return new LocalRunner({
+    timeoutMs: Number(env.EXECUTION_TIMEOUT_MS ?? 8000),
+    compileTimeoutMs: Number(env.EXECUTION_COMPILE_TIMEOUT_MS ?? 30000),
+  });
 }

@@ -188,8 +188,10 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
                 <CodePanel
                   document={session.code}
                   runs={session.runs}
+                  files={session.workspaceFiles}
                   selfPeerId={session.selfPeerId}
                   onRun={session.runCode}
+                  onFilesChange={session.updateWorkspaceFiles}
                 />
               )
             )}
@@ -217,7 +219,10 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
               <ChatPanel
                 messages={session.messages}
                 selfPeerId={session.selfPeerId}
+                selfSessionId={session.sessionId}
                 onSend={session.sendMessage}
+                onEdit={session.editMessage}
+                onDelete={session.deleteMessage}
                 onUpload={session.shareFile}
                 onClose={() => setPanel(null)}
               />

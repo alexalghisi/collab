@@ -116,6 +116,10 @@ export class PeerConnectionManager {
   }
 
   private createEntry(peerId: string): PeerEntry {
+    const existing = this.peers.get(peerId);
+    if (existing) {
+      return existing;
+    }
     const connection = new RTCPeerConnection(this.configuration);
     const remoteStream = new MediaStream();
 
@@ -140,7 +144,9 @@ export class PeerConnectionManager {
     });
 
     connection.addEventListener('track', (event) => {
-      remoteStream.addTrack(event.track);
+      if (!remoteStream.getTracks().some((track) => track.id === event.track.id)) {
+        remoteStream.addTrack(event.track);
+      }
       this.onRemoteStream(peerId, remoteStream);
     });
 
