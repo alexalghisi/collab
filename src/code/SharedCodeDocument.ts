@@ -212,7 +212,9 @@ export class SharedCodeDocument {
     if (room.code) {
       this.applyState(room.code);
     }
-    this.publishState();
+    if (room.code || this.text.length > 0) {
+      this.publishState();
+    }
     this.announce();
   };
 
