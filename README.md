@@ -82,6 +82,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 ## Features
 
 - Multi-party video and voice calls over a mesh of WebRTC peer connections. Meetings start with the microphone only; turn the camera on from the call toolbar when you want it, without renegotiation.
+- **Call quality above a phone messenger**: 720p/30 fps capture, up to 2.5 Mbit/s of video (4 Mbit/s for a shared screen), and 64 kbit/s fullband Opus with echo cancellation, noise suppression, voice isolation and packet-loss recovery — see [Call quality](#call-quality).
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared notes** that every participant can edit, and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in).
@@ -107,6 +108,43 @@ Signaling is a small interface (`SignalingChannel`) with two transports:
 
 - **Firestore** (web, when Firebase is configured) — rooms, participants, per-peer signal inboxes, chat, whiteboard strokes, notes, captions, room settings and the waiting list live in Firestore, so the deployed web app needs no server at all. Host commands (mute / remove / move) travel through the same per-peer inboxes as SDP and ICE.
 - **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`, which also keeps each room's whiteboard, notes, captions, settings and waiting list in memory while the room is occupied, and only honours host commands coming from the current host.
+
+### Call quality
+
+Media quality is set in two places, and both are best effort: a stack that does
+not implement a constraint or an SDP parameter ignores it, so nothing here can
+fail a call.
+
+**Capture** (`src/webrtc/media.ts`) asks the device for a picture and a voice
+worth sending:
+
+| Track         | Asked for                                                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Camera        | 1280×720 ideal (up to 1920×1080), 30 fps, front camera.                                                                            |
+| Microphone    | Echo cancellation, noise suppression, automatic gain control, voice isolation, mono, 48 kHz — the full band, not telephone-narrow. |
+| Shared screen | 1920×1080 ideal (up to 2560×1440) at 15 fps, no tab audio.                                                                         |
+
+Each track also carries a `contentHint` (`speech`, `motion`, `detail`) so the
+encoder knows whether it is looking at a face or at text.
+
+**Transport** (`src/webrtc/quality.ts`) is applied to every peer connection as
+it is created, and again whenever the outgoing video is swapped:
+
+- Bitrate ceilings of 2.5 Mbit/s for the camera, 4 Mbit/s for a shared screen
+  and 64 kbit/s for voice, instead of the conservative defaults.
+- Voice is sent at `networkPriority: 'high'`: a meeting survives a blurry
+  picture, not a broken one.
+- What degrades first depends on the content. A face keeps its frame rate
+  (`maintain-framerate`), a shared screen keeps its resolution
+  (`maintain-resolution`) so text stays legible.
+- Opus is asked for fullband mono speech with in-band forward error correction
+  and no discontinuous transmission, which is what otherwise clips the first
+  word after a pause. Those parameters are written into **our own** offer or
+  answer, because they are receive preferences — tuning our description is what
+  commits the other side to sending us clean audio.
+
+A shared screen is displayed with `object-fit: contain` rather than `cover`, so
+no part of it is cropped away.
 
 ### Live captions
 
@@ -312,7 +350,7 @@ Collab/
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
 │   ├── search/                 # VectorStore (memory / pgvector / Pinecone) and meeting chunking
 │   ├── assistant/              # Meeting assistant tools, providers, and the CI eval harness
-│   └── webrtc/                 # RTC configuration, PeerConnectionManager, media helpers
+│   └── webrtc/                 # RTC configuration, PeerConnectionManager, media capture and quality tuning
 ├── server/
 │   └── src/                    # Express + Socket.IO signaling server
 ├── firestore.rules             # Security rules for signaling rooms, channels and per-user meetings
