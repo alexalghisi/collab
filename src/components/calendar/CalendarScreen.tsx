@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   WEEKDAY_LABELS,
@@ -9,6 +9,8 @@ import {
   isSameDay,
   monthGrid,
 } from '../../meeting/calendar';
+import { readGoogleWebClientId } from '../../auth/config';
+import { CALENDAR_API_DISABLED, calendarApiLibraryUrl } from '../../meeting/googleCalendar';
 import type { GoogleCalendarSync } from '../../meeting/useGoogleCalendar';
 import type { Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
@@ -34,6 +36,7 @@ export function CalendarScreen({
   const today = new Date();
   const [month, setMonth] = useState(() => addMonths(today, 0));
   const [selected, setSelected] = useState(today);
+  const googleClientId = readGoogleWebClientId();
 
   const meetingsOn = (day: Date) =>
     meetings.filter((meeting) => isSameDay(new Date(meeting.startsAt), day));
@@ -56,6 +59,15 @@ export function CalendarScreen({
                 : 'Bring your Google events into this calendar.'}
             </Text>
             {google.error ? <Text style={styles.syncError}>{google.error}</Text> : null}
+            {google.error === CALENDAR_API_DISABLED && googleClientId ? (
+              <Pressable
+                onPress={() => void Linking.openURL(calendarApiLibraryUrl(googleClientId))}
+                accessibilityRole="link"
+                accessibilityLabel="Open Google Calendar API"
+              >
+                <Text style={styles.syncLink}>Open the Calendar API</Text>
+              </Pressable>
+            ) : null}
           </View>
           <View style={styles.syncActions}>
             <Button
@@ -201,6 +213,11 @@ const styles = StyleSheet.create({
   syncError: {
     color: colors.danger,
     fontSize: 13,
+  },
+  syncLink: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   syncActions: {
     alignItems: 'flex-end',

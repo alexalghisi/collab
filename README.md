@@ -385,9 +385,11 @@ In Google Cloud Console → APIs & Services → Credentials, create an OAuth 2.0
 - `https://<user>.github.io` (GitHub Pages)
 
 Authorized redirect URIs can match those origins. Enable the People API if
-Google asks for it. Calendar sync uses the same Web client: enable the
-**Google Calendar API** under APIs & Services → Library, then open Calendar in
-Collab and press **Connect**.
+Google asks for it. Calendar sync uses the same Web client. The Calendar screen
+opens the **Google Calendar API** library page for that client when Google
+answers `accessNotConfigured`; press Enable, then **Sync now**. The first Google
+prompt may say the app is unverified — Continue is expected while the OAuth
+client is in testing.
 
 Facebook and Firebase remain optional:
 
