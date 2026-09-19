@@ -85,3 +85,26 @@ export function sameWorkspaceFiles(
     (file, index) => file.name === right[index]?.name && file.content === right[index]?.content,
   );
 }
+
+const CPP_SIDECARS = ['date.in', 'date.out'] as const;
+
+export function withCppSidecars(files: readonly WorkspaceFile[]): WorkspaceFile[] {
+  const byName = new Map(files.map((file) => [file.name, file]));
+  for (const name of CPP_SIDECARS) {
+    if (!byName.has(name)) {
+      byName.set(name, { name, content: '' });
+    }
+  }
+  return normalizeWorkspaceFiles([...byName.values()]);
+}
+
+export function cppSidecarsIfNeeded(
+  language: string,
+  files: readonly WorkspaceFile[],
+): WorkspaceFile[] | null {
+  if (language !== 'cpp') {
+    return null;
+  }
+  const next = withCppSidecars(files);
+  return sameWorkspaceFiles(next, files) ? null : next;
+}

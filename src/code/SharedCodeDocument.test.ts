@@ -230,6 +230,17 @@ describe('SharedCodeDocument', () => {
     expect(ada.document.presence()).toEqual([]);
   });
 
+  it('keeps a remote caret on the same character after text is inserted in front', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    ada.document.text.insert(0, 'hello world');
+    linus.document.setSelection({ start: 6, end: 6 });
+
+    ada.document.text.insert(0, 'xxx');
+
+    expect(ada.document.presence()[0]?.selection).toEqual({ start: 9, end: 9 });
+  });
+
   it('gives each participant a stable colour derived from their peer id', () => {
     const ada = attach('a', 'Ada');
     const same = attach('a', 'Ada on another tab');
