@@ -72,4 +72,19 @@ describe('chat history', () => {
 
     expect(mergeChatHistory(thread, undefined, null)).toEqual(thread);
   });
+
+  it('keeps a later edit instead of the original wording', () => {
+    const original = message('a', 1, 'hello');
+    const edited = { ...original, text: 'hello there', editedAt: 2 };
+
+    expect(mergeChatHistory([original], [edited])).toEqual([edited]);
+    expect(mergeChatHistory([edited], [original])).toEqual([edited]);
+  });
+
+  it('keeps a deletion so an older snapshot cannot resurrect the message', () => {
+    const original = message('a', 1, 'hello');
+    const deleted = { ...original, text: '', deletedAt: 3 };
+
+    expect(mergeChatHistory([deleted], [original])[0]?.deletedAt).toBe(3);
+  });
 });

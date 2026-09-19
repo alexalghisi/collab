@@ -1,5 +1,11 @@
 import type { ChatDraft } from '../chat/messages';
-import type { ExecutionRequest, RunFinished, RunOutput, RunStarted } from '../code/execution';
+import type {
+  ExecutionRequest,
+  RunFinished,
+  RunOutput,
+  RunStarted,
+  WorkspaceFile,
+} from '../code/execution';
 import type { FileAttachment } from '../files/attachments';
 import type {
   AssistantAsk,
@@ -87,6 +93,19 @@ export interface ChatMessage {
   readonly sentAt: number;
   /** A file the sender shared with the room, alongside the text or on its own. */
   readonly file: FileAttachment | null;
+  /** Present after the author changed the text. */
+  readonly editedAt?: number;
+  /** Tombstone so a later snapshot cannot bring a removed message back. */
+  readonly deletedAt?: number;
+}
+
+export interface ChatEditPayload {
+  readonly id: string;
+  readonly text: string;
+}
+
+export interface ChatDeletePayload {
+  readonly id: string;
 }
 
 /** One freehand line on the shared whiteboard. */
@@ -130,6 +149,8 @@ export interface RoomJoinedPayload {
   readonly transcript: TranscriptSegment[];
   readonly messages: ChatMessage[];
   readonly boardFiles: BoardFile[];
+  /** Extra files next to the shared program (`date.in`, `date.out`, …). */
+  readonly workspaceFiles: WorkspaceFile[];
 }
 
 export interface OutgoingSdpPayload {
@@ -159,6 +180,8 @@ export interface ClientToServerEvents {
   'signal:ice': (payload: OutgoingIcePayload) => void;
   'peer:state': (state: PeerState) => void;
   'chat:message': (draft: ChatDraft) => void;
+  'chat:edit': (payload: ChatEditPayload) => void;
+  'chat:delete': (payload: ChatDeletePayload) => void;
   'board:stroke': (stroke: Stroke) => void;
   'board:file': (item: BoardFile) => void;
   'board:remove': (strokeIds: string[]) => void;
@@ -169,6 +192,7 @@ export interface ClientToServerEvents {
   'code:awareness': (update: string) => void;
   /** Runs the submitted code in the sandbox and reports back to the whole room. */
   'code:run': (request: ExecutionRequest) => void;
+  'code:files': (files: readonly WorkspaceFile[]) => void;
   /** One final spoken turn from this participant. */
   'transcript:segment': (segment: TranscriptSegment) => void;
   /** Asks the meeting assistant; the reply is streamed to the whole room. */
@@ -188,6 +212,8 @@ export interface ServerToClientEvents {
   'signal:answer': (payload: IncomingSdpPayload) => void;
   'signal:ice': (payload: IncomingIcePayload) => void;
   'chat:message': (message: ChatMessage) => void;
+  'chat:edited': (message: ChatMessage) => void;
+  'chat:deleted': (message: ChatMessage) => void;
   'board:stroke': (stroke: Stroke) => void;
   'board:file': (item: BoardFile) => void;
   'board:remove': (strokeIds: string[]) => void;
@@ -197,6 +223,7 @@ export interface ServerToClientEvents {
   'code:run:started': (payload: RunStarted) => void;
   'code:output': (payload: RunOutput) => void;
   'code:run:finished': (payload: RunFinished) => void;
+  'code:files': (files: readonly WorkspaceFile[]) => void;
   'transcript:segment': (segment: TranscriptSegment) => void;
   'assistant:token': (payload: AssistantToken) => void;
   'assistant:done': (payload: AssistantDone) => void;
@@ -208,4 +235,6 @@ export interface ServerToClientEvents {
   /** Sent to the host whenever the waiting list changes. */
   'waiting:update': (peers: WaitingPeer[]) => void;
   'host:command': (command: HostCommand) => void;
+  /** This session took a seat already held by an older socket of the same person. */
+  'session:replaced': () => void;
 }

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { FileAttachment } from '../files/attachments';
-import { MAX_MESSAGE_CHARS, normalizeChatDraft } from './messages';
+import {
+  MAX_MESSAGE_CHARS,
+  normalizeChatDraft,
+  normalizeChatEdit,
+  visibleChatMessages,
+} from './messages';
 
 const attachment: FileAttachment = {
   id: 'file-1',
@@ -50,5 +55,49 @@ describe('normalizeChatDraft', () => {
       text: 'look',
       file: null,
     });
+  });
+});
+
+describe('normalizeChatEdit', () => {
+  it('keeps a trimmed edit', () => {
+    expect(normalizeChatEdit({ id: 'a', text: '  hello  ' })).toEqual({ id: 'a', text: 'hello' });
+  });
+
+  it('drops an edit without an id or text field', () => {
+    expect(normalizeChatEdit({ text: 'hello' })).toBeNull();
+    expect(normalizeChatEdit({ id: 'a' })).toBeNull();
+    expect(normalizeChatEdit(undefined)).toBeNull();
+  });
+
+  it('truncates rather than relaying whatever arrived', () => {
+    const edit = normalizeChatEdit({ id: 'a', text: 'x'.repeat(MAX_MESSAGE_CHARS + 100) });
+
+    expect(edit?.text).toHaveLength(MAX_MESSAGE_CHARS);
+  });
+});
+
+describe('visibleChatMessages', () => {
+  it('hides tombstones so a deleted message leaves the thread', () => {
+    expect(
+      visibleChatMessages([
+        {
+          id: 'a',
+          peerId: 'p',
+          displayName: 'Ada',
+          text: 'hello',
+          sentAt: 1,
+          file: null,
+        },
+        {
+          id: 'b',
+          peerId: 'p',
+          displayName: 'Ada',
+          text: '',
+          sentAt: 2,
+          file: null,
+          deletedAt: 3,
+        },
+      ]).map((message) => message.id),
+    ).toEqual(['a']);
   });
 });

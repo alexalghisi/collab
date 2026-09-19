@@ -36,3 +36,37 @@ export function normalizeChatDraft(input: unknown): ChatDraft | null {
   }
   return { text, file };
 }
+
+/** Reduces an edit to a message id and trimmed text, or to nothing. */
+export function normalizeChatEdit(input: unknown): { id: string; text: string } | null {
+  if (typeof input !== 'object' || input === null) {
+    return null;
+  }
+  const { id, text } = input as { id?: unknown; text?: unknown };
+  if (typeof id !== 'string' || id === '' || typeof text !== 'string') {
+    return null;
+  }
+  return { id, text: text.trim().slice(0, MAX_MESSAGE_CHARS) };
+}
+
+export function normalizeChatDelete(input: unknown): { id: string } | null {
+  if (typeof input === 'string' && input !== '') {
+    return { id: input };
+  }
+  if (typeof input !== 'object' || input === null) {
+    return null;
+  }
+  const { id } = input as { id?: unknown };
+  return typeof id === 'string' && id !== '' ? { id } : null;
+}
+
+export function isOwnChatMessage(
+  message: { readonly peerId: string },
+  ...selfIds: readonly (string | null | undefined)[]
+): boolean {
+  return selfIds.some((id) => Boolean(id) && id === message.peerId);
+}
+
+export function visibleChatMessages<T extends { deletedAt?: number }>(messages: readonly T[]): T[] {
+  return messages.filter((message) => !message.deletedAt);
+}

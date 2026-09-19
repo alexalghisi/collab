@@ -1,9 +1,14 @@
 import { isCodeLanguage, type CodeLanguage } from './languages';
+import { normalizeWorkspaceFiles, type WorkspaceFile } from './workspaceFiles';
+
+export type { WorkspaceFile } from './workspaceFiles';
 
 export interface ExecutionRequest {
   readonly language: CodeLanguage;
   readonly code: string;
   readonly stdin: string;
+  /** Files placed next to the program, so `ifstream("date.in")` can find them. */
+  readonly files: readonly WorkspaceFile[];
 }
 
 export interface ExecutionChunk {
@@ -15,6 +20,8 @@ export interface ExecutionResult {
   /** null when the sandbox was killed before it could report one. */
   readonly exitCode: number | null;
   readonly timedOut: boolean;
+  /** Files the program wrote (or changed) in its working directory. */
+  readonly files?: WorkspaceFile[];
 }
 
 export interface RunStarted {
@@ -67,7 +74,8 @@ const byteLength = (value: string): number => new TextEncoder().encode(value).le
 export function validateExecutionRequest(
   request: unknown,
 ): { ok: true; request: ExecutionRequest } | { ok: false; reason: ExecutionRejection } {
-  const { language, code, stdin } = (request ?? {}) as Partial<ExecutionRequest>;
+  const payload = (request ?? {}) as Partial<ExecutionRequest>;
+  const { language, code, stdin } = payload;
   if (!isCodeLanguage(language)) {
     return { ok: false, reason: 'unsupported-language' };
   }
@@ -81,5 +89,8 @@ export function validateExecutionRequest(
   if (byteLength(input) > MAX_STDIN_BYTES) {
     return { ok: false, reason: 'stdin-too-large' };
   }
-  return { ok: true, request: { language, code, stdin: input } };
+  return {
+    ok: true,
+    request: { language, code, stdin: input, files: normalizeWorkspaceFiles(payload.files) },
+  };
 }

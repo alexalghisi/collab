@@ -47,7 +47,7 @@ describe('running code from the meeting', () => {
   let runner: ScriptedRunner;
   let clock: { now: number };
 
-  const request: ExecutionRequest = { language: 'python', code: 'print(1)', stdin: '' };
+  const request: ExecutionRequest = { language: 'python', code: 'print(1)', stdin: '', files: [] };
 
   const record = (channel: Awaited<ReturnType<RoomServer['join']>>['channel']): Recorder => {
     const recorder: Recorder = { started: [], output: [], finished: [] };
@@ -88,10 +88,21 @@ describe('running code from the meeting', () => {
   it('passes the submitted code and input to the sandbox', async () => {
     const ada = await server.join('a', 'Ada');
 
-    ada.channel.emit('code:run', { ...request, stdin: '41\n' });
+    ada.channel.emit('code:run', {
+      ...request,
+      stdin: '41\n',
+      files: [{ name: 'date.in', content: 'x' }],
+    });
     await until(() => runner.seen.length === 1);
 
-    expect(runner.seen).toEqual([{ language: 'python', code: 'print(1)', stdin: '41\n' }]);
+    expect(runner.seen).toEqual([
+      {
+        language: 'python',
+        code: 'print(1)',
+        stdin: '41\n',
+        files: [{ name: 'date.in', content: 'x' }],
+      },
+    ]);
   });
 
   it('reports a timeout as a finished run rather than an error', async () => {

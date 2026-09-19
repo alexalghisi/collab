@@ -23,7 +23,7 @@ function stub(response: unknown, status = 200) {
   return { sent, runner: new PistonRunner(DEFAULT_PISTON_OPTIONS, fetchImpl) };
 }
 
-const request = { language: 'python', code: 'print(1)', stdin: '2\n' } as const;
+const request = { language: 'python', code: 'print(1)', stdin: '2\n', files: [] } as const;
 
 describe('PistonRunner', () => {
   it('relays stdout, stderr and the exit code', async () => {
@@ -32,7 +32,7 @@ describe('PistonRunner', () => {
 
     const result = await runner.run(request, (chunk) => chunks.push(chunk));
 
-    expect(result).toEqual({ exitCode: 0, timedOut: false });
+    expect(result).toEqual({ exitCode: 0, timedOut: false, files: [] });
     expect(chunks).toEqual([
       { stream: 'stdout', text: '1\n' },
       { stream: 'stderr', text: 'warn\n' },
@@ -59,6 +59,20 @@ describe('PistonRunner', () => {
     expect(sent[0].files).toEqual([{ name: 'main.cpp', content: 'int main() {}' }]);
   });
 
+  it('sends extra workspace files next to the program', async () => {
+    const { runner, sent } = stub({ run: { stdout: '', code: 0 } });
+
+    await runner.run(
+      { ...request, language: 'cpp', files: [{ name: 'date.in', content: '1' }] },
+      () => {},
+    );
+
+    expect(sent[0].files).toEqual([
+      { name: 'main.cpp', content: 'print(1)' },
+      { name: 'date.in', content: '1' },
+    ]);
+  });
+
   it('reports a compile failure without pretending the program ran', async () => {
     const { runner } = stub({
       compile: { stderr: 'main.go:2: undefined: foo', code: 2 },
@@ -68,20 +82,28 @@ describe('PistonRunner', () => {
 
     const result = await runner.run({ ...request, language: 'go' }, (chunk) => chunks.push(chunk));
 
-    expect(result).toEqual({ exitCode: 2, timedOut: false });
+    expect(result).toEqual({ exitCode: 2, timedOut: false, files: [] });
     expect(chunks).toEqual([{ stream: 'stderr', text: 'main.go:2: undefined: foo' }]);
   });
 
   it('treats a killed run as a timeout', async () => {
     const { runner } = stub({ run: { stdout: '', stderr: '', code: null, signal: 'SIGKILL' } });
 
-    expect(await runner.run(request, () => {})).toEqual({ exitCode: null, timedOut: true });
+    expect(await runner.run(request, () => {})).toEqual({
+      exitCode: null,
+      timedOut: true,
+      files: [],
+    });
   });
 
   it('does not mistake a self-inflicted kill with an exit code for a timeout', async () => {
     const { runner } = stub({ run: { stdout: '', code: 137, signal: 'SIGKILL' } });
 
-    expect(await runner.run(request, () => {})).toEqual({ exitCode: 137, timedOut: false });
+    expect(await runner.run(request, () => {})).toEqual({
+      exitCode: 137,
+      timedOut: false,
+      files: [],
+    });
   });
 
   it('reports an error response as an unavailable sandbox', async () => {

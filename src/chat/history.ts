@@ -19,8 +19,18 @@ function isChatMessage(value: unknown): value is ChatMessage {
     typeof message.text === 'string' &&
     typeof message.sentAt === 'number' &&
     Number.isFinite(message.sentAt) &&
-    (message.file === null || isFileAttachment(message.file))
+    (message.file === null || isFileAttachment(message.file)) &&
+    isOptionalTimestamp(message.editedAt) &&
+    isOptionalTimestamp(message.deletedAt)
   );
+}
+
+function isOptionalTimestamp(value: unknown): boolean {
+  return value === undefined || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function chatRecency(message: ChatMessage): number {
+  return Math.max(message.deletedAt ?? 0, message.editedAt ?? 0, message.sentAt);
 }
 
 export function chatMessagesOf(value: unknown): ChatMessage[] {
@@ -50,7 +60,8 @@ export function mergeChatHistory(
       continue;
     }
     for (const message of list) {
-      if (!byId.has(message.id)) {
+      const existing = byId.get(message.id);
+      if (!existing || chatRecency(message) >= chatRecency(existing)) {
         byId.set(message.id, message);
       }
     }

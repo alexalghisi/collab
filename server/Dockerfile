@@ -1,6 +1,10 @@
 # Signaling server image. Build from the repository root:
 #   docker build -f server/Dockerfile -t collab-signaling .
-FROM node:20-alpine
+# Node 22 so the local sandbox can strip TypeScript types at runtime.
+FROM node:22-alpine
+
+# Compilers for the local execution sandbox (JavaScript/TypeScript run on Node).
+RUN apk add --no-cache python3 g++ go
 
 WORKDIR /app
 

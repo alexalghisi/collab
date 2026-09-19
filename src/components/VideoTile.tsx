@@ -2,6 +2,7 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { PeerState } from '../signaling/events';
 import { colors } from '../theme';
+import { attachMediaStream } from '../webrtc/attachMedia';
 import { TileOverlay, showsPlaceholder } from './TileOverlay';
 
 export interface VideoTileProps {
@@ -34,9 +35,10 @@ export function VideoTile({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (video) {
-      video.srcObject = stream ?? null;
+    if (!video) {
+      return;
     }
+    return attachMediaStream(video, stream ?? null);
   }, [stream]);
 
   return (
