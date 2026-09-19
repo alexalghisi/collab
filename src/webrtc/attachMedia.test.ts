@@ -64,7 +64,7 @@ describe('attachMediaStream', () => {
     attachMediaStream(element as unknown as HTMLMediaElement, stream);
     await Promise.resolve();
     element.play.mockImplementation(async () => undefined);
-    listeners.get('pointerdown')?.();
+    listeners.get('keydown')?.();
     await Promise.resolve();
 
     expect(element.play).toHaveBeenCalledTimes(2);
