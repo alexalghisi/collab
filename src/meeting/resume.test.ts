@@ -43,6 +43,17 @@ describe('live meeting resume', () => {
     expect(readLiveMeeting()).toBeNull();
   });
 
+  it('keeps the camera on after a refresh only when that session had it on', () => {
+    writeLiveMeeting({
+      roomId: 'room-1',
+      sessionId: 'session-1',
+      displayName: 'Ada',
+      video: true,
+    });
+
+    expect(readLiveMeeting()?.video).toBe(true);
+  });
+
   it('fills in a missing name from older live-meeting records', () => {
     sessionStorage.setItem(
       'collab.liveMeeting',
@@ -53,7 +64,7 @@ describe('live meeting resume', () => {
       roomId: 'room-1',
       sessionId: 'session-1',
       displayName: '',
-      video: true,
+      video: false,
     });
   });
 });
