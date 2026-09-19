@@ -1,36 +1,57 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { attachMediaStream, attachRemoteAudio } from './attachMedia';
+import { attachMediaStream, attachRemoteAudio, unlockAudioPlayback } from './attachMedia';
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe('attachMediaStream', () => {
-  it('assigns the stream and calls play so remote audio is not stuck', () => {
+  it('gives a video element only the camera tracks so a muted preview cannot silence the mic', () => {
+    const videoTracks = [{ id: 'cam', kind: 'video' }];
+    const playback = { id: 'preview' };
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return playback;
+      }),
+    );
     const element = {
-      srcObject: null as MediaStream | null,
+      tagName: 'VIDEO',
+      srcObject: null as unknown,
       paused: true,
       play: vi.fn(async () => undefined),
     };
     const stream = {
+      getVideoTracks: () => videoTracks,
+      getAudioTracks: () => [{ id: 'mic', kind: 'audio' }],
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     } as unknown as MediaStream;
 
     attachMediaStream(element as unknown as HTMLMediaElement, stream);
 
-    expect(element.srcObject).toBe(stream);
+    expect(MediaStream).toHaveBeenCalledWith(videoTracks);
+    expect(element.srcObject).toBe(playback);
     expect(element.play).toHaveBeenCalledTimes(1);
   });
 
-  it('rebinds and plays when a late audio track lands on an already playing tile', () => {
+  it('rebinds and plays when a late video track lands on an already playing tile', () => {
     const listeners = new Map<string, () => void>();
+    const playback = { id: 'preview' };
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return playback;
+      }),
+    );
     const element = {
-      srcObject: null as MediaStream | null,
+      tagName: 'VIDEO',
+      srcObject: null as unknown,
       paused: false,
       play: vi.fn(async () => undefined),
     };
     const stream = {
+      getVideoTracks: () => [{ id: 'cam' }],
       addEventListener: (event: string, handler: () => void) => listeners.set(event, handler),
       removeEventListener: (event: string) => listeners.delete(event),
     } as unknown as MediaStream;
@@ -39,7 +60,7 @@ describe('attachMediaStream', () => {
     element.play.mockClear();
     listeners.get('addtrack')?.();
 
-    expect(element.srcObject).toBe(stream);
+    expect(element.srcObject).toBe(playback);
     expect(element.play).toHaveBeenCalledTimes(1);
   });
 
@@ -49,14 +70,22 @@ describe('attachMediaStream', () => {
       addEventListener: (event: string, handler: () => void) => listeners.set(event, handler),
       removeEventListener: (event: string) => listeners.delete(event),
     });
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return { id: 'preview' };
+      }),
+    );
     const element = {
-      srcObject: null as MediaStream | null,
+      tagName: 'VIDEO',
+      srcObject: null as unknown,
       paused: true,
       play: vi.fn<() => Promise<void>>(async () => {
         throw new Error('NotAllowedError');
       }),
     };
     const stream = {
+      getVideoTracks: () => [{ id: 'cam' }],
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     } as unknown as MediaStream;
@@ -139,5 +168,30 @@ describe('attachMediaStream', () => {
     expect(body.appendChild).toHaveBeenCalledWith(audio);
     expect(audio.autoplay).toBe(true);
     expect(audio.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the audio context on the join click so a later remote track can play', () => {
+    const start = vi.fn();
+    const resume = vi.fn(async () => undefined);
+    const createBufferSource = vi.fn(() => ({
+      buffer: null as unknown,
+      connect: vi.fn(),
+      start,
+    }));
+    vi.stubGlobal('window', {
+      AudioContext: vi.fn(function AudioContext() {
+        return {
+          resume,
+          createBufferSource,
+          createBuffer: vi.fn(() => ({})),
+          destination: {},
+        };
+      }),
+    });
+
+    unlockAudioPlayback();
+
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledTimes(1);
   });
 });
