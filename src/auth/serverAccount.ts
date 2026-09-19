@@ -32,7 +32,10 @@ function toUser(body: AuthResponseBody['user']): AuthUser | null {
 async function request(path: string, init?: RequestInit): Promise<AuthSession> {
   let response: Response;
   try {
-    response = await fetch(`${SIGNALING_URL}${path}`, init);
+    response = await fetch(`${SIGNALING_URL}${path}`, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(20_000),
+    });
   } catch {
     throw new Error('Could not reach the account service. Try again in a moment.');
   }
@@ -82,6 +85,7 @@ export async function restoreAccount(token: string): Promise<AuthUser> {
   try {
     response = await fetch(`${SIGNALING_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(20_000),
     });
   } catch {
     throw new Error('Could not restore your session.');

@@ -14,3 +14,11 @@ services:
         value: '4000'
       - key: GOOGLE_CLIENT_ID
         sync: false
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: AUTH_STORE_URL
+        sync: false
+      - key: AUTH_GIST_ID
+        sync: false
+      - key: AUTH_GIST_TOKEN
+        sync: false
