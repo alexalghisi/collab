@@ -4,6 +4,7 @@ import type { StructuredAction } from '../assistant/types';
 import { mergeChatHistory } from '../chat/history';
 import type { ChatDraft } from '../chat/messages';
 import { REJECTION_MESSAGES, validateExecutionRequest } from '../code/execution';
+import { programSource } from '../code/programSource';
 import { completeCloudUiRun } from '../code/runInCloudUi';
 import type { WorkspaceFile } from '../code/workspaceFiles';
 import { mergeWorkspaceFiles } from '../code/workspaceFiles';
@@ -148,7 +149,7 @@ export interface CollabSession {
   toggleCaptions: () => void;
   askAssistant: (question: string) => void;
   /** Runs the shared document in the sandbox; output reaches the whole room. */
-  runCode: (stdin: string, files?: readonly WorkspaceFile[]) => void;
+  runCode: (stdin: string, files?: readonly WorkspaceFile[], source?: string) => void;
   updateWorkspaceFiles: (files: WorkspaceFile[]) => void;
   // Host only.
   updateSettings: (patch: Partial<RoomSettings>) => void;
@@ -832,57 +833,60 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     beginCaptions();
   }, [captionsOn, beginCaptions]);
 
-  const runCode = useCallback((stdin: string, files: readonly WorkspaceFile[] = []) => {
-    const document = codeRef.current;
-    if (!document) {
-      return;
-    }
-    const payload = {
-      language: document.language,
-      code: document.text.toString(),
-      stdin,
-      files: [...files],
-    };
-    const runId = randomUUID();
-    const meta = {
-      runId,
-      byPeerId: sessionIdRef.current,
-      byDisplayName: displayNameRef.current,
-    };
-    setRuns((current) => [
-      ...current,
-      {
-        ...meta,
-        language: payload.language,
-        stdout: '',
-        stderr: '',
-        exitCode: null,
-        timedOut: false,
-        error: null,
-        running: true,
-        files: [],
-      },
-    ]);
-    const checked = validateExecutionRequest(payload);
-    if (!checked.ok) {
-      setRuns((current) =>
-        current.map((run) =>
-          run.runId === runId
-            ? { ...run, running: false, error: REJECTION_MESSAGES[checked.reason] }
-            : run,
-        ),
-      );
-      return;
-    }
-    void completeCloudUiRun(checked.request, meta).then((done) => {
-      setRuns((current) =>
-        current.map((run) => (run.runId === runId ? { ...done, running: false } : run)),
-      );
-      if (done.files.length > 0) {
-        setWorkspaceFiles((current) => mergeWorkspaceFiles(current, done.files));
+  const runCode = useCallback(
+    (stdin: string, files: readonly WorkspaceFile[] = [], source?: string) => {
+      const document = codeRef.current;
+      if (!document) {
+        return;
       }
-    });
-  }, []);
+      const payload = {
+        language: document.language,
+        code: programSource(source, document.text.toString()),
+        stdin,
+        files: [...files],
+      };
+      const runId = randomUUID();
+      const meta = {
+        runId,
+        byPeerId: sessionIdRef.current,
+        byDisplayName: displayNameRef.current,
+      };
+      setRuns((current) => [
+        ...current,
+        {
+          ...meta,
+          language: payload.language,
+          stdout: '',
+          stderr: '',
+          exitCode: null,
+          timedOut: false,
+          error: null,
+          running: true,
+          files: [],
+        },
+      ]);
+      const checked = validateExecutionRequest(payload);
+      if (!checked.ok) {
+        setRuns((current) =>
+          current.map((run) =>
+            run.runId === runId
+              ? { ...run, running: false, error: REJECTION_MESSAGES[checked.reason] }
+              : run,
+          ),
+        );
+        return;
+      }
+      void completeCloudUiRun(checked.request, meta).then((done) => {
+        setRuns((current) =>
+          current.map((run) => (run.runId === runId ? { ...done, running: false } : run)),
+        );
+        if (done.files.length > 0) {
+          setWorkspaceFiles((current) => mergeWorkspaceFiles(current, done.files));
+        }
+      });
+    },
+    [],
+  );
 
   const updateWorkspaceFiles = useCallback((files: WorkspaceFile[]) => {
     setWorkspaceFiles(files);
