@@ -73,15 +73,12 @@ export class ExecutionService {
 
 /**
  * Host compilers by default (public Piston is whitelist-only). Docker and a
- * private Piston URL remain opt-in. `off` keeps Run disabled.
+ * private Piston URL remain opt-in.
  */
 export function createRunnerFromEnv(
   env: Partial<NodeJS.ProcessEnv> = process.env,
 ): SandboxRunner | null {
   const backend = env.EXECUTION_BACKEND?.trim().toLowerCase();
-  if (backend === 'off' || backend === 'none' || backend === 'disabled') {
-    return null;
-  }
   if (backend === 'docker') {
     return new DockerRunner();
   }
