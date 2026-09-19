@@ -79,6 +79,15 @@ class FakeModel implements EditorModel {
     }
   }
 
+  commit(next: string, changes: ModelContentChangedEvent['changes']): void {
+    this.value = next;
+    this.version += 1;
+    const event = { changes };
+    for (const listener of this.listeners) {
+      listener(event);
+    }
+  }
+
   onDidChangeContent(listener: (event: ModelContentChangedEvent) => void) {
     this.listeners.push(listener);
     return {
@@ -184,6 +193,26 @@ describe('MonacoTextBinding', () => {
     model.type(15, '42', 2);
 
     expect(document.text.toString()).toBe('const answer = 42;');
+  });
+
+  it('applies two inserts against the original offsets, even if Monaco lists them front to back', () => {
+    document.text.insert(0, 'XXXXX');
+    bind('XXXXX');
+    model.commit('AXXXXXB', [
+      { rangeOffset: 0, rangeLength: 0, text: 'A' },
+      { rangeOffset: 5, rangeLength: 0, text: 'B' },
+    ]);
+
+    expect(document.text.toString()).toBe('AXXXXXB');
+  });
+
+  it('puts the model back on the shared text if a remote delta would have drifted', () => {
+    document.text.insert(0, 'abc');
+    bind('abc');
+    document.applyState(remoteEdit(document, (text) => text.insert(1, 'X')));
+
+    expect(model.getValue()).toBe(document.text.toString());
+    expect(model.getValue()).toBe('aXbc');
   });
 
   it('writes a remote insertion into the model at the right offset', () => {
