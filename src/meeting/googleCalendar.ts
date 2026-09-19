@@ -78,10 +78,18 @@ export function meetingFromGoogleEvent(
   };
 }
 
-function calendarError(status: number, body: CalendarErrorBody): string {
+export const CALENDAR_API_DISABLED =
+  'Enable the Google Calendar API in Google Cloud Console for this OAuth client.';
+
+export function calendarApiLibraryUrl(clientId: string): string {
+  const project = clientId.split('-')[0] ?? '';
+  return `https://console.cloud.google.com/apis/library/calendar.googleapis.com?project=${project}`;
+}
+
+export function calendarError(status: number, body: CalendarErrorBody): string {
   const reason = body.error?.errors?.[0]?.reason;
   if (status === 403 && reason === 'accessNotConfigured') {
-    return 'Enable the Google Calendar API in Google Cloud Console for this OAuth client.';
+    return CALENDAR_API_DISABLED;
   }
   if (status === 401 || status === 403) {
     return 'Google Calendar access expired. Connect it again.';
@@ -98,6 +106,7 @@ async function readError(response: Response): Promise<CalendarErrorBody> {
 export async function listGoogleEvents(
   token: string,
   window: { timeMin: string; timeMax: string },
+  fetchImpl: typeof fetch = fetch,
 ): Promise<GoogleCalendarEvent[]> {
   const events: GoogleCalendarEvent[] = [];
   let pageToken = '';
@@ -112,7 +121,7 @@ export async function listGoogleEvents(
     if (pageToken) {
       params.set('pageToken', pageToken);
     }
-    const response = await fetch(`${EVENTS_URL}?${params}`, {
+    const response = await fetchImpl(`${EVENTS_URL}?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const body = (await response.json().catch(() => ({}))) as CalendarErrorBody & {
