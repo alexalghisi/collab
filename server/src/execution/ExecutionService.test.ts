@@ -1,20 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { ExecutionService, createRunnerFromEnv } from './ExecutionService';
+import { CloudRunner } from './CloudRunner';
 import { DockerRunner } from './DockerRunner';
 import { LocalRunner } from './LocalRunner';
 import { PistonRunner } from './PistonRunner';
 
 describe('createRunnerFromEnv', () => {
-  it('uses the host compilers so Run is never silently disabled', () => {
+  it('uses the hosted compiler so the laptop never compiles', () => {
     const runner = createRunnerFromEnv({});
 
-    expect(runner).toBeInstanceOf(LocalRunner);
-    expect(runner?.name).toBe('local');
+    expect(runner).toBeInstanceOf(CloudRunner);
+    expect(runner?.name).toBe('cloud');
   });
 
-  it('still uses the host compilers when EXECUTION_BACKEND is off', () => {
-    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'off' })).toBeInstanceOf(LocalRunner);
-    expect(createRunnerFromEnv({ NODE_ENV: 'production' })).toBeInstanceOf(LocalRunner);
+  it('still uses the hosted compiler when EXECUTION_BACKEND is off', () => {
+    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'off' })).toBeInstanceOf(CloudRunner);
+    expect(createRunnerFromEnv({ NODE_ENV: 'production' })).toBeInstanceOf(CloudRunner);
+  });
+
+  it('uses host compilers only when asked', () => {
+    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'local' })).toBeInstanceOf(LocalRunner);
   });
 
   it('uses Docker when asked', () => {
@@ -37,7 +42,7 @@ describe('ExecutionService on the hosted server', () => {
     const service = new ExecutionService(createRunnerFromEnv({}));
 
     expect(service.enabled).toBe(true);
-    expect(service.sandbox).toBe('local');
+    expect(service.sandbox).toBe('cloud');
     expect(
       service.accept({ language: 'javascript', code: 'console.log(1)', stdin: '' }, ['room:demo']),
     ).toMatchObject({ ok: true });
