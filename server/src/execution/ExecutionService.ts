@@ -7,6 +7,7 @@ import {
 } from '../../../src/code/execution';
 import { RateLimiter } from './RateLimiter';
 import { SandboxUnavailableError, type SandboxRunner } from './SandboxRunner';
+import { CloudRunner } from './CloudRunner';
 import { DockerRunner } from './DockerRunner';
 import { LocalRunner } from './LocalRunner';
 import { PistonRunner } from './PistonRunner';
@@ -92,5 +93,8 @@ export function createRunnerFromEnv(
       memoryBytes: Number(env.EXECUTION_MEMORY_MB ?? 256) * 1024 * 1024,
     });
   }
-  return localRunner(env);
+  if (backend === 'local') {
+    return localRunner(env);
+  }
+  return new CloudRunner();
 }
