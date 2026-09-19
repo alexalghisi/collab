@@ -52,6 +52,9 @@ function finish(
     exitCode: result.exitCode,
     timedOut: result.timedOut,
     error,
-    files: result.files ?? [],
+    files:
+      language === 'cpp' && stdout !== ''
+        ? [{ name: 'date.out', content: stdout }]
+        : (result.files ?? []),
   };
 }

@@ -10,8 +10,9 @@ import {
   type EditorApi,
   type MonacoApi,
 } from '../../code/monacoBinding';
+import { cursorClass, remoteCursorCss } from '../../code/remoteCursorStyle';
 import type { CodeRun } from '../../hooks/useCollabSession';
-import type { WorkspaceFile } from '../../code/workspaceFiles';
+import { cppSidecarsIfNeeded, type WorkspaceFile } from '../../code/workspaceFiles';
 import { colors } from '../../theme';
 import { CodeControls } from './CodeControls';
 import { CodeFileManager, CODE_MAIN_FILE } from './CodeFileManager';
@@ -28,41 +29,13 @@ export interface CodePanelProps {
 
 const STYLE_ELEMENT_ID = 'collab-remote-cursors';
 
-const cursorClass = (presence: CodePresence): string => `collab-cursor-${presence.clientId}`;
-
-/**
- * Monaco styles decorations through CSS, so each remote participant needs a rule
- * of their own: their colour, and their name pinned to the caret the way a
- * shared document does it.
- */
 function ensureCursorStyles(editors: CodePresence[]): void {
   const sheet =
     document.getElementById(STYLE_ELEMENT_ID) ??
     document.head.appendChild(
       Object.assign(document.createElement('style'), { id: STYLE_ELEMENT_ID }),
     );
-  sheet.textContent = editors
-    .map(
-      (editor) => `
-        .${cursorClass(editor)} {
-          background-color: ${editor.color}44;
-        }
-        .${cursorClass(editor)}-label {
-          border-left: 2px solid ${editor.color};
-        }
-        .${cursorClass(editor)}-label::after {
-          content: '${editor.displayName.replace(/['\\]/g, '')}';
-          position: absolute;
-          transform: translateY(-100%);
-          padding: 0 4px;
-          font-size: 11px;
-          white-space: nowrap;
-          color: ${colors.background};
-          background-color: ${editor.color};
-          border-radius: 3px;
-        }`,
-    )
-    .join('\n');
+  sheet.textContent = remoteCursorCss(editors);
 }
 
 /** The shared editor: Monaco bound to the room's document, cursors and all. */
@@ -93,24 +66,45 @@ export function CodePanel({
     onFilesChange(files.map((file) => (file.name === openFile.name ? { ...file, content } : file)));
   };
 
-  useEffect(() => shared.onChange(() => setLanguage(shared.language)), [shared]);
-  useEffect(() => shared.onPresence(() => setEditors(shared.presence())), [shared]);
+  const paintCursors = useCallback(() => {
+    const next = shared.presence();
+    setEditors(next);
+    if (typeof document === 'undefined') {
+      return;
+    }
+    ensureCursorStyles(next);
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    const model = editor?.getModel();
+    if (editor && monaco && model) {
+      decorationsRef.current?.set(decorationsFor(next, model, monaco, cursorClass));
+    }
+  }, [shared]);
+
+  useEffect(
+    () =>
+      shared.onChange(() => {
+        setLanguage(shared.language);
+        paintCursors();
+      }),
+    [shared, paintCursors],
+  );
+  useEffect(() => shared.onPresence(paintCursors), [shared, paintCursors]);
   useEffect(() => () => bindingRef.current?.destroy(), []);
   useEffect(() => {
     if (selected !== CODE_MAIN_FILE && !files.some((file) => file.name === selected)) {
       setSelected(CODE_MAIN_FILE);
     }
   }, [files, selected]);
-
   useEffect(() => {
-    ensureCursorStyles(editors);
-    const editor = editorRef.current;
-    const monaco = monacoRef.current;
-    const model = editor?.getModel();
-    if (editor && monaco && model) {
-      decorationsRef.current?.set(decorationsFor(editors, model, monaco, cursorClass));
+    const next = cppSidecarsIfNeeded(language, files);
+    if (next) {
+      onFilesChange(next);
     }
-  }, [editors]);
+  }, [language, files, onFilesChange]);
+  useEffect(() => {
+    paintCursors();
+  }, [paintCursors]);
 
   const mount = useCallback<OnMount>(
     (editor, monaco) => {
@@ -131,7 +125,11 @@ export function CodePanel({
         stdin={stdin}
         onStdinChange={setStdin}
         onRun={() =>
-          onRun(stdin, files, editorRef.current?.getModel()?.getValue() ?? shared.text.toString())
+          onRun(
+            stdin,
+            cppSidecarsIfNeeded(language, files) ?? files,
+            editorRef.current?.getModel()?.getValue() ?? shared.text.toString(),
+          )
         }
         running={running}
         editors={editors}

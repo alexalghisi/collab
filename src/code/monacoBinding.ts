@@ -229,14 +229,14 @@ export function decorationsFor(
   const items: Decoration[] = [];
   for (const presence of cursors) {
     const selection = presence.selection;
-    if (!selection || selection.start > length || selection.end > length) {
+    if (!selection) {
       continue;
     }
-    const lo = Math.min(selection.start, selection.end);
-    const hi = Math.max(selection.start, selection.end);
+    const lo = clampOffset(Math.min(selection.start, selection.end), length);
+    const hi = clampOffset(Math.max(selection.start, selection.end), length);
     const from = model.getPositionAt(lo);
     const to = model.getPositionAt(hi);
-    const head = model.getPositionAt(selection.end);
+    const head = model.getPositionAt(clampOffset(selection.end, length));
     const hover = { value: presence.displayName };
     if (lo !== hi) {
       items.push({
@@ -254,4 +254,11 @@ export function decorationsFor(
     });
   }
   return items;
+}
+
+function clampOffset(offset: number, length: number): number {
+  if (offset < 0) {
+    return 0;
+  }
+  return offset > length ? length : offset;
 }

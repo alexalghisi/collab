@@ -6,8 +6,7 @@ import type { ChatDraft } from '../chat/messages';
 import { REJECTION_MESSAGES, validateExecutionRequest } from '../code/execution';
 import { programSource } from '../code/programSource';
 import { completeCloudUiRun } from '../code/runInCloudUi';
-import type { WorkspaceFile } from '../code/workspaceFiles';
-import { mergeWorkspaceFiles } from '../code/workspaceFiles';
+import { mergeWorkspaceFiles, withCppSidecars, type WorkspaceFile } from '../code/workspaceFiles';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
@@ -841,7 +840,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         language: document.language,
         code: programSource(source, document.text.toString()),
         stdin,
-        files: [...files],
+        files: document.language === 'cpp' ? withCppSidecars(files) : [...files],
       };
       const runId = randomUUID();
       const meta = {
@@ -879,7 +878,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           current.map((run) => (run.runId === runId ? { ...done, running: false } : run)),
         );
         if (done.files.length > 0) {
-          setWorkspaceFiles((current) => mergeWorkspaceFiles(current, done.files));
+          setWorkspaceFiles((current) => {
+            const next = mergeWorkspaceFiles(current, done.files);
+            signalingRef.current?.emit('code:files', next);
+            return next;
+          });
         }
       });
     },

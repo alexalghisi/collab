@@ -264,7 +264,7 @@ describe('MonacoTextBinding', () => {
 
     editor.moveCursor(0, 6);
 
-    expect(document.awareness.getLocalState()?.selection).toEqual({ start: 0, end: 6 });
+    expect(document.awareness.getLocalState()?.selection).toMatchObject({ start: 0, end: 6 });
   });
 
   it('stops translating once destroyed', () => {
@@ -341,9 +341,16 @@ describe('decorationsFor', () => {
     expect(decorationsFor([presence(null)], model, monaco, () => 'x')).toEqual([]);
   });
 
-  it('skips a stale selection that points past the end of the text', () => {
-    expect(decorationsFor([presence({ start: 900, end: 950 })], model, monaco, () => 'x')).toEqual(
-      [],
-    );
+  it('keeps a caret at the end when the stored offset ran past the text', () => {
+    const marks = decorationsFor([presence({ start: 900, end: 950 })], model, monaco, () => 'x');
+    const last = model.getPositionAt(model.getValue().length);
+
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.range).toMatchObject({
+      startLineNumber: last.lineNumber,
+      startColumn: last.column,
+      endLineNumber: last.lineNumber,
+      endColumn: last.column,
+    });
   });
 });

@@ -20,6 +20,11 @@ export interface CodeSelection {
   readonly end: number;
 }
 
+interface StoredSelection extends CodeSelection {
+  readonly startRel?: unknown;
+  readonly endRel?: unknown;
+}
+
 /** A remote participant's cursor, as published through Yjs awareness. */
 export interface CodePresence {
   readonly clientId: number;
@@ -124,14 +129,44 @@ export class SharedCodeDocument {
         peerId: user.peerId,
         displayName: user.name,
         color: user.color,
-        selection: (state as { selection?: CodeSelection }).selection ?? null,
+        selection: this.readSelection(state as { selection?: StoredSelection }),
       });
     }
     return entries;
   }
 
   setSelection(selection: CodeSelection): void {
-    this.awareness.setLocalStateField('selection', selection);
+    this.awareness.setLocalStateField('selection', {
+      start: selection.start,
+      end: selection.end,
+      startRel: Y.relativePositionToJSON(
+        Y.createRelativePositionFromTypeIndex(this.text, selection.start),
+      ),
+      endRel: Y.relativePositionToJSON(
+        Y.createRelativePositionFromTypeIndex(this.text, selection.end),
+      ),
+    } satisfies StoredSelection);
+  }
+
+  private readSelection(state: { selection?: StoredSelection }): CodeSelection | null {
+    const stored = state.selection;
+    if (!stored) {
+      return null;
+    }
+    if (stored.startRel != null && stored.endRel != null) {
+      const start = Y.createAbsolutePositionFromRelativePosition(
+        Y.createRelativePositionFromJSON(stored.startRel),
+        this.doc,
+      );
+      const end = Y.createAbsolutePositionFromRelativePosition(
+        Y.createRelativePositionFromJSON(stored.endRel),
+        this.doc,
+      );
+      if (start && end) {
+        return { start: start.index, end: end.index };
+      }
+    }
+    return { start: stored.start, end: stored.end };
   }
 
   /** Fires when a remote cursor moves, joins or goes away. */
