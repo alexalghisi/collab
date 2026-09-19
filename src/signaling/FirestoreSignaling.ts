@@ -110,6 +110,7 @@ interface RoomSnapshot {
   readonly notes: string;
   readonly settings: RoomSettings;
   readonly workspaceFiles: WorkspaceFile[];
+  readonly code: string | null;
 }
 
 interface WaitingDoc {
@@ -348,7 +349,7 @@ class FirestoreChannel implements SignalingChannel {
         void deleteDoc(occupant.ref);
       }
     }
-    const room = await this.syncRoom(true);
+    const room = { ...(await this.syncRoom(true)), code: await this.readCodeState() };
     this.lastSettings = room.settings;
     this.lastSentWorkspaceFiles = room.workspaceFiles;
 
@@ -477,14 +478,14 @@ class FirestoreChannel implements SignalingChannel {
       if (data?.hostPeerId) {
         const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
-          return { hostPeerId: data.hostPeerId, notes, settings, workspaceFiles };
+          return { hostPeerId: data.hostPeerId, notes, settings, workspaceFiles, code: null };
         }
       }
       if (!claim) {
-        return { hostPeerId: '', notes, settings, workspaceFiles };
+        return { hostPeerId: '', notes, settings, workspaceFiles, code: null };
       }
       transaction.set(this.room, { hostPeerId: this.peerId }, { merge: true });
-      return { hostPeerId: this.peerId, notes, settings, workspaceFiles };
+      return { hostPeerId: this.peerId, notes, settings, workspaceFiles, code: null };
     });
   }
 
@@ -538,6 +539,7 @@ class FirestoreChannel implements SignalingChannel {
     notes,
     settings,
     workspaceFiles,
+    code,
   }: RoomSnapshot): Promise<void> {
     return new Promise((resolve, reject) => {
       let initial = true;
@@ -575,7 +577,7 @@ class FirestoreChannel implements SignalingChannel {
               strokes: [],
               notes,
               settings,
-              code: null,
+              code,
               transcript: [],
               messages: [],
               boardFiles: [],
@@ -708,6 +710,16 @@ class FirestoreChannel implements SignalingChannel {
    * late joiner replays them and converges. The host squashes the log once it
    * grows past `COMPACT_UPDATES_AT`, which bounds both storage and replay cost.
    */
+  private async readCodeState(): Promise<string | null> {
+    const snapshot = await getDocs(query(this.codeUpdates, orderBy('createdAt')));
+    if (snapshot.empty) {
+      return null;
+    }
+    return mergeEncodedUpdates(
+      snapshot.docs.map((entry) => (entry.data() as CodeUpdateDoc).update),
+    );
+  }
+
   private subscribeCodeUpdates(): void {
     const ordered = query(this.codeUpdates, orderBy('createdAt'));
     const unsubscribe = onSnapshot(ordered, (snapshot) => {
