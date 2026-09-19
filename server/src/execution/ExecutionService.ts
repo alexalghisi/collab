@@ -71,10 +71,13 @@ export class ExecutionService {
   }
 }
 
-/**
- * Host compilers by default (public Piston is whitelist-only). Docker and a
- * private Piston URL remain opt-in.
- */
+function localRunner(env: Partial<NodeJS.ProcessEnv>): LocalRunner {
+  return new LocalRunner({
+    timeoutMs: Number(env.EXECUTION_TIMEOUT_MS ?? 8000),
+    compileTimeoutMs: Number(env.EXECUTION_COMPILE_TIMEOUT_MS ?? 30000),
+  });
+}
+
 export function createRunnerFromEnv(
   env: Partial<NodeJS.ProcessEnv> = process.env,
 ): SandboxRunner | null {
@@ -89,8 +92,8 @@ export function createRunnerFromEnv(
       memoryBytes: Number(env.EXECUTION_MEMORY_MB ?? 256) * 1024 * 1024,
     });
   }
-  return new LocalRunner({
-    timeoutMs: Number(env.EXECUTION_TIMEOUT_MS ?? 8000),
-    compileTimeoutMs: Number(env.EXECUTION_COMPILE_TIMEOUT_MS ?? 30000),
-  });
+  if (backend === 'local' || env.NODE_ENV === 'production') {
+    return localRunner(env);
+  }
+  return null;
 }

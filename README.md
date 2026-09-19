@@ -178,17 +178,17 @@ Late joiners are served the same way whiteboard strokes are, per transport:
 ### Running code
 
 Running a submission uses a sandbox so the room cannot execute whatever landed
-on the host. By default the server uses the compilers already on the machine
-(Node, `python3`, `c++`, `go`). Override `EXECUTION_BACKEND` when you need a
-different sandbox:
+on the host. A laptop `npm run server` does not compile anything. The hosted
+signaling server (`NODE_ENV=production`) runs the compilers so your machine
+is not the sandbox. Override `EXECUTION_BACKEND` when you need a different one:
 
 | Value    | Sandbox                                                                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _unset_  | Host compilers. Run works on a laptop and on Render without a Docker daemon. The child process does not inherit server secrets.                   |
-| `local`  | Same as unset.                                                                                                                                    |
+| _unset_  | Off on a laptop. On the production host, same as `local`.                                                                                         |
+| `local`  | Host compilers on that process. Used by the Render image. The child does not inherit server secrets.                                              |
 | `piston` | A [Piston](https://github.com/engineer-man/piston) instance. Set `EXECUTION_PISTON_URL` to your own; the public `emkc.org` API is whitelist-only. |
 | `docker` | One throwaway container per run, for a host that can reach a Docker daemon.                                                                       |
-| `off`    | Disabled. The Run button reports that execution is not enabled on this deployment.                                                                |
+| `off`    | Off on a laptop. On the production host, same as `local` so a stale dashboard value cannot disable Run.                                           |
 
 The Docker sandbox runs each submission with no network (`--network none`), a
 read-only root filesystem, capped memory, swap, CPU and process count, all
