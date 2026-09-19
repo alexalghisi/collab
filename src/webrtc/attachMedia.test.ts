@@ -69,4 +69,36 @@ describe('attachMediaStream', () => {
 
     expect(element.play).toHaveBeenCalledTimes(2);
   });
+
+  it('gives an audio element its own stream so a muted video cannot hold the tracks', () => {
+    const audioTracks = [{ id: 'mic', kind: 'audio' }];
+    const playback = { id: 'voice' };
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return playback;
+      }),
+    );
+    const element = {
+      tagName: 'AUDIO',
+      srcObject: null as unknown,
+      paused: true,
+      muted: true,
+      volume: 0,
+      play: vi.fn(async () => undefined),
+    };
+    const stream = {
+      getAudioTracks: () => audioTracks,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStream;
+
+    attachMediaStream(element as unknown as HTMLMediaElement, stream);
+
+    expect(MediaStream).toHaveBeenCalledWith(audioTracks);
+    expect(element.srcObject).toBe(playback);
+    expect(element.muted).toBe(false);
+    expect(element.volume).toBe(1);
+    expect(element.play).toHaveBeenCalledTimes(1);
+  });
 });

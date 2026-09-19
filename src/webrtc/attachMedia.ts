@@ -13,6 +13,10 @@ export function attachMediaStream(
   };
 
   const play = (): void => {
+    if (element.tagName === 'AUDIO') {
+      element.muted = false;
+      element.volume = 1;
+    }
     void element.play().catch(() => {
       if (resume || typeof document === 'undefined') {
         return;
@@ -30,8 +34,9 @@ export function attachMediaStream(
       element.srcObject = null;
       return;
     }
-    if (force || element.srcObject !== stream) {
-      element.srcObject = stream;
+    const source = element.tagName === 'AUDIO' ? new MediaStream(stream.getAudioTracks()) : stream;
+    if (force || element.srcObject !== source) {
+      element.srcObject = source;
     }
     play();
   };
@@ -51,8 +56,6 @@ export function attachMediaStream(
     stopResume();
     stream.removeEventListener('addtrack', onChange);
     stream.removeEventListener('removetrack', onChange);
-    if (element.srcObject === stream) {
-      element.srcObject = null;
-    }
+    element.srcObject = null;
   };
 }
