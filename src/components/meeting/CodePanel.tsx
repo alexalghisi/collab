@@ -3,6 +3,7 @@ import { StyleSheet, TextInput, View } from 'react-native';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { CodeLanguage } from '../../code/languages';
 import type { CodePresence, SharedCodeDocument } from '../../code/SharedCodeDocument';
+import { CURSOR_STYLE_ELEMENT_ID, cursorClassOf, cursorStyleSheet } from '../../code/cursorStyles';
 import {
   MonacoTextBinding,
   decorationsFor,
@@ -26,43 +27,13 @@ export interface CodePanelProps {
   onFilesChange: (files: WorkspaceFile[]) => void;
 }
 
-const STYLE_ELEMENT_ID = 'collab-remote-cursors';
-
-const cursorClass = (presence: CodePresence): string => `collab-cursor-${presence.clientId}`;
-
-/**
- * Monaco styles decorations through CSS, so each remote participant needs a rule
- * of their own: their colour, and their name pinned to the caret the way a
- * shared document does it.
- */
 function ensureCursorStyles(editors: CodePresence[]): void {
   const sheet =
-    document.getElementById(STYLE_ELEMENT_ID) ??
+    document.getElementById(CURSOR_STYLE_ELEMENT_ID) ??
     document.head.appendChild(
-      Object.assign(document.createElement('style'), { id: STYLE_ELEMENT_ID }),
+      Object.assign(document.createElement('style'), { id: CURSOR_STYLE_ELEMENT_ID }),
     );
-  sheet.textContent = editors
-    .map(
-      (editor) => `
-        .${cursorClass(editor)} {
-          background-color: ${editor.color}44;
-        }
-        .${cursorClass(editor)}-label {
-          border-left: 2px solid ${editor.color};
-        }
-        .${cursorClass(editor)}-label::after {
-          content: '${editor.displayName.replace(/['\\]/g, '')}';
-          position: absolute;
-          transform: translateY(-100%);
-          padding: 0 4px;
-          font-size: 11px;
-          white-space: nowrap;
-          color: ${colors.background};
-          background-color: ${editor.color};
-          border-radius: 3px;
-        }`,
-    )
-    .join('\n');
+  sheet.textContent = cursorStyleSheet(editors);
 }
 
 /** The shared editor: Monaco bound to the room's document, cursors and all. */
@@ -108,7 +79,7 @@ export function CodePanel({
     const monaco = monacoRef.current;
     const model = editor?.getModel();
     if (editor && monaco && model) {
-      decorationsRef.current?.set(decorationsFor(editors, model, monaco, cursorClass));
+      decorationsRef.current?.set(decorationsFor(editors, model, monaco, cursorClassOf));
     }
   }, [editors]);
 
