@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { formatLongDay, formatTime } from '../../meeting/calendar';
 import { generateRoomId } from '../../meeting/roomId';
 import type { Meeting } from '../../meeting/types';
+import type { MeetingInviteRequest } from '../meetings/MeetingRow';
 import { colors } from '../../theme';
 import { MeetingList } from '../meetings/MeetingList';
 import { splitByTime } from '../meetings/MeetingsScreen';
@@ -22,6 +23,7 @@ export interface HomeScreenProps {
   meetings: Meeting[];
   onStartMeeting: (meeting: Meeting) => void;
   onDeleteMeeting: (meeting: Meeting) => void;
+  onInviteMeeting: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
 }
 
 function greeting(hour: number): string {
@@ -69,6 +71,7 @@ export function HomeScreen({
   meetings,
   onStartMeeting,
   onDeleteMeeting,
+  onInviteMeeting,
 }: HomeScreenProps) {
   const now = new Date();
   const hasName = displayName.trim().length > 0;
@@ -148,6 +151,7 @@ export function HomeScreen({
         emptyText="No upcoming meetings. Schedule one to see it here."
         onStart={onStartMeeting}
         onDelete={onDeleteMeeting}
+        onInvite={onInviteMeeting}
       />
     </ScrollView>
   );
