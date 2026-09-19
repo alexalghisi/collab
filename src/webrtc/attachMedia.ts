@@ -1,31 +1,56 @@
-/**
- * Binds a media element to a stream and keeps audio alive as tracks arrive.
- * Browsers often ignore `autoplay` on unmuted remote video; `play()` after
- * `srcObject` is what actually starts the other person's microphone.
- */
 export function attachMediaStream(
   element: HTMLMediaElement,
   stream: MediaStream | null,
 ): () => void {
-  const bind = (): void => {
-    if (element.srcObject !== stream) {
+  let resume: (() => void) | null = null;
+
+  const stopResume = (): void => {
+    if (!resume) {
+      return;
+    }
+    document.removeEventListener('pointerdown', resume);
+    resume = null;
+  };
+
+  const play = (): void => {
+    void element.play().catch(() => {
+      if (resume || typeof document === 'undefined') {
+        return;
+      }
+      resume = () => {
+        stopResume();
+        void element.play().catch(() => undefined);
+      };
+      document.addEventListener('pointerdown', resume);
+    });
+  };
+
+  const bind = (force: boolean): void => {
+    if (!stream) {
+      element.srcObject = null;
+      return;
+    }
+    if (force || element.srcObject !== stream) {
       element.srcObject = stream;
     }
-    if (stream && element.paused) {
-      void element.play().catch(() => undefined);
-    }
+    play();
   };
-  bind();
+
+  bind(false);
   if (!stream) {
     return () => {
+      stopResume();
       element.srcObject = null;
     };
   }
-  stream.addEventListener('addtrack', bind);
-  stream.addEventListener('removetrack', bind);
+
+  const onChange = (): void => bind(true);
+  stream.addEventListener('addtrack', onChange);
+  stream.addEventListener('removetrack', onChange);
   return () => {
-    stream.removeEventListener('addtrack', bind);
-    stream.removeEventListener('removetrack', bind);
+    stopResume();
+    stream.removeEventListener('addtrack', onChange);
+    stream.removeEventListener('removetrack', onChange);
     if (element.srcObject === stream) {
       element.srcObject = null;
     }
