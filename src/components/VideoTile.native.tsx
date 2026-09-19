@@ -15,15 +15,16 @@ export function VideoTile({
 
   return (
     <View style={styles.tile}>
-      {streamUrl && !showsPlaceholder(state, stream) ? (
+      {streamUrl ? (
         <RTCView
           streamURL={streamUrl}
           style={styles.video}
           objectFit="cover"
           mirror={mirror && !state.screenSharing}
         />
-      ) : (
-        <View style={styles.placeholder}>
+      ) : null}
+      {(!streamUrl || showsPlaceholder(state, stream)) && (
+        <View style={[styles.placeholder, streamUrl ? styles.cover : null]}>
           <Text style={styles.avatar}>{label.charAt(0).toUpperCase()}</Text>
         </View>
       )}
@@ -47,6 +48,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surfaceRaised,
+  },
+  cover: {
+    ...StyleSheet.absoluteFillObject,
   },
   avatar: {
     color: '#e5e7eb',
