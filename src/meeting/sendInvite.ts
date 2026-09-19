@@ -1,4 +1,4 @@
-import { InviteError, parseContact, type ParsedContact } from './contact';
+import { InviteError, parseContact, parseEmailList, type ParsedContact } from './contact';
 
 export interface InviteRequest {
   readonly contact: string;
@@ -6,6 +6,10 @@ export interface InviteRequest {
   readonly sessionId: string;
   readonly hostName: string;
   readonly link: string;
+  readonly token?: string;
+  readonly title?: string;
+  readonly startsAt?: number;
+  readonly reminderMinutes?: 15 | 30;
 }
 
 interface InviteResponseBody {
@@ -24,8 +28,9 @@ export async function sendContactInvite(
   baseUrl: string,
   request: InviteRequest,
 ): Promise<ParsedContact> {
-  const contact = parseContact(request.contact);
-  if (!contact) {
+  const emails = parseEmailList(request.contact);
+  const contact = emails.length === 0 ? parseContact(request.contact) : null;
+  if (emails.length === 0 && !contact) {
     throw new InviteError('Enter an email address or a phone number.');
   }
 
@@ -33,7 +38,10 @@ export async function sendContactInvite(
   try {
     response = await fetch(inviteUrl(baseUrl), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(request.token ? { Authorization: `Bearer ${request.token}` } : {}),
+      },
       body: JSON.stringify(request),
     });
   } catch {
@@ -46,5 +54,8 @@ export async function sendContactInvite(
       typeof body.error === 'string' ? body.error : 'The invite could not be sent.',
     );
   }
-  return contact;
+  if (contact) {
+    return contact;
+  }
+  return { kind: 'email', value: emails[0] ?? '' };
 }

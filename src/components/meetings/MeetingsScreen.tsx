@@ -3,11 +3,13 @@ import { meetingEndsAt, type Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { MeetingList } from './MeetingList';
+import type { MeetingInviteRequest } from './MeetingRow';
 
 export interface MeetingsScreenProps {
   meetings: Meeting[];
   onStart: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
+  onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
   onSchedule: () => void;
 }
 
@@ -17,7 +19,13 @@ export function splitByTime(meetings: Meeting[], now = Date.now()) {
   return { upcoming, past };
 }
 
-export function MeetingsScreen({ meetings, onStart, onDelete, onSchedule }: MeetingsScreenProps) {
+export function MeetingsScreen({
+  meetings,
+  onStart,
+  onDelete,
+  onInvite,
+  onSchedule,
+}: MeetingsScreenProps) {
   const { upcoming, past } = splitByTime(meetings);
 
   return (
@@ -32,6 +40,7 @@ export function MeetingsScreen({ meetings, onStart, onDelete, onSchedule }: Meet
         emptyText="Nothing scheduled. Plan a meeting and share the invite link."
         onStart={onStart}
         onDelete={onDelete}
+        onInvite={onInvite}
       />
       <MeetingList
         title="Past"
@@ -39,6 +48,7 @@ export function MeetingsScreen({ meetings, onStart, onDelete, onSchedule }: Meet
         emptyText="Meetings you host or join will show up here."
         onStart={onStart}
         onDelete={onDelete}
+        onInvite={onInvite}
       />
     </ScrollView>
   );
