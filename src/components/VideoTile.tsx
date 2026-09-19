@@ -4,6 +4,7 @@ import type { PeerState } from '../signaling/events';
 import { colors } from '../theme';
 import { attachMediaStream } from '../webrtc/attachMedia';
 import { TileOverlay, showsPlaceholder } from './TileOverlay';
+import { videoPresentation, type VideoFit } from './videoPresentation';
 
 export interface VideoTileProps {
   label: string;
@@ -19,9 +20,15 @@ const videoStyle: CSSProperties = {
   inset: 0,
   width: '100%',
   height: '100%',
-  objectFit: 'cover',
   backgroundColor: colors.surface,
 };
+
+const fittedStyles: Record<VideoFit, CSSProperties> = {
+  cover: { ...videoStyle, objectFit: 'cover' },
+  contain: { ...videoStyle, objectFit: 'contain' },
+};
+
+const mirroredStyle: CSSProperties = { ...fittedStyles.cover, transform: 'scaleX(-1)' };
 
 export function VideoTile({
   label,
@@ -31,12 +38,7 @@ export function VideoTile({
   mirror = false,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const mirrored = mirror && !state.screenSharing;
-  // Cropping a face is fine; cropping a shared screen hides part of it.
-  const fitted: CSSProperties = {
-    ...videoStyle,
-    objectFit: state.screenSharing ? 'contain' : 'cover',
-  };
+  const presentation = videoPresentation(state, mirror);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -54,7 +56,7 @@ export function VideoTile({
           autoPlay
           playsInline
           muted
-          style={mirrored ? { ...fitted, transform: 'scaleX(-1)' } : fitted}
+          style={presentation.mirror ? mirroredStyle : fittedStyles[presentation.fit]}
         />
       )}
       {showsPlaceholder(state, stream) && (
