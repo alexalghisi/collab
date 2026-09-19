@@ -21,4 +21,26 @@ describe('remoteCursorCss', () => {
     expect(css).toContain('pointer-events: none');
     expect(css).toContain("content: 'Linus'");
   });
+
+  it('lets clicks through to the code under a remote caret and its label', () => {
+    expect(remoteCursorCss([linus]).match(/pointer-events: none/g)).toHaveLength(2);
+  });
+
+  it('gives every participant a rule of their own', () => {
+    const css = remoteCursorCss([
+      linus,
+      { ...linus, clientId: 9, displayName: 'Ada', color: '#f472b6' },
+    ]);
+
+    expect(css).toContain('.collab-cursor-7-label');
+    expect(css).toContain('.collab-cursor-9-label');
+    expect(css).toContain("content: 'Ada'");
+  });
+
+  it('cannot be talked out of the declaration by a crafted name', () => {
+    const css = remoteCursorCss([{ ...linus, displayName: "x'; } body { display: none" }]);
+
+    expect(css).toContain("content: 'x; } body { display: none'");
+    expect(css).not.toContain("x';");
+  });
 });
