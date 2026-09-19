@@ -21,7 +21,10 @@ import {
   mergeTranscript,
   saveRoomSnapshot,
 } from '../meeting/snapshot';
+import { SIGNALING_URL } from '../signaling/config';
 import { createSpeechCapture } from '../transcript/speech';
+import { loadIceServers } from '../webrtc/loadIceServers';
+import { joinRemotePeer, rememberRemoteStream, syncRoomPeers } from '../webrtc/participants';
 import type { TranscriptSegment } from '../transcript/segments';
 import { normalizeBoardFile } from '../whiteboard/boardFiles';
 import {
@@ -30,7 +33,6 @@ import {
   type BoardFile,
   type ChatMessage,
   type HostCommand,
-  type PeerInfo,
   type PeerState,
   type RoomSettings,
   type Stroke,
@@ -180,10 +182,6 @@ function joinErrorMessage(cause: unknown): string {
     return `${SIGNALING_ERROR} Tried ${cause.url}.`;
   }
   return SIGNALING_ERROR;
-}
-
-function toParticipant(peer: PeerInfo): RemoteParticipant {
-  return { peerId: peer.peerId, displayName: peer.displayName, state: peer.state };
 }
 
 export function useCollabSession(createSignaling: SignalingFactory): CollabSession {
@@ -407,7 +405,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         selfPeerIdRef.current = room.selfPeerId;
         setSelfPeerId(room.selfPeerId);
         setHostPeerId(room.hostPeerId);
-        setParticipants((room.peers ?? []).map(toParticipant));
+        setParticipants((current) => syncRoomPeers(current, room.peers ?? []));
         setStrokes((current) => {
           const next = mergeStrokes(current, room.strokes);
           saveRoomSnapshot(nextRoomId, { strokes: next });
@@ -450,10 +448,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         setStatus('error');
       });
       signaling.on('peer:joined', (peer) => {
-        setParticipants((current) => [
-          ...current.filter((participant) => participant.peerId !== peer.peerId),
-          toParticipant(peer),
-        ]);
+        setParticipants((current) => joinRemotePeer(current, peer));
       });
       signaling.on('peer:left', dropParticipant);
       signaling.on('peer:state', ({ peerId, state }) => patchParticipant(peerId, { state }));
@@ -566,8 +561,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       const manager = new PeerConnectionManager({
         signaling,
         localStream: stream,
+        iceServers: await loadIceServers(SIGNALING_URL),
         onRemoteStream: (peerId, remoteStream) =>
-          patchParticipant(peerId, { stream: remoteStream }),
+          setParticipants((current) => rememberRemoteStream(current, peerId, remoteStream)),
         onPeerClosed: dropParticipant,
       });
       manager.start();
