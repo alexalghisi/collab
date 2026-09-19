@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { CodeLanguage } from '../../code/languages';
 import type { CodePresence, SharedCodeDocument } from '../../code/SharedCodeDocument';
-import type { WorkspaceFile } from '../../code/workspaceFiles';
+import { cppSidecarsIfNeeded, type WorkspaceFile } from '../../code/workspaceFiles';
 import type { CodeRun } from '../../hooks/useCollabSession';
 import { colors } from '../../theme';
 import { CodeControls } from './CodeControls';
@@ -54,6 +54,12 @@ export function CodePanel({
       setSelected(CODE_MAIN_FILE);
     }
   }, [files, selected]);
+  useEffect(() => {
+    const next = cppSidecarsIfNeeded(language, files);
+    if (next) {
+      onFilesChange(next);
+    }
+  }, [language, files, onFilesChange]);
 
   const running = runs.some((run) => run.running && run.byPeerId === selfPeerId);
   const openFile = files.find((file) => file.name === selected) ?? null;
@@ -65,7 +71,7 @@ export function CodePanel({
         onLanguageChange={(next) => shared.setLanguage(next)}
         stdin={stdin}
         onStdinChange={setStdin}
-        onRun={() => onRun(stdin, files, text)}
+        onRun={() => onRun(stdin, cppSidecarsIfNeeded(language, files) ?? files, text)}
         running={running}
         editors={editors}
       />
