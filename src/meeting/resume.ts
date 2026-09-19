@@ -59,7 +59,7 @@ function parseLive(raw: string | null): LiveMeeting | null {
       roomId: parsed.roomId,
       sessionId: parsed.sessionId,
       displayName: typeof parsed.displayName === 'string' ? parsed.displayName : '',
-      video: parsed.video !== false,
+      video: parsed.video === true,
     };
   } catch {
     return null;
