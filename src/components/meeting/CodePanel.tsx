@@ -3,7 +3,6 @@ import { StyleSheet, TextInput, View } from 'react-native';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { CodeLanguage } from '../../code/languages';
 import type { CodePresence, SharedCodeDocument } from '../../code/SharedCodeDocument';
-import { CURSOR_STYLE_ELEMENT_ID, cursorClassOf, cursorStyleSheet } from '../../code/cursorStyles';
 import {
   MonacoTextBinding,
   decorationsFor,
@@ -11,8 +10,9 @@ import {
   type EditorApi,
   type MonacoApi,
 } from '../../code/monacoBinding';
+import { cursorClass, remoteCursorCss } from '../../code/remoteCursorStyle';
 import type { CodeRun } from '../../hooks/useCollabSession';
-import type { WorkspaceFile } from '../../code/workspaceFiles';
+import { cppSidecarsIfNeeded, type WorkspaceFile } from '../../code/workspaceFiles';
 import { colors } from '../../theme';
 import { CodeControls } from './CodeControls';
 import { CodeFileManager, CODE_MAIN_FILE } from './CodeFileManager';
@@ -27,13 +27,15 @@ export interface CodePanelProps {
   onFilesChange: (files: WorkspaceFile[]) => void;
 }
 
+const STYLE_ELEMENT_ID = 'collab-remote-cursors';
+
 function ensureCursorStyles(editors: CodePresence[]): void {
   const sheet =
-    document.getElementById(CURSOR_STYLE_ELEMENT_ID) ??
+    document.getElementById(STYLE_ELEMENT_ID) ??
     document.head.appendChild(
-      Object.assign(document.createElement('style'), { id: CURSOR_STYLE_ELEMENT_ID }),
+      Object.assign(document.createElement('style'), { id: STYLE_ELEMENT_ID }),
     );
-  sheet.textContent = cursorStyleSheet(editors);
+  sheet.textContent = remoteCursorCss(editors);
 }
 
 /** The shared editor: Monaco bound to the room's document, cursors and all. */
@@ -64,24 +66,45 @@ export function CodePanel({
     onFilesChange(files.map((file) => (file.name === openFile.name ? { ...file, content } : file)));
   };
 
-  useEffect(() => shared.onChange(() => setLanguage(shared.language)), [shared]);
-  useEffect(() => shared.onPresence(() => setEditors(shared.presence())), [shared]);
+  const paintCursors = useCallback(() => {
+    const next = shared.presence();
+    setEditors(next);
+    if (typeof document === 'undefined') {
+      return;
+    }
+    ensureCursorStyles(next);
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    const model = editor?.getModel();
+    if (editor && monaco && model) {
+      decorationsRef.current?.set(decorationsFor(next, model, monaco, cursorClass));
+    }
+  }, [shared]);
+
+  useEffect(
+    () =>
+      shared.onChange(() => {
+        setLanguage(shared.language);
+        paintCursors();
+      }),
+    [shared, paintCursors],
+  );
+  useEffect(() => shared.onPresence(paintCursors), [shared, paintCursors]);
   useEffect(() => () => bindingRef.current?.destroy(), []);
   useEffect(() => {
     if (selected !== CODE_MAIN_FILE && !files.some((file) => file.name === selected)) {
       setSelected(CODE_MAIN_FILE);
     }
   }, [files, selected]);
-
   useEffect(() => {
-    ensureCursorStyles(editors);
-    const editor = editorRef.current;
-    const monaco = monacoRef.current;
-    const model = editor?.getModel();
-    if (editor && monaco && model) {
-      decorationsRef.current?.set(decorationsFor(editors, model, monaco, cursorClassOf));
+    const next = cppSidecarsIfNeeded(language, files);
+    if (next) {
+      onFilesChange(next);
     }
-  }, [editors]);
+  }, [language, files, onFilesChange]);
+  useEffect(() => {
+    paintCursors();
+  }, [paintCursors]);
 
   const mount = useCallback<OnMount>(
     (editor, monaco) => {
@@ -102,7 +125,11 @@ export function CodePanel({
         stdin={stdin}
         onStdinChange={setStdin}
         onRun={() =>
-          onRun(stdin, files, editorRef.current?.getModel()?.getValue() ?? shared.text.toString())
+          onRun(
+            stdin,
+            cppSidecarsIfNeeded(language, files) ?? files,
+            editorRef.current?.getModel()?.getValue() ?? shared.text.toString(),
+          )
         }
         running={running}
         editors={editors}

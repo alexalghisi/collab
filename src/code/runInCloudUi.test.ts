@@ -26,7 +26,7 @@ describe('completeCloudUiRun', () => {
       exitCode: 0,
       timedOut: false,
       error: null,
-      files: [],
+      files: [{ name: 'date.out', content: '42\n' }],
     });
   });
 

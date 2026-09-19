@@ -205,10 +205,11 @@ updates and `code:awareness` for cursors and selections, both base64-encoded
 because both transports are JSON.
 
 Remote carets are drawn over code somebody is reading, so everything except the
-caret line itself is see-through: the selection is an 18% tint of the author's
-colour, and the name badge is their colour on a translucent editor background
-rather than a solid sticker over the line above. Neither takes the pointer, so a
-click lands on the code. `src/code/cursorStyles.ts` holds those rules.
+caret stroke itself is see-through: the selection is a 13% tint of the author's
+colour, and the name badge above the caret is their colour at 60% alpha, faded
+further to 70% opacity, instead of a solid sticker over the line above. Neither
+takes the pointer, so a click lands on the code. `src/code/remoteCursorStyle.ts`
+holds those rules.
 
 Late joiners are served the same way whiteboard strokes are, per transport:
 
