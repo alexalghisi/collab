@@ -90,10 +90,8 @@ export class SharedCodeDocument {
     this.awareness.on('update', this.onAwarenessUpdate);
     channel.on('code:update', this.receiveUpdate);
     channel.on('code:awareness', this.receiveAwareness);
-    // Awareness set before the channel joined the room went nowhere, and a
-    // joiner is unknown to the peers already editing.
-    channel.on('room:joined', this.onJoined);
-    channel.on('peer:joined', this.onJoined);
+    channel.on('room:joined', this.onRoomJoined);
+    channel.on('peer:joined', this.onPeerJoined);
     // The panel may open long after the room was joined, in which case neither
     // of those fires again.
     this.announce();
@@ -210,7 +208,15 @@ export class SharedCodeDocument {
     applyAwarenessUpdate(this.awareness, decodeUpdate(update), REMOTE);
   };
 
-  private readonly onJoined = (): void => {
+  private readonly onRoomJoined = (room: { readonly code: string | null }): void => {
+    if (room.code) {
+      this.applyState(room.code);
+    }
+    this.publishState();
+    this.announce();
+  };
+
+  private readonly onPeerJoined = (): void => {
     this.publishState();
     this.announce();
   };
