@@ -5,26 +5,16 @@ import { LocalRunner } from './LocalRunner';
 import { PistonRunner } from './PistonRunner';
 
 describe('createRunnerFromEnv', () => {
-  it('does not spawn compilers on a developer machine', () => {
-    expect(createRunnerFromEnv({})).toBeNull();
-    expect(createRunnerFromEnv({ NODE_ENV: 'development' })).toBeNull();
-    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'off' })).toBeNull();
-  });
-
-  it('uses the host compilers on the hosted server', () => {
-    const runner = createRunnerFromEnv({ NODE_ENV: 'production' });
+  it('uses the host compilers so Run is never silently disabled', () => {
+    const runner = createRunnerFromEnv({});
 
     expect(runner).toBeInstanceOf(LocalRunner);
     expect(runner?.name).toBe('local');
   });
 
-  it('uses the host compilers when a production host still has EXECUTION_BACKEND=off', () => {
-    expect(
-      createRunnerFromEnv({ NODE_ENV: 'production', EXECUTION_BACKEND: 'off' }),
-    ).toBeInstanceOf(LocalRunner);
-    expect(
-      createRunnerFromEnv({ NODE_ENV: 'production', EXECUTION_BACKEND: 'none' }),
-    ).toBeInstanceOf(LocalRunner);
+  it('still uses the host compilers when EXECUTION_BACKEND is off', () => {
+    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'off' })).toBeInstanceOf(LocalRunner);
+    expect(createRunnerFromEnv({ NODE_ENV: 'production' })).toBeInstanceOf(LocalRunner);
   });
 
   it('uses Docker when asked', () => {
@@ -40,32 +30,16 @@ describe('createRunnerFromEnv', () => {
     expect(runner).toBeInstanceOf(PistonRunner);
     expect(runner?.name).toBe('piston');
   });
-
-  it('uses the host compilers when a laptop opts in', () => {
-    expect(createRunnerFromEnv({ EXECUTION_BACKEND: 'local' })).toBeInstanceOf(LocalRunner);
-  });
 });
 
 describe('ExecutionService on the hosted server', () => {
   it('accepts a run so the room is not told execution is disabled', () => {
-    const service = new ExecutionService(createRunnerFromEnv({ NODE_ENV: 'production' }));
+    const service = new ExecutionService(createRunnerFromEnv({}));
 
     expect(service.enabled).toBe(true);
     expect(service.sandbox).toBe('local');
     expect(
       service.accept({ language: 'javascript', code: 'console.log(1)', stdin: '' }, ['room:demo']),
     ).toMatchObject({ ok: true });
-  });
-
-  it('refuses a run on a laptop that never opted in', () => {
-    const service = new ExecutionService(createRunnerFromEnv({}));
-
-    expect(service.enabled).toBe(false);
-    expect(service.accept({ language: 'javascript', code: '1', stdin: '' }, ['room:demo'])).toEqual(
-      {
-        ok: false,
-        reason: 'unavailable',
-      },
-    );
   });
 });
