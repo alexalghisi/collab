@@ -30,6 +30,24 @@ export function parseContact(input: string): ParsedContact | null {
   return { kind: 'phone', value: compact.startsWith('+') ? compact : `+${digits}` };
 }
 
+export function parseEmailList(input: string): string[] {
+  const seen = new Set<string>();
+  const emails: string[] = [];
+  for (const part of input.split(/[,;\s]+/)) {
+    const parsed = parseContact(part);
+    if (parsed?.kind !== 'email') {
+      continue;
+    }
+    const value = parsed.value.toLowerCase();
+    if (seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    emails.push(value);
+  }
+  return emails;
+}
+
 /**
  * Prefers a configured public origin so a phone does not receive a localhost
  * link the recipient cannot open. The client's own URL is used when it is
@@ -71,6 +89,22 @@ export function smsInviteCopy(roomId: string, hostName: string, link: string): s
 
 export function inviteSubject(roomId: string): string {
   return `Join my Collab meeting (${roomId})`;
+}
+
+export function reminderSubject(title: string, minutes: 15 | 30): string {
+  const name = title.trim() || 'Your Collab meeting';
+  return `${name} starts in ${minutes} minutes`;
+}
+
+export function reminderCopy(input: {
+  readonly title: string;
+  readonly hostName: string;
+  readonly link: string;
+  readonly minutes: 15 | 30;
+}): string {
+  const host = input.hostName.trim() || 'Someone';
+  const name = input.title.trim() || 'a Collab meeting';
+  return `${host} is starting ${name} in ${input.minutes} minutes.\n\nJoin: ${input.link}`;
 }
 
 export class InviteError extends Error {

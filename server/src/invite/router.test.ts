@@ -1,9 +1,14 @@
 import { once } from 'node:events';
+import { mkdtempSync, rmSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import express from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RateLimiter } from '../execution/RateLimiter';
+import { issueToken } from '../auth/tokens';
+import { ReminderBook } from './reminders';
 import { inviteRouter, type Membership } from './router';
 import type { InviteTransport } from './senders';
 
@@ -18,10 +23,11 @@ describe('the invite endpoint', () => {
     transport: InviteTransport,
     limiter?: RateLimiter,
     publicAppUrl?: string,
+    reminders?: ReminderBook,
   ) => {
     const app = express();
     app.use(express.json());
-    app.use(inviteRouter({ membership: inRoom, transport, limiter, publicAppUrl }));
+    app.use(inviteRouter({ membership: inRoom, transport, limiter, publicAppUrl, reminders }));
     http = app.listen(0);
     await once(http, 'listening');
     base = `http://localhost:${(http.address() as AddressInfo).port}`;
@@ -100,6 +106,37 @@ describe('the invite endpoint', () => {
     expect((await send({ contact: '+40721123456' })).status).toBe(200);
     expect((await send({ contact: '+40721123456' })).status).toBe(429);
     expect(sendSms).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a signed-in host mail everyone from the calendar and queue a reminder', async () => {
+    const sendEmail = vi.fn(async () => undefined);
+    const dir = mkdtempSync(join(tmpdir(), 'collab-invite-'));
+    const reminders = new ReminderBook(join(dir, 'reminders.json'), () => 1_000);
+    await serve({ sendSms: vi.fn(async () => undefined), sendEmail }, undefined, undefined, reminders);
+    const token = issueToken({ uid: 'ada', email: 'ada@example.com', displayName: 'Ada' });
+
+    const response = await fetch(`${base}/invite`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        contact: 'linus@example.com, tom@example.com',
+        roomId: 'room-9',
+        sessionId: '',
+        hostName: 'Ada',
+        link: 'https://collab.example/?room=room-9',
+        title: 'Standup',
+        startsAt: 1_000 + 20 * 60_000,
+        reminderMinutes: 15,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    expect(reminders.list()).toHaveLength(2);
+    rmSync(dir, { recursive: true, force: true });
   });
 
   it('surfaces a provider failure', async () => {
