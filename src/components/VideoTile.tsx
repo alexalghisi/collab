@@ -31,6 +31,7 @@ export function VideoTile({
   mirror = false,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const mirrored = mirror && !state.screenSharing;
 
   useEffect(() => {
@@ -41,6 +42,14 @@ export function VideoTile({
     return attachMediaStream(video, stream ?? null);
   }, [stream]);
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    return attachMediaStream(audio, stream ?? null);
+  }, [stream]);
+
   return (
     <View style={styles.tile}>
       {stream && (
@@ -48,10 +57,11 @@ export function VideoTile({
           ref={videoRef}
           autoPlay
           playsInline
-          muted={mirror}
+          muted
           style={mirrored ? { ...videoStyle, transform: 'scaleX(-1)' } : videoStyle}
         />
       )}
+      {stream && !mirror && <audio ref={audioRef} autoPlay />}
       {showsPlaceholder(state, stream) && (
         <View style={styles.placeholder}>
           <Text style={styles.avatar}>{label.charAt(0).toUpperCase()}</Text>
