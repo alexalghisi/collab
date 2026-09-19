@@ -74,7 +74,7 @@ export default function App() {
     }
   };
 
-  const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
+  const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, false);
   const inviteMeeting = async (meeting: Meeting, invite: MeetingInviteRequest): Promise<string> => {
     const typed = parseEmailList(invite.emails);
     const guests = typed.length > 0 ? typed : [...(meeting.guests ?? [])];
