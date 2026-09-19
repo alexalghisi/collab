@@ -29,7 +29,6 @@ export const AUDIO_CONSTRAINTS: MediaTrackConstraints & { voiceIsolation?: boole
   voiceIsolation: true,
   channelCount: 1,
   sampleRate: 48000,
-  sampleSize: 16,
 };
 
 /** Shared text has to stay legible, so resolution beats frame rate here. */
