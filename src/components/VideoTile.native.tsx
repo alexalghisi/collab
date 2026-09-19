@@ -19,7 +19,7 @@ export function VideoTile({
         <RTCView
           streamURL={streamUrl}
           style={styles.video}
-          objectFit="cover"
+          objectFit={state.screenSharing ? 'contain' : 'cover'}
           mirror={mirror && !state.screenSharing}
         />
       ) : null}

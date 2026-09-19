@@ -32,6 +32,11 @@ export function VideoTile({
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mirrored = mirror && !state.screenSharing;
+  // Cropping a face is fine; cropping a shared screen hides part of it.
+  const fitted: CSSProperties = {
+    ...videoStyle,
+    objectFit: state.screenSharing ? 'contain' : 'cover',
+  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -49,7 +54,7 @@ export function VideoTile({
           autoPlay
           playsInline
           muted
-          style={mirrored ? { ...videoStyle, transform: 'scaleX(-1)' } : videoStyle}
+          style={mirrored ? { ...fitted, transform: 'scaleX(-1)' } : fitted}
         />
       )}
       {showsPlaceholder(state, stream) && (
