@@ -55,7 +55,6 @@ describe('sender tuning', () => {
     expect(encodings[0]).toMatchObject({
       maxBitrate: 2_500_000,
       maxFramerate: 30,
-      scaleResolutionDownBy: 1,
     });
   });
 
@@ -82,12 +81,30 @@ describe('sender tuning', () => {
   });
 
   it('keeps every simulcast layer the stack already set up', async () => {
-    const sender = fakeSender([{ rid: 'low' }, { rid: 'high' }]);
+    const sender = fakeSender([
+      { rid: 'low', scaleResolutionDownBy: 4 },
+      { rid: 'high', scaleResolutionDownBy: 1 },
+    ]);
 
     await tuneVideoSender(sender as unknown as RTCRtpSender, 'camera');
 
     const { encodings } = appliedBy(sender);
-    expect(encodings.map((encoding) => encoding.rid)).toEqual(['low', 'high']);
+    expect(encodings).toEqual([
+      {
+        rid: 'low',
+        scaleResolutionDownBy: 4,
+        maxBitrate: 2_500_000,
+        maxFramerate: 30,
+        networkPriority: 'medium',
+      },
+      {
+        rid: 'high',
+        scaleResolutionDownBy: 1,
+        maxBitrate: 2_500_000,
+        maxFramerate: 30,
+        networkPriority: 'medium',
+      },
+    ]);
   });
 
   it('survives a stack that exposes no sender parameters', async () => {
