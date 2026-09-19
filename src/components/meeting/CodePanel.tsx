@@ -22,7 +22,7 @@ export interface CodePanelProps {
   runs: CodeRun[];
   files: WorkspaceFile[];
   selfPeerId: string | null;
-  onRun: (stdin: string, files: WorkspaceFile[]) => void;
+  onRun: (stdin: string, files: WorkspaceFile[], source?: string) => void;
   onFilesChange: (files: WorkspaceFile[]) => void;
 }
 
@@ -130,7 +130,9 @@ export function CodePanel({
         onLanguageChange={(next) => shared.setLanguage(next)}
         stdin={stdin}
         onStdinChange={setStdin}
-        onRun={() => onRun(stdin, files)}
+        onRun={() =>
+          onRun(stdin, files, editorRef.current?.getModel()?.getValue() ?? shared.text.toString())
+        }
         running={running}
         editors={editors}
       />
