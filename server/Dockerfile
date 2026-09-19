@@ -12,7 +12,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 ENV NODE_ENV=production
-ENV EXECUTION_BACKEND=local
+ENV EXECUTION_BACKEND=cloud
 
 # The server shares the event contract with the client (src/signaling/events.ts)
 # and the shared editor's update encoding (src/code/updates.ts).

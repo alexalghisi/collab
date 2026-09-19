@@ -13,7 +13,7 @@ services:
       - key: PORT
         value: '4000'
       - key: EXECUTION_BACKEND
-        value: local
+        value: cloud
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: AUTH_SECRET
