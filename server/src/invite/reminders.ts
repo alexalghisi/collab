@@ -36,7 +36,9 @@ export class ReminderBook {
     return this.items;
   }
 
-  schedule(input: Omit<MeetingReminder, 'id' | 'sendAt'> & { readonly startsAt: number }): MeetingReminder | null {
+  schedule(
+    input: Omit<MeetingReminder, 'id' | 'sendAt'> & { readonly startsAt: number },
+  ): MeetingReminder | null {
     const sendAt = reminderSendAt(input.startsAt, input.minutes, this.now());
     if (sendAt === null) {
       return null;
@@ -111,7 +113,9 @@ export class ReminderBook {
       return [];
     }
     try {
-      const parsed = JSON.parse(readFileSync(this.path, 'utf8')) as { reminders?: MeetingReminder[] };
+      const parsed = JSON.parse(readFileSync(this.path, 'utf8')) as {
+        reminders?: MeetingReminder[];
+      };
       return Array.isArray(parsed.reminders) ? parsed.reminders : [];
     } catch {
       return [];
