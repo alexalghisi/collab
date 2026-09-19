@@ -23,6 +23,7 @@ import {
 } from '../meeting/snapshot';
 import { SIGNALING_URL } from '../signaling/config';
 import { createSpeechCapture } from '../transcript/speech';
+import { unlockAudioPlayback } from '../webrtc/attachMedia';
 import { loadIceServers } from '../webrtc/loadIceServers';
 import { joinRemotePeer, rememberRemoteStream, syncRoomPeers } from '../webrtc/participants';
 import type { TranscriptSegment } from '../transcript/segments';
@@ -586,6 +587,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
   const join = useCallback(
     async ({ roomId: nextRoomId, displayName, video }: JoinOptions) => {
+      unlockAudioPlayback();
       setStatus('connecting');
       setError(null);
 

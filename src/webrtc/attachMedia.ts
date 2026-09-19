@@ -1,5 +1,23 @@
 const UNLOCK_EVENTS = ['pointerdown', 'click', 'keydown', 'touchstart'] as const;
 
+export function unlockAudioPlayback(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const AudioCtx =
+    window.AudioContext ??
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) {
+    return;
+  }
+  const context = new AudioCtx();
+  void context.resume();
+  const source = context.createBufferSource();
+  source.buffer = context.createBuffer(1, 1, 22050);
+  source.connect(context.destination);
+  source.start();
+}
+
 export function attachMediaStream(
   element: HTMLMediaElement,
   stream: MediaStream | null,
@@ -40,7 +58,8 @@ export function attachMediaStream(
       element.srcObject = null;
       return;
     }
-    const source = element.tagName === 'AUDIO' ? new MediaStream(stream.getAudioTracks()) : stream;
+    const tracks = element.tagName === 'AUDIO' ? stream.getAudioTracks() : stream.getVideoTracks();
+    const source = new MediaStream(tracks);
     if (force || element.srcObject !== source) {
       element.srcObject = source;
     }

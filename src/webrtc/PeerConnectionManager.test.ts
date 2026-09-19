@@ -21,13 +21,18 @@ class FakeStream {
 
 class FakePeerConnection {
   connectionState = 'new';
-  remoteDescription = null;
+  remoteDescription: RTCSessionDescriptionInit | null = null;
   readonly listeners = new Map<string, (event: unknown) => void>();
   readonly createOffer = vi.fn(async (options?: RTCOfferOptions) => ({
     type: 'offer' as const,
     sdp: options?.iceRestart ? 'restart' : 'offer',
   }));
+  readonly createAnswer = vi.fn(async () => ({ type: 'answer' as const, sdp: 'answer' }));
   readonly setLocalDescription = vi.fn(async () => undefined);
+  readonly setRemoteDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
+    this.remoteDescription = description;
+  });
+  readonly addIceCandidate = vi.fn(async () => undefined);
   readonly addTransceiver = vi.fn(() => ({ sender: { replaceTrack: vi.fn() } }));
   readonly addTrack = vi.fn();
   readonly close = vi.fn();
@@ -99,6 +104,52 @@ describe('PeerConnectionManager', () => {
       expect(signaling.emit).toHaveBeenLastCalledWith('signal:offer', {
         targetPeerId: 'peer-b',
         description: { type: 'offer', sdp: 'restart' },
+      });
+    });
+  });
+
+  it('keeps ICE that arrives before the answering peer connection exists', async () => {
+    const connection = new FakePeerConnection();
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return new FakeStream();
+      }),
+    );
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      vi.fn(function RTCPeerConnection() {
+        return connection;
+      }),
+    );
+
+    const handlers = new Map<string, (payload: never) => void>();
+    const signaling = {
+      on: (event: string, handler: (payload: never) => void) => {
+        handlers.set(event, handler);
+      },
+      emit: vi.fn(),
+    };
+    const manager = new PeerConnectionManager({
+      signaling: signaling as never,
+      localStream: new FakeStream() as unknown as MediaStream,
+      onRemoteStream: vi.fn(),
+      onPeerClosed: vi.fn(),
+    });
+    manager.start();
+
+    handlers.get('signal:ice')?.({
+      fromPeerId: 'peer-b',
+      candidate: { candidate: 'typ host', sdpMid: '0' },
+    } as never);
+    handlers.get('signal:offer')?.({
+      fromPeerId: 'peer-b',
+      description: { type: 'offer', sdp: 'offer' },
+    } as never);
+    await vi.waitFor(() => {
+      expect(connection.addIceCandidate).toHaveBeenCalledWith({
+        candidate: 'typ host',
+        sdpMid: '0',
       });
     });
   });
