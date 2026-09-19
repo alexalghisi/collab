@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -10,6 +10,12 @@ import {
   type ExecutionResult,
 } from '../../../src/code/execution';
 import type { CodeLanguage } from '../../../src/code/languages';
+import {
+  isWorkspaceFileName,
+  MAX_FILE_BYTES,
+  normalizeWorkspaceFiles,
+  type WorkspaceFile,
+} from '../../../src/code/workspaceFiles';
 import { SandboxUnavailableError, type SandboxRunner } from './SandboxRunner';
 
 export interface DockerLimits {
@@ -156,12 +162,52 @@ export class DockerRunner implements SandboxRunner {
       await writeFile(source, request.code, 'utf8');
       await this.docker(dockerCreateArgs(request.language, container, this.limits));
       await this.docker(['cp', source, `${container}:${SANDBOX_DIR}/${file}`]);
-      return await this.start(container, request.stdin, onChunk);
+      await this.copyWorkspaceFiles(container, dir, request.files ?? []);
+      const result = await this.start(container, request.stdin, onChunk);
+      const files = await this.collectGeneratedFiles(container, dir, request.files ?? []);
+      return { ...result, files };
     } finally {
       await rm(dir, { recursive: true, force: true });
       // -v also drops the volume the submission was copied into.
       this.spawn('docker', ['rm', '--force', '--volumes', container]).unref?.();
     }
+  }
+
+  /**
+   * Drops extra files into the working directory (`/tmp`), so a C++ program can
+   * `ifstream("date.in")` the way contest problems expect.
+   */
+  private async copyWorkspaceFiles(
+    container: string,
+    dir: string,
+    files: readonly WorkspaceFile[],
+  ): Promise<void> {
+    for (const file of files) {
+      const path = join(dir, file.name);
+      await writeFile(path, file.content, 'utf8');
+      await this.docker(['cp', path, `${container}:/tmp/${file.name}`]);
+    }
+  }
+
+  /**
+   * Copies `/tmp` back after the run. Failures here must not fail the run: the
+   * program already finished, and a missing output file is just an empty list.
+   */
+  private async collectGeneratedFiles(
+    container: string,
+    dir: string,
+    submitted: readonly WorkspaceFile[],
+  ): Promise<WorkspaceFile[]> {
+    const captured = join(dir, 'captured');
+    await mkdir(captured, { recursive: true });
+    try {
+      await this.docker(['cp', `${container}:/tmp`, captured]);
+    } catch {
+      return [];
+    }
+    const nested = join(captured, 'tmp');
+    const root = (await isDirectory(nested)) ? nested : captured;
+    return generatedFilesFrom(root, submitted);
   }
 
   /** Runs a short docker command, rejecting when the daemon is not usable. */
@@ -241,4 +287,65 @@ export class DockerRunner implements SandboxRunner {
       });
     });
   }
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function decodeTextFile(bytes: Buffer): string | null {
+  if (bytes.includes(0)) {
+    return null;
+  }
+  try {
+    return new TextDecoder('utf8', { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Keeps files the program created or changed, and skips the compiled binary
+ * plus anything that is not a workspace name.
+ */
+async function generatedFilesFrom(
+  root: string,
+  submitted: readonly WorkspaceFile[],
+): Promise<WorkspaceFile[]> {
+  const original = new Map(submitted.map((file) => [file.name, file.content]));
+  const found: WorkspaceFile[] = [];
+  let names: string[];
+  try {
+    names = await readdir(root);
+  } catch {
+    return [];
+  }
+  for (const name of names) {
+    if (!isWorkspaceFileName(name)) {
+      continue;
+    }
+    const path = join(root, name);
+    if (await isDirectory(path)) {
+      continue;
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(path);
+    } catch {
+      continue;
+    }
+    if (bytes.byteLength > MAX_FILE_BYTES) {
+      continue;
+    }
+    const content = decodeTextFile(bytes);
+    if (content === null || content === original.get(name)) {
+      continue;
+    }
+    found.push({ name, content });
+  }
+  return normalizeWorkspaceFiles(found);
 }

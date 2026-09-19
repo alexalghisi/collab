@@ -64,7 +64,7 @@ export class PistonRunner implements SandboxRunner {
     const response = await this.post({
       language: runtime.language,
       version: '*',
-      files: [{ name: runtime.file, content: request.code }],
+      files: [{ name: runtime.file, content: request.code }, ...(request.files ?? [])],
       stdin: request.stdin,
       run_timeout: this.options.timeoutMs,
       compile_timeout: this.options.timeoutMs,
@@ -80,7 +80,7 @@ export class PistonRunner implements SandboxRunner {
     // A failed compile means the program never ran; its diagnostics are the output.
     if (response.compile && (response.compile.code ?? 0) !== 0) {
       emit('stderr', response.compile.stderr || response.compile.stdout);
-      return { exitCode: response.compile.code ?? null, timedOut: false };
+      return { exitCode: response.compile.code ?? null, timedOut: false, files: [] };
     }
 
     const run = response.run;
@@ -91,7 +91,7 @@ export class PistonRunner implements SandboxRunner {
     emit('stderr', run.stderr);
     // Piston kills a run that outstays its timeout, which shows up as a signal.
     const timedOut = run.signal === 'SIGKILL' && (run.code ?? null) === null;
-    return { exitCode: timedOut ? null : (run.code ?? null), timedOut };
+    return { exitCode: timedOut ? null : (run.code ?? null), timedOut, files: [] };
   }
 
   private async post(body: unknown): Promise<PistonResponse> {

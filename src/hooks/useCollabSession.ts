@@ -3,6 +3,8 @@ import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
 import { mergeChatHistory } from '../chat/history';
 import type { ChatDraft } from '../chat/messages';
+import type { WorkspaceFile } from '../code/workspaceFiles';
+import { mergeWorkspaceFiles } from '../code/workspaceFiles';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
@@ -68,6 +70,7 @@ export interface CodeRun {
   readonly timedOut: boolean;
   readonly error: string | null;
   readonly running: boolean;
+  readonly files: WorkspaceFile[];
 }
 
 export interface RemoteParticipant {
@@ -103,8 +106,11 @@ export interface CollabSession {
   readonly code: SharedCodeDocument | null;
   /** Executions of the shared document, oldest first, including running ones. */
   readonly runs: CodeRun[];
+  /** Extra files next to the shared program (`date.in`, `date.out`, …). */
+  readonly workspaceFiles: WorkspaceFile[];
   readonly self: PeerState;
   readonly selfPeerId: string | null;
+  readonly sessionId: string | null;
   readonly hostPeerId: string | null;
   readonly isHost: boolean;
   /** Room we are in (or moving to); null outside a meeting. */
@@ -125,6 +131,8 @@ export interface CollabSession {
   toggleHand: () => void;
   sendReaction: (emoji: string) => void;
   sendMessage: (draft: ChatDraft) => void;
+  editMessage: (id: string, text: string) => void;
+  deleteMessage: (id: string) => void;
   /** Uploads a picked file through the transport and describes where it landed. */
   shareFile: (file: UploadableFile, onProgress: UploadProgress) => Promise<FileAttachment>;
   /** Delivers an email or SMS invite for this meeting. */
@@ -138,7 +146,8 @@ export interface CollabSession {
   toggleCaptions: () => void;
   askAssistant: (question: string) => void;
   /** Runs the shared document in the sandbox; output reaches the whole room. */
-  runCode: (stdin: string) => void;
+  runCode: (stdin: string, files?: readonly WorkspaceFile[]) => void;
+  updateWorkspaceFiles: (files: WorkspaceFile[]) => void;
   // Host only.
   updateSettings: (patch: Partial<RoomSettings>) => void;
   admit: (peerId: string) => void;
@@ -189,8 +198,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [assistantTurns, setAssistantTurns] = useState<AssistantThread[]>([]);
   const [code, setCode] = useState<SharedCodeDocument | null>(null);
   const [runs, setRuns] = useState<CodeRun[]>([]);
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
   const [self, setSelf] = useState<PeerState>(INITIAL_PEER_STATE);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [breakoutOf, setBreakoutOf] = useState<string | null>(null);
@@ -279,6 +290,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     speechRef.current.stop();
     setCaptionsOn(false);
     setRuns([]);
+    setWorkspaceFiles([]);
     setSelfPeerId(null);
     setHostPeerId(null);
     setSettings(DEFAULT_ROOM_SETTINGS);
@@ -342,6 +354,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       setStatus('idle');
       if (!options?.keepLive) {
         clearLiveMeeting();
+        setSessionId(null);
       }
     },
     [disconnectRoom],
@@ -398,6 +411,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           return next;
         });
         setBoardFiles(room.boardFiles ?? []);
+        setWorkspaceFiles(room.workspaceFiles ?? []);
         setNotes((current) => {
           const next = room.notes && room.notes.length > 0 ? room.notes : current;
           saveRoomSnapshot(nextRoomId, { notes: next });
@@ -427,6 +441,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       });
       signaling.on('waiting:update', setWaiting);
       signaling.on('host:command', (command) => commandRef.current(command));
+      signaling.on('session:replaced', () => {
+        leave({ keepLive: true });
+        setError('This meeting is already open in another window.');
+        setStatus('error');
+      });
       signaling.on('peer:joined', (peer) => {
         setParticipants((current) => [
           ...current.filter((participant) => participant.peerId !== peer.peerId),
@@ -435,13 +454,16 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       });
       signaling.on('peer:left', dropParticipant);
       signaling.on('peer:state', ({ peerId, state }) => patchParticipant(peerId, { state }));
-      signaling.on('chat:message', (message) => {
+      const applyChatUpdate = (message: ChatMessage) => {
         setMessages((current) => {
           const next = mergeChatHistory(current, [message]);
           saveRoomSnapshot(nextRoomId, { messages: next });
           return next;
         });
-      });
+      };
+      signaling.on('chat:message', applyChatUpdate);
+      signaling.on('chat:edited', applyChatUpdate);
+      signaling.on('chat:deleted', applyChatUpdate);
       // Firestore echoes our own strokes back, so adding is keyed by id.
       signaling.on('board:stroke', (stroke) => {
         setStrokes((current) => {
@@ -512,6 +534,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
             timedOut: false,
             error: null,
             running: true,
+            files: [],
           },
         ]);
       });
@@ -522,13 +545,20 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           ),
         );
       });
-      signaling.on('code:run:finished', ({ runId, exitCode, timedOut, error }) => {
+      signaling.on('code:run:finished', ({ runId, exitCode, timedOut, error, files }) => {
+        const generated = files ?? [];
         setRuns((current) =>
           current.map((run) =>
-            run.runId === runId ? { ...run, exitCode, timedOut, error, running: false } : run,
+            run.runId === runId
+              ? { ...run, exitCode, timedOut, error, running: false, files: generated }
+              : run,
           ),
         );
+        if (generated.length > 0) {
+          setWorkspaceFiles((current) => mergeWorkspaceFiles(current, generated));
+        }
       });
+      signaling.on('code:files', (files) => setWorkspaceFiles([...files]));
 
       const manager = new PeerConnectionManager({
         signaling,
@@ -577,6 +607,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       displayNameRef.current = displayName;
       const live = readLiveMeeting();
       sessionIdRef.current = live?.roomId === nextRoomId ? live.sessionId : randomUUID();
+      setSessionId(sessionIdRef.current);
       writeLiveMeeting({
         roomId: nextRoomId,
         sessionId: sessionIdRef.current,
@@ -678,6 +709,14 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
   const sendMessage = useCallback((draft: ChatDraft) => {
     signalingRef.current?.emit('chat:message', draft);
+  }, []);
+
+  const editMessage = useCallback((id: string, text: string) => {
+    signalingRef.current?.emit('chat:edit', { id, text });
+  }, []);
+
+  const deleteMessage = useCallback((id: string) => {
+    signalingRef.current?.emit('chat:delete', { id });
   }, []);
 
   const shareFile = useCallback(
@@ -791,7 +830,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     beginCaptions();
   }, [captionsOn, beginCaptions]);
 
-  const runCode = useCallback((stdin: string) => {
+  const runCode = useCallback((stdin: string, files: readonly WorkspaceFile[] = []) => {
     const document = codeRef.current;
     if (!document) {
       return;
@@ -800,7 +839,13 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       language: document.language,
       code: document.text.toString(),
       stdin,
+      files: [...files],
     });
+  }, []);
+
+  const updateWorkspaceFiles = useCallback((files: WorkspaceFile[]) => {
+    setWorkspaceFiles(files);
+    signalingRef.current?.emit('code:files', files);
   }, []);
 
   const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
@@ -890,8 +935,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     assistantTurns,
     code,
     runs,
+    workspaceFiles,
     self,
     selfPeerId,
+    sessionId,
     hostPeerId,
     isHost: selfPeerId !== null && selfPeerId === hostPeerId,
     roomId,
@@ -907,6 +954,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     toggleHand,
     sendReaction,
     sendMessage,
+    editMessage,
+    deleteMessage,
     shareFile,
     sendInvite,
     addStroke,
@@ -917,6 +966,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     toggleCaptions,
     askAssistant,
     runCode,
+    updateWorkspaceFiles,
     updateSettings,
     admit,
     deny,
