@@ -1,6 +1,7 @@
 import { buildRtcConfiguration, type IceServerConfig } from './config';
 import type { PeerInfo } from '../signaling/events';
 import type { SignalingChannel } from '../signaling/SignalingChannel';
+import { playPeerAudio, stopAllPeerAudio, stopPeerAudio } from './remotePlayback';
 
 export interface PeerConnectionManagerOptions {
   readonly signaling: SignalingChannel;
@@ -21,6 +22,8 @@ interface PeerEntry {
   readonly remoteStream: MediaStream;
   /** Candidates that arrived before the remote description was applied. */
   readonly pendingCandidates: RTCIceCandidateInit[];
+  offerer: boolean;
+  restarted: boolean;
 }
 
 /**
@@ -99,6 +102,7 @@ export class PeerConnectionManager {
     for (const peerId of [...this.peers.keys()]) {
       this.closePeer(peerId);
     }
+    stopAllPeerAudio();
   }
 
   /** Swaps the outgoing video (camera, screen, or nothing) on every connection. */
@@ -145,19 +149,33 @@ export class PeerConnectionManager {
 
     connection.addEventListener('track', (event) => {
       event.track.enabled = true;
-      if (!remoteStream.getTracks().some((track) => track.id === event.track.id)) {
-        remoteStream.addTrack(event.track);
+      const inbound = event.streams[0] ?? remoteStream;
+      if (!inbound.getTracks().some((track) => track.id === event.track.id)) {
+        inbound.addTrack(event.track);
       }
-      this.onRemoteStream(peerId, remoteStream);
+      if (event.track.kind === 'audio') {
+        playPeerAudio(peerId, inbound);
+      }
+      this.onRemoteStream(peerId, inbound);
     });
 
     connection.addEventListener('connectionstatechange', () => {
-      if (connection.connectionState === 'failed' || connection.connectionState === 'closed') {
+      if (connection.connectionState === 'failed') {
+        void this.recover(peerId);
+      }
+      if (connection.connectionState === 'closed') {
         this.closePeer(peerId);
       }
     });
 
-    const entry: PeerEntry = { connection, senders, remoteStream, pendingCandidates: [] };
+    const entry: PeerEntry = {
+      connection,
+      senders,
+      remoteStream,
+      pendingCandidates: [],
+      offerer: false,
+      restarted: false,
+    };
     this.peers.set(peerId, entry);
     return entry;
   }
@@ -172,10 +190,26 @@ export class PeerConnectionManager {
     }
   }
 
+  private async recover(peerId: string): Promise<void> {
+    const entry = this.peers.get(peerId);
+    if (!entry?.offerer || entry.restarted) {
+      return;
+    }
+    entry.restarted = true;
+    try {
+      const offer = await entry.connection.createOffer({ iceRestart: true });
+      await entry.connection.setLocalDescription(offer);
+      this.signaling.emit('signal:offer', { targetPeerId: peerId, description: offer });
+    } catch {
+      this.closePeer(peerId);
+    }
+  }
+
   private async callPeer(peerId: string): Promise<void> {
-    const { connection } = this.createEntry(peerId);
-    const offer = await connection.createOffer();
-    await connection.setLocalDescription(offer);
+    const entry = this.createEntry(peerId);
+    entry.offerer = true;
+    const offer = await entry.connection.createOffer();
+    await entry.connection.setLocalDescription(offer);
     this.signaling.emit('signal:offer', { targetPeerId: peerId, description: offer });
   }
 
@@ -194,6 +228,7 @@ export class PeerConnectionManager {
     }
     entry.connection.close();
     this.peers.delete(peerId);
+    stopPeerAudio(peerId);
     this.onPeerClosed(peerId);
   }
 }
