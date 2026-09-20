@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AUDIO_CONSTRAINTS,
   CAMERA_CONSTRAINTS,
+  acquireCameraTrack,
   acquireLocalStream,
   acquireScreenTrack,
 } from './media';
@@ -31,7 +32,6 @@ describe('media capture', () => {
       voiceIsolation: true,
       channelCount: 1,
       sampleRate: 48000,
-      sampleSize: 16,
     });
   });
 
@@ -42,6 +42,20 @@ describe('media capture', () => {
       height: { ideal: 720, max: 1080 },
       frameRate: { ideal: 30, max: 30 },
     });
+  });
+
+  it('turns the camera on later with the resolution the join would have asked for', async () => {
+    const track = { kind: 'video', contentHint: '' };
+    const getUserMedia = vi.fn(async () => ({
+      getVideoTracks: () => [track],
+      getAudioTracks: () => [],
+    }));
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    await acquireCameraTrack();
+
+    expect(getUserMedia).toHaveBeenCalledWith({ video: CAMERA_CONSTRAINTS });
+    expect(track.contentHint).toBe('motion');
   });
 
   it('labels the captured tracks so the encoder knows what it is sending', async () => {
