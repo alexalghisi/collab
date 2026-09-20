@@ -1,0 +1,26 @@
+{
+  "name": "Collab",
+  "install": "npm install",
+  "terminals": [
+    {
+      "name": "signaling-server",
+      "command": "npm run server",
+      "description": "Node WebRTC signaling server on http://localhost:4000 (health check at /health)."
+    },
+    {
+      "name": "expo-web",
+      "command": "EXPO_PUBLIC_SIGNALING_URL=http://localhost:4000 npx expo start --web --port 8081",
+      "description": "Expo web build of the Collab app on http://localhost:8081, pointed at the local signaling server."
+    }
+  ],
+  "ports": [
+    {
+      "name": "signaling-server",
+      "port": 4000
+    },
+    {
+      "name": "expo-web",
+      "port": 8081
+    }
+  ]
+}

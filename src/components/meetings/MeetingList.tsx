@@ -8,6 +8,7 @@ export interface MeetingListProps {
   meetings: Meeting[];
   emptyText: string;
   onStart: (meeting: Meeting) => void;
+  onEdit?: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
 }
@@ -17,6 +18,7 @@ export function MeetingList({
   meetings,
   emptyText,
   onStart,
+  onEdit,
   onDelete,
   onInvite,
 }: MeetingListProps) {
@@ -31,6 +33,7 @@ export function MeetingList({
             key={meeting.id}
             meeting={meeting}
             onStart={onStart}
+            onEdit={onEdit}
             onDelete={onDelete}
             onInvite={onInvite}
           />
