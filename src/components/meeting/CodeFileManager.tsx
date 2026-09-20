@@ -35,19 +35,13 @@ function sourceName(language: CodeLanguage): string {
 }
 
 function nextName(existing: readonly string[]): string {
-  if (!existing.includes('date.in')) {
-    return 'date.in';
-  }
-  if (!existing.includes('date.out')) {
-    return 'date.out';
-  }
-  for (let index = 2; index < 100; index += 1) {
-    const name = `file${index}.txt`;
+  for (let index = 1; index < 100; index += 1) {
+    const name = index === 1 ? 'file.txt' : `file${index}.txt`;
     if (!existing.includes(name)) {
       return name;
     }
   }
-  return `file-${Date.now()}.txt`;
+  return 'file99.txt';
 }
 
 function askFileName(existing: readonly string[]): string | null {
@@ -158,7 +152,7 @@ export function CodeFileManager({
         <Text style={styles.addLabel}>New file</Text>
       </Pressable>
       <Text style={styles.hint}>
-        {LANGUAGE_LABELS[language]} reads these from the working folder. Open date.in with ifstream.
+        {LANGUAGE_LABELS[language]} reads and writes these by name. Keyboard input goes to stdin.
       </Text>
     </View>
   );
