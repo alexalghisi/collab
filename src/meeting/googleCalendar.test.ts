@@ -4,6 +4,7 @@ import {
   calendarApiLibraryUrl,
   calendarError,
   calendarWindow,
+  cancelledEventIds,
   eventDurationMinutes,
   eventStartsAt,
   listGoogleEvents,
@@ -33,6 +34,16 @@ describe('google calendar mapping', () => {
       googleEventId: 'evt-1',
       fromGoogle: true,
     });
+  });
+
+  it('collects the ids Google marked cancelled so they can be dropped here', () => {
+    expect(
+      cancelledEventIds([
+        timed,
+        { ...timed, id: 'evt-gone', status: 'cancelled' },
+        { status: 'cancelled' },
+      ]),
+    ).toEqual(['evt-gone']);
   });
 
   it('skips cancelled events and events without a start', () => {

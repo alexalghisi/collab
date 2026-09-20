@@ -7,6 +7,7 @@ import { generateRoomId } from './roomId';
 import { storage } from './storage';
 import {
   calendarWindow,
+  cancelledEventIds,
   deleteGoogleEvent,
   insertGoogleEvent,
   listGoogleEvents,
@@ -71,7 +72,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     const drafts = events
       .map((event) => meetingFromGoogleEvent(event, generateRoomId()))
       .filter((draft): draft is NonNullable<typeof draft> => draft !== null);
-    await meetingsRef.current.applyGoogle(drafts);
+    await meetingsRef.current.applyGoogle(drafts, cancelledEventIds(events));
   }, []);
 
   const pushLocal = useCallback(async (accessToken: string) => {

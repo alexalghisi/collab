@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { firestore } from '../firebase/app';
 import { createMeetingStore } from './store';
+import { planGoogleMerge } from './googleMerge';
 import type { Meeting, MeetingDraft } from './types';
 
 export interface MeetingsState {
@@ -9,7 +10,7 @@ export interface MeetingsState {
   schedule: (draft: MeetingDraft) => Promise<Meeting>;
   save: (meeting: Meeting) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  applyGoogle: (drafts: MeetingDraft[]) => Promise<void>;
+  applyGoogle: (drafts: MeetingDraft[], cancelledEventIds: string[]) => Promise<void>;
   /** Adds an instant meeting to the history unless the room is already scheduled. */
   recordInstant: (roomId: string) => Promise<void>;
 }
@@ -36,25 +37,16 @@ export function useMeetings(uid: string): MeetingsState {
   const remove = useCallback((id: string) => store.remove(id), [store]);
 
   const applyGoogle = useCallback(
-    async (drafts: MeetingDraft[]) => {
-      let current = meetingsRef.current;
-      for (const draft of drafts) {
-        const existing = current.find((meeting) => meeting.googleEventId === draft.googleEventId);
-        if (existing) {
-          const next = {
-            ...existing,
-            title: draft.title,
-            startsAt: draft.startsAt,
-            durationMinutes: draft.durationMinutes,
-            description: draft.description,
-          };
-          await store.save(next);
-          current = current.map((meeting) => (meeting.id === existing.id ? next : meeting));
-        } else {
-          const created: Meeting = { ...draft, id: randomUUID(), createdAt: Date.now() };
-          await store.save(created);
-          current = [...current, created];
-        }
+    async (drafts: MeetingDraft[], cancelledEventIds: string[]) => {
+      const plan = planGoogleMerge(meetingsRef.current, drafts, cancelledEventIds);
+      for (const meeting of plan.updates) {
+        await store.save(meeting);
+      }
+      for (const draft of plan.additions) {
+        await store.save({ ...draft, id: randomUUID(), createdAt: Date.now() });
+      }
+      for (const id of plan.removals) {
+        await store.remove(id);
       }
     },
     [store],

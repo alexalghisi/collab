@@ -92,6 +92,13 @@ export function meetingFromGoogleEvent(
   };
 }
 
+export function cancelledEventIds(events: readonly GoogleCalendarEvent[]): string[] {
+  return events
+    .filter((event) => event.status === 'cancelled')
+    .map((event) => event.id)
+    .filter((id): id is string => id !== undefined);
+}
+
 export const CALENDAR_API_DISABLED =
   'Enable the Google Calendar API in Google Cloud Console for this OAuth client.';
 
