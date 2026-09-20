@@ -3,6 +3,7 @@ import { RTCView } from 'react-native-webrtc';
 import { colors } from '../theme';
 import { TileOverlay, showsPlaceholder } from './TileOverlay';
 import type { VideoTileProps } from './VideoTile';
+import { videoPresentation } from './videoPresentation';
 
 export function VideoTile({
   label,
@@ -12,6 +13,7 @@ export function VideoTile({
   mirror = false,
 }: VideoTileProps) {
   const streamUrl = stream ? (stream as unknown as { toURL: () => string }).toURL() : undefined;
+  const presentation = videoPresentation(state, mirror);
 
   return (
     <View style={styles.tile}>
@@ -19,8 +21,8 @@ export function VideoTile({
         <RTCView
           streamURL={streamUrl}
           style={styles.video}
-          objectFit={state.screenSharing ? 'contain' : 'cover'}
-          mirror={mirror && !state.screenSharing}
+          objectFit={presentation.fit}
+          mirror={presentation.mirror}
         />
       ) : null}
       {(!streamUrl || showsPlaceholder(state, stream)) && (
