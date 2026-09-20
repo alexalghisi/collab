@@ -17,6 +17,7 @@ export interface MeetingInviteRequest {
 export interface MeetingRowProps {
   meeting: Meeting;
   onStart: (meeting: Meeting) => void;
+  onEdit?: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
 }
@@ -26,7 +27,7 @@ function describeWhen(meeting: Meeting): string {
   return meeting.durationMinutes > 0 ? `${start} – ${formatTime(meetingEndsAt(meeting))}` : start;
 }
 
-export function MeetingRow({ meeting, onStart, onDelete, onInvite }: MeetingRowProps) {
+export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: MeetingRowProps) {
   const upcoming = meetingEndsAt(meeting) >= Date.now();
   const inviteLink = buildInviteLink(meeting.roomId);
   const [inviting, setInviting] = useState(false);
@@ -100,6 +101,13 @@ export function MeetingRow({ meeting, onStart, onDelete, onInvite }: MeetingRowP
                 }
               />
             </>
+          )}
+          {onEdit && meeting.durationMinutes > 0 && (
+            <IconButton
+              icon="create-outline"
+              label="Edit meeting"
+              onPress={() => onEdit(meeting)}
+            />
           )}
           <IconButton
             icon="trash-outline"

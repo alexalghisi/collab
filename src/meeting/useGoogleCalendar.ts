@@ -11,6 +11,7 @@ import {
   insertGoogleEvent,
   listGoogleEvents,
   meetingFromGoogleEvent,
+  updateGoogleEvent,
 } from './googleCalendar';
 import type { MeetingsState } from './useMeetings';
 import type { Meeting } from './types';
@@ -24,6 +25,7 @@ export interface GoogleCalendarSync {
   sync: () => Promise<void>;
   disconnect: () => void;
   publish: (meeting: Meeting) => Promise<Meeting>;
+  update: (meeting: Meeting) => Promise<Meeting>;
   retract: (meeting: Meeting) => Promise<void>;
 }
 
@@ -67,7 +69,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
   }, []);
 
   const pull = useCallback(async (accessToken: string) => {
-    const events = await listGoogleEvents(accessToken, calendarWindow());
+    const { events } = await listGoogleEvents(accessToken, { window: calendarWindow() });
     const drafts = events
       .map((event) => meetingFromGoogleEvent(event, generateRoomId()))
       .filter((draft): draft is NonNullable<typeof draft> => draft !== null);
@@ -157,6 +159,32 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     [connected, token],
   );
 
+  const publishRef = useRef(publish);
+  publishRef.current = publish;
+
+  const update = useCallback(
+    async (meeting: Meeting) => {
+      if (!connected || meeting.durationMinutes <= 0) {
+        return meeting;
+      }
+      // A meeting that was never pushed to Google yet is created, not patched.
+      if (!meeting.googleEventId) {
+        return publishRef.current(meeting);
+      }
+      try {
+        const accessToken = tokenRef.current ?? (await token(''));
+        await updateGoogleEvent(accessToken, meeting, buildInviteLink(meeting.roomId));
+        return meeting;
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : 'Could not update this meeting in Google.',
+        );
+        return meeting;
+      }
+    },
+    [connected, token],
+  );
+
   const retract = useCallback(
     async (meeting: Meeting) => {
       if (!meeting.googleEventId || meeting.fromGoogle) {
@@ -172,5 +200,16 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     [token],
   );
 
-  return { available, connected, syncing, error, connect, sync, disconnect, publish, retract };
+  return {
+    available,
+    connected,
+    syncing,
+    error,
+    connect,
+    sync,
+    disconnect,
+    publish,
+    update,
+    retract,
+  };
 }
