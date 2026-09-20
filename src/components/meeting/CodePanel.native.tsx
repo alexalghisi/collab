@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { applyFormattedCode } from '../../code/formatSource';
 import type { CodeLanguage } from '../../code/languages';
 import type { CodePresence, SharedCodeDocument } from '../../code/SharedCodeDocument';
 import { cppSidecarsIfNeeded, type WorkspaceFile } from '../../code/workspaceFiles';
@@ -71,6 +72,7 @@ export function CodePanel({
         onLanguageChange={(next) => shared.setLanguage(next)}
         stdin={stdin}
         onStdinChange={setStdin}
+        onFormat={() => applyFormattedCode(language, shared, files, openFile, onFilesChange)}
         onRun={() => onRun(stdin, cppSidecarsIfNeeded(language, files) ?? files, text)}
         running={running}
         editors={editors}

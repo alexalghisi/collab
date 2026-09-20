@@ -257,4 +257,15 @@ describe('SharedCodeDocument', () => {
 
     expect(linus.document.text.toString()).toBe('');
   });
+
+  it('replaces the whole buffer in one edit the others see', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    ada.document.text.insert(0, 'function add(a,b){return a+b;}');
+
+    ada.document.replaceText('function add(a, b) {\n  return a + b;\n}');
+
+    expect(ada.document.text.toString()).toBe('function add(a, b) {\n  return a + b;\n}');
+    expect(linus.document.text.toString()).toBe(ada.document.text.toString());
+  });
 });
