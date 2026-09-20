@@ -188,8 +188,10 @@ export function MessageThread({
                         }}
                         accessibilityRole="button"
                         accessibilityLabel="Edit message"
+                        hitSlop={8}
                       >
                         <Ionicons name="create-outline" size={14} color={colors.text} />
+                        <Text style={styles.actionLabel}>Edit</Text>
                       </Pressable>
                     )}
                     {onDelete && (
@@ -198,8 +200,10 @@ export function MessageThread({
                         onPress={() => confirmDelete(() => onDelete(message.id))}
                         accessibilityRole="button"
                         accessibilityLabel="Delete message"
+                        hitSlop={8}
                       >
                         <Ionicons name="trash-outline" size={14} color={colors.text} />
+                        <Text style={styles.actionLabel}>Delete</Text>
                       </Pressable>
                     )}
                   </View>
@@ -220,6 +224,8 @@ export function MessageThread({
                     }}
                     maxLength={MAX_MESSAGE_CHARS}
                     autoFocus
+                    multiline
+                    textAlignVertical="top"
                     returnKeyType="done"
                     blurOnSubmit
                   />
@@ -312,6 +318,7 @@ const styles = StyleSheet.create({
   meta: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
   },
   author: {
@@ -329,7 +336,16 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   action: {
-    padding: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  actionLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
   },
   editInput: {
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
