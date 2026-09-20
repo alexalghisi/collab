@@ -70,3 +70,22 @@ export function isOwnChatMessage(
 export function visibleChatMessages<T extends { deletedAt?: number }>(messages: readonly T[]): T[] {
   return messages.filter((message) => !message.deletedAt);
 }
+
+export function withEditedChatMessage<T extends { id: string; text: string }>(
+  messages: readonly T[],
+  id: string,
+  text: string,
+  editedAt: number,
+): T[] {
+  return messages.map((message) => (message.id === id ? { ...message, text, editedAt } : message));
+}
+
+export function withDeletedChatMessage<T extends { id: string; text: string; file: unknown }>(
+  messages: readonly T[],
+  id: string,
+  deletedAt: number,
+): T[] {
+  return messages.map((message) =>
+    message.id === id ? { ...message, text: '', file: null, deletedAt } : message,
+  );
+}

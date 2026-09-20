@@ -5,6 +5,8 @@ import {
   normalizeChatDraft,
   normalizeChatEdit,
   visibleChatMessages,
+  withDeletedChatMessage,
+  withEditedChatMessage,
 } from './messages';
 
 const attachment: FileAttachment = {
@@ -99,5 +101,28 @@ describe('visibleChatMessages', () => {
         },
       ]).map((message) => message.id),
     ).toEqual(['a']);
+  });
+});
+
+describe('local chat edits', () => {
+  const hello = {
+    id: 'a',
+    peerId: 'p',
+    displayName: 'Ada',
+    text: 'hello',
+    sentAt: 1,
+    file: null,
+  };
+
+  it('rewrites the text and marks it edited', () => {
+    expect(withEditedChatMessage([hello], 'a', 'hello there', 9)).toEqual([
+      { ...hello, text: 'hello there', editedAt: 9 },
+    ]);
+  });
+
+  it('tombstones a deletion so the other person loses it too', () => {
+    expect(withDeletedChatMessage([hello], 'a', 9)).toEqual([
+      { ...hello, text: '', file: null, deletedAt: 9 },
+    ]);
   });
 });
