@@ -5,7 +5,6 @@ import { mergeChatHistory } from '../chat/history';
 import type { ChatDraft } from '../chat/messages';
 import { REJECTION_MESSAGES, validateExecutionRequest } from '../code/execution';
 import { programSource } from '../code/programSource';
-import { completeCloudUiRun } from '../code/runInCloudUi';
 import { mergeWorkspaceFiles, withCppSidecars, type WorkspaceFile } from '../code/workspaceFiles';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
@@ -842,49 +841,27 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         stdin,
         files: document.language === 'cpp' ? withCppSidecars(files) : [...files],
       };
-      const runId = randomUUID();
-      const meta = {
-        runId,
-        byPeerId: sessionIdRef.current,
-        byDisplayName: displayNameRef.current,
-      };
-      setRuns((current) => [
-        ...current,
-        {
-          ...meta,
-          language: payload.language,
-          stdout: '',
-          stderr: '',
-          exitCode: null,
-          timedOut: false,
-          error: null,
-          running: true,
-          files: [],
-        },
-      ]);
       const checked = validateExecutionRequest(payload);
       if (!checked.ok) {
-        setRuns((current) =>
-          current.map((run) =>
-            run.runId === runId
-              ? { ...run, running: false, error: REJECTION_MESSAGES[checked.reason] }
-              : run,
-          ),
-        );
+        setRuns((current) => [
+          ...current,
+          {
+            runId: randomUUID(),
+            byPeerId: selfPeerIdRef.current ?? sessionIdRef.current,
+            byDisplayName: displayNameRef.current,
+            language: payload.language,
+            stdout: '',
+            stderr: '',
+            exitCode: null,
+            timedOut: false,
+            error: REJECTION_MESSAGES[checked.reason],
+            running: false,
+            files: [],
+          },
+        ]);
         return;
       }
-      void completeCloudUiRun(checked.request, meta).then((done) => {
-        setRuns((current) =>
-          current.map((run) => (run.runId === runId ? { ...done, running: false } : run)),
-        );
-        if (done.files.length > 0) {
-          setWorkspaceFiles((current) => {
-            const next = mergeWorkspaceFiles(current, done.files);
-            signalingRef.current?.emit('code:files', next);
-            return next;
-          });
-        }
-      });
+      signalingRef.current?.emit('code:run', checked.request);
     },
     [],
   );
