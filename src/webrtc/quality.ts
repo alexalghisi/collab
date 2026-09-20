@@ -89,7 +89,6 @@ export function tuneVideoSender(
     {
       maxBitrate: VIDEO_MAX_BITRATE_BPS[content],
       maxFramerate: VIDEO_MAX_FRAMERATE[content],
-      scaleResolutionDownBy: 1,
       networkPriority: 'medium',
     },
     VIDEO_DEGRADATION[content],
