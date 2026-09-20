@@ -37,6 +37,10 @@ describe('remoteCursorCss', () => {
     expect(css).toContain("content: 'Ada'");
   });
 
+  it('draws nothing when no one else is in the document', () => {
+    expect(remoteCursorCss([])).toBe('');
+  });
+
   it('cannot be talked out of the declaration by a crafted name', () => {
     const css = remoteCursorCss([{ ...linus, displayName: "x'; } body { display: none" }]);
 
