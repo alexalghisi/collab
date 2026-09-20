@@ -9,6 +9,7 @@ import {
   listGoogleEvents,
   meetingFromGoogleEvent,
   roomIdFromEvent,
+  SYNC_TOKEN_EXPIRED,
   type GoogleCalendarEvent,
 } from './googleCalendar';
 
@@ -96,9 +97,76 @@ describe('google calendar mapping', () => {
     await expect(
       listGoogleEvents(
         'ya29.token',
-        calendarWindow(Date.parse('2026-09-16T12:00:00.000Z')),
+        { window: calendarWindow(Date.parse('2026-09-16T12:00:00.000Z')) },
         fetchImpl,
       ),
     ).rejects.toThrow(CALENDAR_API_DISABLED);
+  });
+});
+
+describe('google calendar sync protocol', () => {
+  const window = calendarWindow(Date.parse('2026-09-16T12:00:00.000Z'));
+
+  const respond = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+  it('asks for a bounded window and keeps the token Google hands back', async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (input: string) => {
+      urls.push(input);
+      return respond({ items: [timed], nextSyncToken: 'tok-1' });
+    }) as unknown as typeof fetch;
+
+    const page = await listGoogleEvents('ya29.token', { window }, fetchImpl);
+
+    expect(page).toEqual({ events: [timed], nextSyncToken: 'tok-1' });
+    const params = new URL(urls[0]).searchParams;
+    expect(params.get('timeMin')).toBe(window.timeMin);
+    expect(params.get('timeMax')).toBe(window.timeMax);
+    expect(params.get('orderBy')).toBe('startTime');
+    expect(params.get('showDeleted')).toBe('true');
+    expect(params.get('syncToken')).toBeNull();
+  });
+
+  it('sends only the sync token on an incremental run', async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (input: string) => {
+      urls.push(input);
+      return respond({ items: [], nextSyncToken: 'tok-2' });
+    }) as unknown as typeof fetch;
+
+    await listGoogleEvents('ya29.token', { syncToken: 'tok-1' }, fetchImpl);
+
+    const params = new URL(urls[0]).searchParams;
+    expect(params.get('syncToken')).toBe('tok-1');
+    expect(params.get('timeMin')).toBeNull();
+    expect(params.get('timeMax')).toBeNull();
+    expect(params.get('orderBy')).toBeNull();
+  });
+
+  it('follows every page and returns the token from the last one', async () => {
+    const pages = [
+      { items: [timed], nextPageToken: 'page-2' },
+      { items: [{ ...timed, id: 'evt-2' }], nextSyncToken: 'tok-3' },
+    ];
+    const seen: string[] = [];
+    const fetchImpl = (async (input: string) => {
+      seen.push(new URL(input).searchParams.get('pageToken') ?? '');
+      return respond(pages.shift());
+    }) as unknown as typeof fetch;
+
+    const page = await listGoogleEvents('ya29.token', { window }, fetchImpl);
+
+    expect(seen).toEqual(['', 'page-2']);
+    expect(page.events.map((event) => event.id)).toEqual(['evt-1', 'evt-2']);
+    expect(page.nextSyncToken).toBe('tok-3');
+  });
+
+  it('reports an expired sync token so the caller can start over', async () => {
+    const fetchImpl = (async () => respond({ error: { message: 'gone' } }, 410)) as typeof fetch;
+
+    await expect(listGoogleEvents('ya29.token', { syncToken: 'stale' }, fetchImpl)).rejects.toThrow(
+      SYNC_TOKEN_EXPIRED,
+    );
   });
 });

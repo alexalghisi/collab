@@ -67,7 +67,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
   }, []);
 
   const pull = useCallback(async (accessToken: string) => {
-    const events = await listGoogleEvents(accessToken, calendarWindow());
+    const { events } = await listGoogleEvents(accessToken, { window: calendarWindow() });
     const drafts = events
       .map((event) => meetingFromGoogleEvent(event, generateRoomId()))
       .filter((draft): draft is NonNullable<typeof draft> => draft !== null);

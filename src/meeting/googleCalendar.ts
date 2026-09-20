@@ -3,6 +3,20 @@ import { meetingEndsAt, type Meeting, type MeetingDraft } from './types';
 const EVENTS_URL = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const ROOM_IN_TEXT = /(?:\?|&)room=([a-z0-9-]+)/i;
 
+export interface CalendarWindow {
+  readonly timeMin: string;
+  readonly timeMax: string;
+}
+
+export type CalendarQuery = { readonly window: CalendarWindow } | { readonly syncToken: string };
+
+export interface CalendarPage {
+  readonly events: GoogleCalendarEvent[];
+  readonly nextSyncToken: string | null;
+}
+
+export const SYNC_TOKEN_EXPIRED = 'Google Calendar asked for a full resync.';
+
 export interface GoogleCalendarEvent {
   readonly id?: string;
   readonly status?: string;
@@ -20,7 +34,7 @@ interface CalendarErrorBody {
   };
 }
 
-export function calendarWindow(now = Date.now()): { timeMin: string; timeMax: string } {
+export function calendarWindow(now = Date.now()): CalendarWindow {
   const past = new Date(now);
   past.setUTCDate(past.getUTCDate() - 30);
   const future = new Date(now);
@@ -103,21 +117,32 @@ async function readError(response: Response): Promise<CalendarErrorBody> {
   return (await response.json().catch(() => ({}))) as CalendarErrorBody;
 }
 
+function queryParams(query: CalendarQuery): URLSearchParams {
+  const params = new URLSearchParams({
+    singleEvents: 'true',
+    showDeleted: 'true',
+    maxResults: '250',
+  });
+  if ('syncToken' in query) {
+    params.set('syncToken', query.syncToken);
+    return params;
+  }
+  params.set('orderBy', 'startTime');
+  params.set('timeMin', query.window.timeMin);
+  params.set('timeMax', query.window.timeMax);
+  return params;
+}
+
 export async function listGoogleEvents(
   token: string,
-  window: { timeMin: string; timeMax: string },
+  query: CalendarQuery,
   fetchImpl: typeof fetch = fetch,
-): Promise<GoogleCalendarEvent[]> {
+): Promise<CalendarPage> {
   const events: GoogleCalendarEvent[] = [];
   let pageToken = '';
+  let nextSyncToken: string | null = null;
   do {
-    const params = new URLSearchParams({
-      singleEvents: 'true',
-      orderBy: 'startTime',
-      timeMin: window.timeMin,
-      timeMax: window.timeMax,
-      maxResults: '250',
-    });
+    const params = queryParams(query);
     if (pageToken) {
       params.set('pageToken', pageToken);
     }
@@ -127,14 +152,19 @@ export async function listGoogleEvents(
     const body = (await response.json().catch(() => ({}))) as CalendarErrorBody & {
       readonly items?: GoogleCalendarEvent[];
       readonly nextPageToken?: string;
+      readonly nextSyncToken?: string;
     };
+    if (response.status === 410) {
+      throw new Error(SYNC_TOKEN_EXPIRED);
+    }
     if (!response.ok) {
       throw new Error(calendarError(response.status, body));
     }
     events.push(...(body.items ?? []));
+    nextSyncToken = body.nextSyncToken ?? nextSyncToken;
     pageToken = body.nextPageToken ?? '';
   } while (pageToken);
-  return events;
+  return { events, nextSyncToken };
 }
 
 export async function insertGoogleEvent(
