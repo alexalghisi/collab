@@ -3,10 +3,8 @@ import {
   MAX_FILE_BYTES,
   MAX_WORKSPACE_FILES,
   isWorkspaceFileName,
-  cppSidecarsIfNeeded,
   mergeWorkspaceFiles,
   normalizeWorkspaceFiles,
-  withCppSidecars,
 } from './workspaceFiles';
 
 describe('workspace files', () => {
@@ -68,16 +66,7 @@ describe('workspace files', () => {
     ]);
   });
 
-  it('opens date.in and date.out next to a C++ program so ifstream can find them', () => {
-    expect(withCppSidecars([])).toEqual([
-      { name: 'date.in', content: '' },
-      { name: 'date.out', content: '' },
-    ]);
-    expect(withCppSidecars([{ name: 'date.in', content: '3\n' }])).toEqual([
-      { name: 'date.in', content: '3\n' },
-      { name: 'date.out', content: '' },
-    ]);
-    expect(cppSidecarsIfNeeded('python', [])).toBeNull();
-    expect(cppSidecarsIfNeeded('cpp', withCppSidecars([]))).toBeNull();
+  it('does not invent files next to a program', () => {
+    expect(normalizeWorkspaceFiles([])).toEqual([]);
   });
 });

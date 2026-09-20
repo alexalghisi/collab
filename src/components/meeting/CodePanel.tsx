@@ -13,7 +13,7 @@ import {
 } from '../../code/monacoBinding';
 import { cursorClass, remoteCursorCss } from '../../code/remoteCursorStyle';
 import type { CodeRun } from '../../hooks/useCollabSession';
-import { cppSidecarsIfNeeded, type WorkspaceFile } from '../../code/workspaceFiles';
+import type { WorkspaceFile } from '../../code/workspaceFiles';
 import { colors } from '../../theme';
 import { CodeControls } from './CodeControls';
 import { CodeFileManager, CODE_MAIN_FILE } from './CodeFileManager';
@@ -98,12 +98,6 @@ export function CodePanel({
     }
   }, [files, selected]);
   useEffect(() => {
-    const next = cppSidecarsIfNeeded(language, files);
-    if (next) {
-      onFilesChange(next);
-    }
-  }, [language, files, onFilesChange]);
-  useEffect(() => {
     paintCursors();
   }, [paintCursors]);
 
@@ -127,11 +121,7 @@ export function CodePanel({
         onStdinChange={setStdin}
         onFormat={() => applyFormattedCode(language, shared, files, openFile, onFilesChange)}
         onRun={() =>
-          onRun(
-            stdin,
-            cppSidecarsIfNeeded(language, files) ?? files,
-            editorRef.current?.getModel()?.getValue() ?? shared.text.toString(),
-          )
+          onRun(stdin, files, editorRef.current?.getModel()?.getValue() ?? shared.text.toString())
         }
         running={running}
         editors={editors}
