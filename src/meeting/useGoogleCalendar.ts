@@ -4,15 +4,20 @@ import { requestGoogleCalendarToken } from '../auth/googleWeb';
 import { readGoogleWebClientId } from '../auth/config';
 import { buildInviteLink } from './invite';
 import { generateRoomId } from './roomId';
-import { storage } from './storage';
 import {
   calendarWindow,
-  cancelledEventIds,
   deleteGoogleEvent,
   insertGoogleEvent,
   listGoogleEvents,
-  meetingFromGoogleEvent,
 } from './googleCalendar';
+import { pullGoogleCalendar } from './calendarSync';
+import {
+  forgetGoogleCalendar,
+  readConnected,
+  readSyncToken,
+  writeConnected,
+  writeSyncToken,
+} from './googleCalendarState';
 import type { MeetingsState } from './useMeetings';
 import type { Meeting } from './types';
 
@@ -28,23 +33,7 @@ export interface GoogleCalendarSync {
   retract: (meeting: Meeting) => Promise<void>;
 }
 
-const connectedKey = (uid: string) => `collab.googleCalendar.${uid}`;
-
-function readConnected(uid: string): boolean {
-  try {
-    return storage.read(connectedKey(uid)) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writeConnected(uid: string, connected: boolean): void {
-  try {
-    storage.write(connectedKey(uid), connected ? '1' : '');
-  } catch {
-    return;
-  }
-}
+const SYNC_INTERVAL_MS = 5 * 60_000;
 
 export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleCalendarSync {
   const available = Platform.OS === 'web' && Boolean(readGoogleWebClientId());
@@ -52,6 +41,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
+  const runningRef = useRef(false);
   const meetingsRef = useRef(meetings);
   meetingsRef.current = meetings;
 
@@ -67,13 +57,21 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     return next;
   }, []);
 
-  const pull = useCallback(async (accessToken: string) => {
-    const { events } = await listGoogleEvents(accessToken, { window: calendarWindow() });
-    const drafts = events
-      .map((event) => meetingFromGoogleEvent(event, generateRoomId()))
-      .filter((draft): draft is NonNullable<typeof draft> => draft !== null);
-    await meetingsRef.current.applyGoogle(drafts, cancelledEventIds(events));
-  }, []);
+  const pull = useCallback(
+    async (accessToken: string) => {
+      const next = await pullGoogleCalendar(
+        {
+          list: (query) => listGoogleEvents(accessToken, query),
+          apply: (drafts, cancelledIds) => meetingsRef.current.applyGoogle(drafts, cancelledIds),
+          roomId: generateRoomId,
+          window: calendarWindow,
+        },
+        readSyncToken(uid),
+      );
+      writeSyncToken(uid, next);
+    },
+    [uid],
+  );
 
   const pushLocal = useCallback(async (accessToken: string) => {
     for (const meeting of meetingsRef.current.meetings) {
@@ -106,9 +104,10 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
   }, [pull, pushLocal, token, uid]);
 
   const sync = useCallback(async () => {
-    if (!connected) {
+    if (!connected || runningRef.current) {
       return;
     }
+    runningRef.current = true;
     setError(null);
     setSyncing(true);
     try {
@@ -119,16 +118,41 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
       tokenRef.current = null;
       setError(cause instanceof Error ? cause.message : 'Could not sync Google Calendar.');
     } finally {
+      runningRef.current = false;
       setSyncing(false);
     }
   }, [connected, pull, pushLocal, token]);
 
   const disconnect = useCallback(() => {
     tokenRef.current = null;
-    writeConnected(uid, false);
+    forgetGoogleCalendar(uid);
     setConnected(false);
     setError(null);
   }, [uid]);
+
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
+
+  useEffect(() => {
+    if (!available || !connected || typeof document === 'undefined') {
+      return;
+    }
+    const run = () => {
+      void syncRef.current();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        run();
+      }
+    };
+    run();
+    const timer = setInterval(run, SYNC_INTERVAL_MS);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [available, connected, uid]);
 
   const publish = useCallback(
     async (meeting: Meeting) => {
