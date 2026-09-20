@@ -22,6 +22,7 @@ import { IconButton } from '../ui/IconButton';
 export interface CalendarScreenProps {
   meetings: Meeting[];
   onStart: (meeting: Meeting) => void;
+  onEdit: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
   onSchedule: (day: Date) => void;
@@ -31,6 +32,7 @@ export interface CalendarScreenProps {
 export function CalendarScreen({
   meetings,
   onStart,
+  onEdit,
   onDelete,
   onInvite,
   onSchedule,
@@ -155,6 +157,7 @@ export function CalendarScreen({
         meetings={selectedMeetings}
         emptyText="No meetings on this day."
         onStart={onStart}
+        onEdit={onEdit}
         onDelete={onDelete}
         onInvite={onInvite}
       />

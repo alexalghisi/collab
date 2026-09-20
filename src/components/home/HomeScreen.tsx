@@ -22,6 +22,7 @@ export interface HomeScreenProps {
   error: string | null;
   meetings: Meeting[];
   onStartMeeting: (meeting: Meeting) => void;
+  onEditMeeting: (meeting: Meeting) => void;
   onDeleteMeeting: (meeting: Meeting) => void;
   onInviteMeeting: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
 }
@@ -70,6 +71,7 @@ export function HomeScreen({
   error,
   meetings,
   onStartMeeting,
+  onEditMeeting,
   onDeleteMeeting,
   onInviteMeeting,
 }: HomeScreenProps) {
@@ -143,6 +145,7 @@ export function HomeScreen({
         meetings={upNext}
         emptyText="No upcoming meetings. Schedule one to see it here."
         onStart={onStartMeeting}
+        onEdit={onEditMeeting}
         onDelete={onDeleteMeeting}
         onInvite={onInviteMeeting}
       />

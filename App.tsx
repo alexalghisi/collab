@@ -41,6 +41,7 @@ export default function App() {
   const teamChat = useTeamChat(auth.user);
   const [view, setView] = useState<View>('home');
   const [scheduleStart, setScheduleStart] = useState(() => nextHalfHour());
+  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [roomId, setRoomId] = useState(() => readRoomFromLink() ?? '');
   const [displayName, setDisplayName] = useState('');
   const resumeAttempted = useRef(false);
@@ -139,12 +140,24 @@ export default function App() {
     if (day) {
       start.setFullYear(day.getFullYear(), day.getMonth(), day.getDate());
     }
+    setEditingMeeting(null);
     setScheduleStart(start);
     setView('schedule');
   };
 
+  const openEdit = (meeting: Meeting) => {
+    setEditingMeeting(meeting);
+    setView('schedule');
+  };
+
   const saveMeeting = (draft: MeetingDraft) => {
-    void meetings.schedule(draft).then((meeting) => googleCalendar.publish(meeting));
+    if (editingMeeting) {
+      const updated: Meeting = { ...editingMeeting, ...draft };
+      void meetings.save(updated).then(() => googleCalendar.update(updated));
+    } else {
+      void meetings.schedule(draft).then((meeting) => googleCalendar.publish(meeting));
+    }
+    setEditingMeeting(null);
     setView('meetings');
   };
 
@@ -207,6 +220,7 @@ export default function App() {
             error={session.error}
             meetings={meetings.meetings}
             onStartMeeting={startMeeting}
+            onEditMeeting={openEdit}
             onDeleteMeeting={deleteMeeting}
             onInviteMeeting={inviteMeeting}
           />
@@ -215,6 +229,7 @@ export default function App() {
           <MeetingsScreen
             meetings={meetings.meetings}
             onStart={startMeeting}
+            onEdit={openEdit}
             onDelete={deleteMeeting}
             onInvite={inviteMeeting}
             onSchedule={() => openSchedule()}
@@ -224,6 +239,7 @@ export default function App() {
           <CalendarScreen
             meetings={meetings.meetings}
             onStart={startMeeting}
+            onEdit={openEdit}
             onDelete={deleteMeeting}
             onInvite={inviteMeeting}
             onSchedule={openSchedule}
@@ -235,8 +251,12 @@ export default function App() {
         {view === 'schedule' && (
           <ScheduleMeetingScreen
             initialStart={scheduleStart}
+            initialMeeting={editingMeeting}
             onSave={saveMeeting}
-            onCancel={() => setView('meetings')}
+            onCancel={() => {
+              setEditingMeeting(null);
+              setView('meetings');
+            }}
           />
         )}
       </AppShell>
