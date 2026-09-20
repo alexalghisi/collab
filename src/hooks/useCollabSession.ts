@@ -5,7 +5,7 @@ import { mergeChatHistory } from '../chat/history';
 import { type ChatDraft, withDeletedChatMessage, withEditedChatMessage } from '../chat/messages';
 import { REJECTION_MESSAGES, validateExecutionRequest } from '../code/execution';
 import { programSource } from '../code/programSource';
-import { mergeWorkspaceFiles, withCppSidecars, type WorkspaceFile } from '../code/workspaceFiles';
+import { mergeWorkspaceFiles, type WorkspaceFile } from '../code/workspaceFiles';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
@@ -855,7 +855,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         language: document.language,
         code: programSource(source, document.text.toString()),
         stdin,
-        files: document.language === 'cpp' ? withCppSidecars(files) : [...files],
+        files: [...files],
       };
       const checked = validateExecutionRequest(payload);
       if (!checked.ok) {
