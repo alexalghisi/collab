@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import Editor, { type OnMount } from '@monaco-editor/react';
+import { applyFormattedCode } from '../../code/formatSource';
 import type { CodeLanguage } from '../../code/languages';
 import type { CodePresence, SharedCodeDocument } from '../../code/SharedCodeDocument';
 import {
@@ -124,6 +125,7 @@ export function CodePanel({
         onLanguageChange={(next) => shared.setLanguage(next)}
         stdin={stdin}
         onStdinChange={setStdin}
+        onFormat={() => applyFormattedCode(language, shared, files, openFile, onFilesChange)}
         onRun={() =>
           onRun(
             stdin,

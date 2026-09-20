@@ -9,6 +9,7 @@ export interface CodeControlsProps {
   onLanguageChange: (language: CodeLanguage) => void;
   stdin: string;
   onStdinChange: (stdin: string) => void;
+  onFormat: () => void;
   onRun: () => void;
   running: boolean;
   editors: CodePresence[];
@@ -20,6 +21,7 @@ export function CodeControls({
   onLanguageChange,
   stdin,
   onStdinChange,
+  onFormat,
   onRun,
   running,
   editors,
@@ -48,6 +50,14 @@ export function CodeControls({
         onChangeText={onStdinChange}
         placeholder="Input (stdin)"
         placeholderTextColor={colors.textSubtle}
+      />
+
+      <Button
+        label="Format"
+        icon="code-slash-outline"
+        variant="secondary"
+        compact
+        onPress={onFormat}
       />
 
       <Button

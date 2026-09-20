@@ -183,6 +183,21 @@ export class SharedCodeDocument {
     Y.applyUpdate(this.doc, decodeUpdate(state), REMOTE);
   }
 
+  replaceText(next: string): void {
+    const current = this.text.toString();
+    if (next === current) {
+      return;
+    }
+    this.doc.transact(() => {
+      if (current.length > 0) {
+        this.text.delete(0, current.length);
+      }
+      if (next !== '') {
+        this.text.insert(0, next);
+      }
+    });
+  }
+
   /** Sends the whole document, so a peer that missed updates catches up. */
   publishState(): void {
     if (this.live) {
