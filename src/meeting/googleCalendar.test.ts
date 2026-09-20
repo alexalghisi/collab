@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   CALENDAR_API_DISABLED,
   calendarApiLibraryUrl,
@@ -10,8 +10,10 @@ import {
   meetingFromGoogleEvent,
   roomIdFromEvent,
   SYNC_TOKEN_EXPIRED,
+  updateGoogleEvent,
   type GoogleCalendarEvent,
 } from './googleCalendar';
+import type { Meeting } from './types';
 
 const timed: GoogleCalendarEvent = {
   id: 'evt-1',
@@ -167,6 +169,77 @@ describe('google calendar sync protocol', () => {
 
     await expect(listGoogleEvents('ya29.token', { syncToken: 'stale' }, fetchImpl)).rejects.toThrow(
       SYNC_TOKEN_EXPIRED,
+    );
+  });
+});
+
+describe('pushing a Collab edit back to Google', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const meeting: Meeting = {
+    id: 'm1',
+    title: 'Weekly sync',
+    roomId: 'kqz-wrtm-pfa',
+    startsAt: Date.parse('2026-09-16T09:00:00.000Z'),
+    durationMinutes: 45,
+    description: 'Agenda and notes',
+    createdAt: 0,
+    googleEventId: 'evt-1',
+    fromGoogle: true,
+  };
+  const inviteLink = 'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa';
+
+  it('PATCHes the linked event with the new time, date and text', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    global.fetch = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ id: 'evt-1' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const id = await updateGoogleEvent('ya29.token', meeting, inviteLink);
+
+    expect(id).toBe('evt-1');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init.method).toBe('PATCH');
+    expect(calls[0].url).toContain('/events/evt-1');
+    const body = JSON.parse(String(calls[0].init.body)) as {
+      summary: string;
+      description: string;
+      location: string;
+      start: { dateTime: string };
+      end: { dateTime: string };
+    };
+    expect(body.summary).toBe('Weekly sync');
+    expect(body.location).toBe(inviteLink);
+    expect(body.description).toContain('Agenda and notes');
+    expect(body.description).toContain(`Join: ${inviteLink}`);
+    expect(body.start.dateTime).toBe(new Date(meeting.startsAt).toISOString());
+    expect(body.end.dateTime).toBe(
+      new Date(meeting.startsAt + meeting.durationMinutes * 60_000).toISOString(),
+    );
+  });
+
+  it('refuses to patch a meeting that was never linked to a Google event', async () => {
+    await expect(
+      updateGoogleEvent('ya29.token', { ...meeting, googleEventId: undefined }, inviteLink),
+    ).rejects.toThrow(/not linked/i);
+  });
+
+  it('surfaces an expired Google session instead of silently failing', async () => {
+    global.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: 'nope' } }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
+
+    await expect(updateGoogleEvent('ya29.token', meeting, inviteLink)).rejects.toThrow(
+      'Google Calendar access expired. Connect it again.',
     );
   });
 });

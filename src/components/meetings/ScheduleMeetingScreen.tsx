@@ -3,30 +3,37 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import { parseDateTime, toDateInput, toTimeInput } from '../../meeting/calendar';
 import { generateRoomId } from '../../meeting/roomId';
-import type { MeetingDraft } from '../../meeting/types';
+import type { Meeting, MeetingDraft } from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
 export interface ScheduleMeetingScreenProps {
-  /** Pre-selected start (e.g. the day picked in the calendar). */
+  /** Pre-selected start (e.g. the day picked in the calendar). Used when creating. */
   initialStart: Date;
+  /** When set, the form edits this meeting instead of creating a new one. */
+  initialMeeting?: Meeting | null;
   onSave: (draft: MeetingDraft) => void;
   onCancel: () => void;
 }
 
 export function ScheduleMeetingScreen({
   initialStart,
+  initialMeeting,
   onSave,
   onCancel,
 }: ScheduleMeetingScreenProps) {
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState(() => toDateInput(initialStart));
-  const [time, setTime] = useState(() => toTimeInput(initialStart));
-  const [durationMinutes, setDurationMinutes] = useState(30);
-  const [description, setDescription] = useState('');
-  const [roomId, setRoomId] = useState(generateRoomId);
+  const editing = Boolean(initialMeeting);
+  const start = initialMeeting ? new Date(initialMeeting.startsAt) : initialStart;
+  const [title, setTitle] = useState(initialMeeting?.title ?? '');
+  const [date, setDate] = useState(() => toDateInput(start));
+  const [time, setTime] = useState(() => toTimeInput(start));
+  const [durationMinutes, setDurationMinutes] = useState(
+    initialMeeting && initialMeeting.durationMinutes > 0 ? initialMeeting.durationMinutes : 30,
+  );
+  const [description, setDescription] = useState(initialMeeting?.description ?? '');
+  const [roomId, setRoomId] = useState(() => initialMeeting?.roomId ?? generateRoomId());
 
   const startsAt = parseDateTime(date, time);
   const ready = title.trim().length > 0 && startsAt !== null;
@@ -46,7 +53,7 @@ export function ScheduleMeetingScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.heading}>Schedule a meeting</Text>
+      <Text style={styles.heading}>{editing ? 'Edit meeting' : 'Schedule a meeting'}</Text>
 
       <Text style={styles.label}>Title</Text>
       <TextInput
@@ -129,7 +136,12 @@ export function ScheduleMeetingScreen({
 
       <View style={styles.actions}>
         <Button label="Cancel" variant="secondary" onPress={onCancel} />
-        <Button label="Save meeting" icon="checkmark" onPress={save} disabled={!ready} />
+        <Button
+          label={editing ? 'Save changes' : 'Save meeting'}
+          icon="checkmark"
+          onPress={save}
+          disabled={!ready}
+        />
       </View>
     </ScrollView>
   );

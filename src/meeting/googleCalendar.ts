@@ -196,6 +196,42 @@ export async function insertGoogleEvent(
   return body.id;
 }
 
+/**
+ * Pushes a local edit (time, date, title or description) back to the Google
+ * event it came from. Uses PATCH so fields Collab does not manage — attendees,
+ * conferencing, reminders — are left untouched on the Google side.
+ */
+export async function updateGoogleEvent(
+  token: string,
+  meeting: Meeting,
+  inviteLink: string,
+): Promise<string> {
+  if (!meeting.googleEventId) {
+    throw new Error('This meeting is not linked to a Google Calendar event.');
+  }
+  const response = await fetch(`${EVENTS_URL}/${encodeURIComponent(meeting.googleEventId)}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      summary: meeting.title,
+      description: [meeting.description, `Join: ${inviteLink}`].filter(Boolean).join('\n\n'),
+      location: inviteLink,
+      start: { dateTime: new Date(meeting.startsAt).toISOString() },
+      end: { dateTime: new Date(meetingEndsAt(meeting)).toISOString() },
+    }),
+  });
+  const body = (await response.json().catch(() => ({}))) as CalendarErrorBody & {
+    readonly id?: string;
+  };
+  if (!response.ok || typeof body.id !== 'string') {
+    throw new Error(calendarError(response.status, body));
+  }
+  return body.id;
+}
+
 export async function deleteGoogleEvent(token: string, eventId: string): Promise<void> {
   const response = await fetch(`${EVENTS_URL}/${encodeURIComponent(eventId)}`, {
     method: 'DELETE',
