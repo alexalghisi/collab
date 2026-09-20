@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { startRoomServer, until, type RoomServer } from '../testing/roomServer';
 import { ExecutionService } from '../../server/src/execution/ExecutionService';
 import type { SandboxRunner } from '../../server/src/execution/SandboxRunner';
-import type { RunFinished, RunOutput, RunStarted } from './events';
+import type { RunFinished, RunOutput, RunStarted } from '../code/execution';
 
 const runner: SandboxRunner = {
   name: 'fake',
