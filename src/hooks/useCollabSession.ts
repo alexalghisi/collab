@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
 import { mergeChatHistory } from '../chat/history';
-import type { ChatDraft } from '../chat/messages';
+import { type ChatDraft, withDeletedChatMessage, withEditedChatMessage } from '../chat/messages';
 import { REJECTION_MESSAGES, validateExecutionRequest } from '../code/execution';
 import { programSource } from '../code/programSource';
 import { mergeWorkspaceFiles, withCppSidecars, type WorkspaceFile } from '../code/workspaceFiles';
@@ -711,10 +711,26 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   }, []);
 
   const editMessage = useCallback((id: string, text: string) => {
+    setMessages((current) => {
+      const next = mergeChatHistory(current, withEditedChatMessage(current, id, text, Date.now()));
+      const room = roomIdRef.current;
+      if (room) {
+        saveRoomSnapshot(room, { messages: next });
+      }
+      return next;
+    });
     signalingRef.current?.emit('chat:edit', { id, text });
   }, []);
 
   const deleteMessage = useCallback((id: string) => {
+    setMessages((current) => {
+      const next = mergeChatHistory(current, withDeletedChatMessage(current, id, Date.now()));
+      const room = roomIdRef.current;
+      if (room) {
+        saveRoomSnapshot(room, { messages: next });
+      }
+      return next;
+    });
     signalingRef.current?.emit('chat:delete', { id });
   }, []);
 
