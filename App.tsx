@@ -13,6 +13,7 @@ import { buildInviteLink, readRoomFromLink, syncRoomInLink } from './src/meeting
 import { sendContactInvite } from './src/meeting/sendInvite';
 import { readLiveMeeting } from './src/meeting/resume';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
+import { deleteMeeting as retractThenRemove } from './src/meeting/deleteMeeting';
 import { useMeetings } from './src/meeting/useMeetings';
 import { useGoogleCalendar } from './src/meeting/useGoogleCalendar';
 import { useMeetingSearch } from './src/search/useMeetingSearch';
@@ -105,7 +106,7 @@ export default function App() {
     return `Email sent to ${guests.join(', ')}. They get a reminder ${invite.reminderMinutes} minutes before.`;
   };
   const deleteMeeting = (meeting: Meeting) => {
-    void googleCalendar.retract(meeting).then(() => meetings.remove(meeting.id));
+    void retractThenRemove(meeting, googleCalendar.retract, meetings.remove);
   };
 
   useEffect(() => {
