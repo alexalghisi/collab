@@ -244,3 +244,10 @@ export async function deleteGoogleEvent(token: string, eventId: string): Promise
     throw new Error(calendarError(response.status, await readError(response)));
   }
 }
+
+export async function retractGoogleEvent(token: string, meeting: Meeting): Promise<void> {
+  if (!meeting.googleEventId) {
+    return;
+  }
+  await deleteGoogleEvent(token, meeting.googleEventId);
+}

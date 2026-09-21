@@ -7,10 +7,10 @@ import { generateRoomId } from './roomId';
 import { storage } from './storage';
 import {
   calendarWindow,
-  deleteGoogleEvent,
   insertGoogleEvent,
   listGoogleEvents,
   meetingFromGoogleEvent,
+  retractGoogleEvent,
   updateGoogleEvent,
 } from './googleCalendar';
 import type { MeetingsState } from './useMeetings';
@@ -187,17 +187,19 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
 
   const retract = useCallback(
     async (meeting: Meeting) => {
-      if (!meeting.googleEventId || meeting.fromGoogle) {
+      if (!connected || !meeting.googleEventId) {
         return;
       }
       try {
         const accessToken = tokenRef.current ?? (await token(''));
-        await deleteGoogleEvent(accessToken, meeting.googleEventId);
-      } catch {
-        return;
+        await retractGoogleEvent(accessToken, meeting);
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : 'Could not delete this meeting from Google.',
+        );
       }
     },
-    [token],
+    [connected, token],
   );
 
   return {
