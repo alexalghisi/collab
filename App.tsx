@@ -105,8 +105,7 @@ export default function App() {
     return `Email sent to ${guests.join(', ')}. They get a reminder ${invite.reminderMinutes} minutes before.`;
   };
   const deleteMeeting = (meeting: Meeting) => {
-    void googleCalendar.retract(meeting);
-    void meetings.remove(meeting.id);
+    void googleCalendar.retract(meeting).then(() => meetings.remove(meeting.id));
   };
 
   useEffect(() => {
