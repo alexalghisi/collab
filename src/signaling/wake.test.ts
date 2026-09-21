@@ -14,7 +14,11 @@ describe('waitUntilSignalingReady', () => {
       return ok();
     };
 
-    await waitUntilSignalingReady('http://localhost:4000', { fetchImpl, timeoutMs: 20, pauseMs: 1 });
+    await waitUntilSignalingReady('http://localhost:4000', {
+      fetchImpl,
+      timeoutMs: 20,
+      pauseMs: 1,
+    });
 
     expect(hits).toBe(0);
   });
