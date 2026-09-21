@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
@@ -13,8 +14,13 @@ import {
 import { firebaseAuth as firebase } from '../firebase/app';
 import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
 import { requestGoogleCredential } from './googleWeb';
-import { clearSessionToken, readSessionToken, writeSessionToken } from './session';
-import type { AuthState, AuthUser, SocialProvider } from './types';
+import {
+  clearSessionToken,
+  readSessionSnapshot,
+  restorePersistedSession,
+  writeSessionSnapshot,
+} from './session';
+import type { AuthState, AuthUser, GoogleCredential, SocialProvider } from './types';
 
 const providerFactories: Record<SocialProvider, () => GoogleAuthProvider | FacebookAuthProvider> = {
   google: () => new GoogleAuthProvider(),
@@ -53,14 +59,32 @@ async function attachSignalingSession(
 ): Promise<void> {
   try {
     const session = await loginAccount(email, password);
-    writeSessionToken(session.token);
+    writeSessionSnapshot(session);
   } catch {
     try {
       const session = await registerAccount({ displayName, email, password });
-      writeSessionToken(session.token);
+      writeSessionSnapshot(session);
     } catch {
       return;
     }
+  }
+}
+
+async function rememberGoogleSession(
+  credential: GoogleCredential,
+  session: { token: string; user: AuthUser },
+): Promise<void> {
+  writeSessionSnapshot(session);
+  if (!firebase || (!credential.idToken && !credential.accessToken)) {
+    return;
+  }
+  try {
+    await signInWithCredential(
+      firebase,
+      GoogleAuthProvider.credential(credential.idToken, credential.accessToken),
+    );
+  } catch {
+    return;
   }
 }
 
@@ -71,38 +95,40 @@ export function useAuth(): AuthState {
 
   useEffect(() => {
     let cancelled = false;
-    const finish = (next: AuthUser | null) => {
-      if (!cancelled) {
-        setUser(next);
-        setInitializing(false);
-      }
-    };
+    const snapshot = readSessionSnapshot();
+    if (snapshot?.user) {
+      setUser(snapshot.user);
+      setInitializing(false);
+    }
 
-    const token = readSessionToken();
-    const restore = (fallback: AuthUser | null) => {
-      if (!token) {
-        finish(fallback);
+    const applyRestored = (restored: AuthUser | null, firebaseUser: AuthUser | null) => {
+      if (cancelled) {
         return;
       }
-      void restoreAccount(token)
-        .then((restored) => finish(restored))
-        .catch(() => {
-          clearSessionToken();
-          finish(fallback);
-        });
+      if (restored) {
+        setUser(restored);
+      } else if (!firebaseUser) {
+        setUser(null);
+      }
+      setInitializing(false);
     };
 
     if (firebase) {
       return onAuthStateChanged(firebase, (next) => {
-        if (next) {
-          finish(toAuthUser(next));
-          return;
+        const firebaseUser = next ? toAuthUser(next) : null;
+        if (firebaseUser && !cancelled) {
+          setUser(firebaseUser);
+          setInitializing(false);
         }
-        restore(null);
+        void restorePersistedSession(restoreAccount).then((restored) => {
+          applyRestored(restored, firebaseUser);
+        });
       });
     }
 
-    restore(null);
+    void restorePersistedSession(restoreAccount).then((restored) => {
+      applyRestored(restored, null);
+    });
 
     return () => {
       cancelled = true;
@@ -115,7 +141,7 @@ export function useAuth(): AuthState {
       try {
         const credential = await requestGoogleCredential();
         const session = await loginWithGoogle(credential);
-        writeSessionToken(session.token);
+        await rememberGoogleSession(credential, session);
         setUser(session.user);
       } catch (cause) {
         setError(
@@ -152,7 +178,7 @@ export function useAuth(): AuthState {
         }
       }
       const session = await loginAccount(email, password);
-      writeSessionToken(session.token);
+      writeSessionSnapshot(session);
       setUser(session.user);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Sign-in failed. Please try again.');
@@ -184,7 +210,7 @@ export function useAuth(): AuthState {
           }
         }
         const session = await registerAccount(input);
-        writeSessionToken(session.token);
+        writeSessionSnapshot(session);
         setUser(session.user);
       } catch (cause) {
         setError(
