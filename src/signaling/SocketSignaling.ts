@@ -11,6 +11,7 @@ import {
   type SignalingFactory,
   type SignalingOptions,
 } from './SignalingChannel';
+import { isLoopbackSignalingUrl, waitUntilSignalingReady } from './wake';
 
 type CollabSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -24,16 +25,6 @@ interface RawSocket {
   emit(event: string, ...args: unknown[]): unknown;
 }
 
-/** Loopback is either up or forgotten; a remote host may still be waking. */
-function isLoopbackUrl(url: string): boolean {
-  try {
-    const { hostname } = new URL(url);
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-  } catch {
-    return false;
-  }
-}
-
 class SocketChannel implements SignalingChannel {
   private readonly socket: CollabSocket;
   private readonly raw: RawSocket;
@@ -43,9 +34,7 @@ class SocketChannel implements SignalingChannel {
     private readonly options: SignalingOptions,
   ) {
     this.socket = io(url, {
-      // Polling is the fallback when the first websocket upgrade is refused —
-      // a preview, a proxy, or a browser that cannot hold a raw WS open.
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       autoConnect: false,
       reconnectionAttempts: 8,
       reconnectionDelay: 750,
@@ -62,7 +51,8 @@ class SocketChannel implements SignalingChannel {
     this.raw.emit(event, payload);
   };
 
-  connect(): Promise<void> {
+  async connect(): Promise<void> {
+    await waitUntilSignalingReady(this.url);
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (error?: Error) => {
@@ -82,12 +72,11 @@ class SocketChannel implements SignalingChannel {
         // A first refused upgrade is not the end on a remote host: Render's
         // free instances sleep, and the next attempt is the one that lands.
         // Loopback has no cold start — if nothing is listening, say so now.
-        if (isLoopbackUrl(this.url) || !this.socket.active) {
+        if (isLoopbackSignalingUrl(this.url) || !this.socket.active) {
           finish(new SignalingUnavailableError(this.url));
         }
       };
-      // Remote URLs can sit in "connecting" forever if the host is gone.
-      const timer = setTimeout(() => finish(new SignalingUnavailableError(this.url)), 12_000);
+      const timer = setTimeout(() => finish(new SignalingUnavailableError(this.url)), 15_000);
       this.socket.on('connect_error', onError);
       this.socket.once('room:joined', () => finish());
       this.socket.once('room:denied', () => finish(new AdmissionDeniedError()));
