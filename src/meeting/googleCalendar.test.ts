@@ -8,6 +8,7 @@ import {
   eventStartsAt,
   listGoogleEvents,
   meetingFromGoogleEvent,
+  retractGoogleEvent,
   roomIdFromEvent,
   SYNC_TOKEN_EXPIRED,
   updateGoogleEvent,
@@ -239,6 +240,75 @@ describe('pushing a Collab edit back to Google', () => {
       })) as typeof fetch;
 
     await expect(updateGoogleEvent('ya29.token', meeting, inviteLink)).rejects.toThrow(
+      'Google Calendar access expired. Connect it again.',
+    );
+  });
+});
+
+describe('retracting a Collab meeting from Google', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const meeting: Meeting = {
+    id: 'm1',
+    title: 'Weekly sync',
+    roomId: 'kqz-wrtm-pfa',
+    startsAt: Date.parse('2026-09-16T09:00:00.000Z'),
+    durationMinutes: 45,
+    description: 'Agenda and notes',
+    createdAt: 0,
+    googleEventId: 'evt-1',
+    fromGoogle: true,
+  };
+
+  const captureDelete = () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    global.fetch = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(null, { status: 204 });
+    }) as unknown as typeof fetch;
+    return calls;
+  };
+
+  it('DELETEs the linked event even when the meeting was imported from Google', async () => {
+    const calls = captureDelete();
+
+    await retractGoogleEvent('ya29.token', meeting);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init.method).toBe('DELETE');
+    expect(calls[0].url).toContain('/events/evt-1');
+    expect(calls[0].init.headers).toEqual({ Authorization: 'Bearer ya29.token' });
+  });
+
+  it('does not call Google when the meeting has no googleEventId', async () => {
+    const calls = captureDelete();
+
+    await retractGoogleEvent('ya29.token', {
+      ...meeting,
+      googleEventId: undefined,
+      fromGoogle: false,
+    });
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it('treats a 404 from Google as already gone', async () => {
+    global.fetch = (async () => new Response(null, { status: 404 })) as typeof fetch;
+
+    await expect(retractGoogleEvent('ya29.token', meeting)).resolves.toBeUndefined();
+  });
+
+  it('surfaces an expired Google session instead of silently failing', async () => {
+    global.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: 'nope' } }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      })) as typeof fetch;
+
+    await expect(retractGoogleEvent('ya29.token', meeting)).rejects.toThrow(
       'Google Calendar access expired. Connect it again.',
     );
   });
