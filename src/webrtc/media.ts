@@ -50,10 +50,13 @@ function hintContent(track: MediaStreamTrack, hint: 'motion' | 'detail' | 'speec
   }
 }
 
-export async function acquireLocalStream(options: MediaConstraintsOptions): Promise<MediaStream> {
+async function openUserMedia(
+  video: boolean | MediaTrackConstraints,
+  audio: boolean,
+): Promise<MediaStream> {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: options.video ? CAMERA_CONSTRAINTS : false,
-    audio: options.audio ? AUDIO_CONSTRAINTS : false,
+    video,
+    audio: audio ? AUDIO_CONSTRAINTS : false,
   });
   for (const track of stream.getAudioTracks()) {
     hintContent(track, 'speech');
@@ -64,11 +67,24 @@ export async function acquireLocalStream(options: MediaConstraintsOptions): Prom
   return stream;
 }
 
+async function openCamera(audio: boolean): Promise<MediaStream> {
+  try {
+    return await openUserMedia(CAMERA_CONSTRAINTS, audio);
+  } catch {
+    return openUserMedia(true, audio);
+  }
+}
+
+export async function acquireLocalStream(options: MediaConstraintsOptions): Promise<MediaStream> {
+  if (!options.video) {
+    return openUserMedia(false, options.audio);
+  }
+  return openCamera(options.audio);
+}
+
 export async function acquireCameraTrack(): Promise<MediaStreamTrack> {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: CAMERA_CONSTRAINTS });
-  const track = stream.getVideoTracks()[0];
-  hintContent(track, 'motion');
-  return track;
+  const stream = await openCamera(false);
+  return stream.getVideoTracks()[0];
 }
 
 export async function acquireScreenTrack(): Promise<MediaStreamTrack> {

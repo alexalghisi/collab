@@ -98,7 +98,7 @@ export function HomeScreen({
           title="New meeting"
           subtitle="Start now and invite others"
           color={colors.warning}
-          onPress={() => onJoin(generateRoomId(), false)}
+          onPress={() => onJoin(generateRoomId(), true)}
           disabled={!hasName || connecting}
         />
         <ActionCard
@@ -120,19 +120,19 @@ export function HomeScreen({
           placeholderTextColor={colors.textSubtle}
           autoCapitalize="none"
           autoCorrect={false}
-          onSubmitEditing={() => canJoin && onJoin(roomId.trim(), false)}
+          onSubmitEditing={() => canJoin && onJoin(roomId.trim(), true)}
         />
         <View style={styles.joinActions}>
           <Button
             label={connecting ? 'Connecting…' : 'Join'}
             icon="call"
-            onPress={() => onJoin(roomId.trim(), false)}
+            onPress={() => onJoin(roomId.trim(), true)}
             disabled={!canJoin}
           />
         </View>
         {connecting && (
           <Text style={styles.connecting}>
-            Connecting… allow the microphone if the browser asks.
+            Connecting… allow the camera and microphone if the browser asks.
           </Text>
         )}
         {error && <Text style={styles.error}>{error}</Text>}

@@ -654,6 +654,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     try {
       track = await acquireCameraTrack();
     } catch {
+      setError(MEDIA_ERROR);
       return;
     }
     await swapLocalVideo(track);
