@@ -241,7 +241,11 @@ export async function deleteGoogleEvent(token: string, eventId: string): Promise
     return;
   }
   if (!response.ok) {
-    throw new Error(calendarError(response.status, await readError(response)));
+    const error = new Error(calendarError(response.status, await readError(response))) as Error & {
+      status: number;
+    };
+    error.status = response.status;
+    throw error;
   }
 }
 
@@ -250,4 +254,37 @@ export async function retractGoogleEvent(token: string, meeting: Meeting): Promi
     return;
   }
   await deleteGoogleEvent(token, meeting.googleEventId);
+}
+
+export function isGoogleUnauthorized(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    (error as { status: unknown }).status === 401
+  );
+}
+
+export async function retractCalendarMeeting(
+  meeting: Meeting,
+  accessToken: string | null,
+  requestConsentToken: () => Promise<string>,
+  retractEvent: (token: string, meeting: Meeting) => Promise<void> = retractGoogleEvent,
+): Promise<void> {
+  if (!meeting.googleEventId) {
+    return;
+  }
+  let token = accessToken;
+  if (!token) {
+    token = await requestConsentToken();
+  }
+  try {
+    await retractEvent(token, meeting);
+  } catch (cause) {
+    if (!isGoogleUnauthorized(cause)) {
+      throw cause;
+    }
+    token = await requestConsentToken();
+    await retractEvent(token, meeting);
+  }
 }
