@@ -5,7 +5,12 @@ import * as Facebook from 'expo-auth-session/providers/facebook';
 import type { AuthSessionResult } from 'expo-auth-session';
 import { readNativeAuthConfig } from './config';
 import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
-import { clearSessionToken, readSessionToken, writeSessionToken } from './session';
+import {
+  clearSessionToken,
+  readSessionSnapshot,
+  restorePersistedSession,
+  writeSessionSnapshot,
+} from './session';
 import type { AuthState, AuthUser, SocialProvider } from './types';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -54,15 +59,26 @@ export function useAuth(): AuthState {
   });
 
   useEffect(() => {
-    const token = readSessionToken();
-    if (!token) {
+    let cancelled = false;
+    const snapshot = readSessionSnapshot();
+    if (snapshot?.user) {
+      setUser(snapshot.user);
       setInitializing(false);
-      return;
     }
-    void restoreAccount(token)
-      .then((restored) => setUser(restored))
-      .catch(() => clearSessionToken())
-      .finally(() => setInitializing(false));
+    void restorePersistedSession(restoreAccount)
+      .then((restored) => {
+        if (!cancelled) {
+          setUser(restored);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setInitializing(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const resolve = useCallback(
@@ -76,7 +92,7 @@ export function useAuth(): AuthState {
       if (idToken) {
         try {
           const session = await loginWithGoogle({ idToken });
-          writeSessionToken(session.token);
+          writeSessionSnapshot(session);
           setUser(session.user);
           setError(null);
         } catch {
@@ -87,7 +103,7 @@ export function useAuth(): AuthState {
       if (accessToken && fetchUser === fetchGoogleUser) {
         try {
           const session = await loginWithGoogle({ accessToken });
-          writeSessionToken(session.token);
+          writeSessionSnapshot(session);
           setUser(session.user);
           setError(null);
         } catch {
@@ -129,7 +145,7 @@ export function useAuth(): AuthState {
     setError(null);
     try {
       const session = await loginAccount(email, password);
-      writeSessionToken(session.token);
+      writeSessionSnapshot(session);
       setUser(session.user);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : SIGN_IN_ERROR);
@@ -141,7 +157,7 @@ export function useAuth(): AuthState {
       setError(null);
       try {
         const session = await registerAccount(input);
-        writeSessionToken(session.token);
+        writeSessionSnapshot(session);
         setUser(session.user);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Could not create your account.');

@@ -90,13 +90,17 @@ export async function restoreAccount(token: string): Promise<AuthUser> {
   } catch {
     throw new Error('Could not restore your session.');
   }
+  const body = (await response.json().catch(() => ({}))) as AuthResponseBody;
   if (!response.ok) {
-    throw new Error('Sign in to continue.');
+    const message = typeof body.error === 'string' ? body.error : 'Sign in to continue.';
+    if (response.status === 401) {
+      throw Object.assign(new Error(message), { status: 401 });
+    }
+    throw new Error('Could not restore your session.');
   }
-  const body = (await response.json()) as AuthResponseBody;
   const user = toUser(body.user);
   if (!user) {
-    throw new Error('Sign in to continue.');
+    throw new Error('Could not restore your session.');
   }
   return user;
 }
