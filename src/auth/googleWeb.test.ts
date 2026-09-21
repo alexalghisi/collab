@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { requestGoogleCalendarToken } from './googleWeb';
+import { requestGoogleCalendarToken, requestGoogleCredential } from './googleWeb';
 
 const CLIENT_ID = 'collab.apps.googleusercontent.com';
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
@@ -14,27 +14,38 @@ interface Asked {
   readonly prompt: string;
 }
 
+interface GoogleStub {
+  readonly asked: Asked[];
+  initializeCalls: number;
+  promptCalls: number;
+}
+
 type GoogleGlobal = { google?: unknown };
 
-function stubGoogle(response: TokenResponse): Asked[] {
-  const asked: Asked[] = [];
+function stubGoogle(response: TokenResponse): GoogleStub {
+  const stub: GoogleStub = { asked: [], initializeCalls: 0, promptCalls: 0 };
   (globalThis as GoogleGlobal).google = {
     accounts: {
       id: {
-        initialize: () => {},
-        prompt: () => {},
+        initialize: () => {
+          stub.initializeCalls += 1;
+        },
+        prompt: () => {
+          stub.promptCalls += 1;
+          throw new Error('GIS One Tap prompt should not run');
+        },
       },
       oauth2: {
         initTokenClient: (config: { scope: string; callback: (value: TokenResponse) => void }) => ({
           requestAccessToken: (options?: { prompt?: string }) => {
-            asked.push({ scope: config.scope, prompt: options?.prompt ?? '' });
+            stub.asked.push({ scope: config.scope, prompt: options?.prompt ?? '' });
             config.callback(response);
           },
         }),
       },
     },
   };
-  return asked;
+  return stub;
 }
 
 beforeEach(() => {
@@ -51,10 +62,10 @@ describe('requestGoogleCalendarToken', () => {
 
   it('asks Google for the calendar scope and hands back the access token', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    const asked = stubGoogle({ access_token: 'ya29.calendar' });
+    const stub = stubGoogle({ access_token: 'ya29.calendar' });
 
     await expect(requestGoogleCalendarToken('consent')).resolves.toBe('ya29.calendar');
-    expect(asked).toEqual([{ scope: CALENDAR_SCOPE, prompt: 'consent' }]);
+    expect(stub.asked).toEqual([{ scope: CALENDAR_SCOPE, prompt: 'consent' }]);
   });
 
   it('reports a refused consent instead of resolving without a token', async () => {
@@ -64,5 +75,38 @@ describe('requestGoogleCalendarToken', () => {
     await expect(requestGoogleCalendarToken()).rejects.toThrow(
       'Google Calendar access was not granted.',
     );
+  });
+});
+
+describe('requestGoogleCredential', () => {
+  it('refuses to start when the deployment has no Google web client id', async () => {
+    await expect(requestGoogleCredential()).rejects.toThrow(
+      'Google sign-in is not configured on this deployment.',
+    );
+  });
+
+  it('opens the OAuth account picker and returns an access token', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    const stub = stubGoogle({ access_token: 'ya29.login' });
+
+    await expect(requestGoogleCredential()).resolves.toEqual({ accessToken: 'ya29.login' });
+    expect(stub.asked).toEqual([{ scope: 'openid email profile', prompt: 'select_account' }]);
+  });
+
+  it('does not call Google One Tap initialize or prompt', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    const stub = stubGoogle({ access_token: 'ya29.login' });
+
+    await requestGoogleCredential();
+
+    expect(stub.initializeCalls).toBe(0);
+    expect(stub.promptCalls).toBe(0);
+  });
+
+  it('surfaces popup_closed_by_user from the token client', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    stubGoogle({ error: 'popup_closed_by_user' });
+
+    await expect(requestGoogleCredential()).rejects.toThrow('popup_closed_by_user');
   });
 });
