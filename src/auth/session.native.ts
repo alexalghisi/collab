@@ -13,7 +13,6 @@ export type { SessionSnapshot };
 export { isUnauthorizedRestore };
 
 let memoryToken: string | null = null;
-let memorySnapshot: SessionSnapshot | null = null;
 
 async function readStored(key: string): Promise<string | null> {
   try {
@@ -44,10 +43,8 @@ export async function hydrateSession(): Promise<SessionSnapshot | null> {
   const snapshot = raw ? parseSnapshot(raw) : null;
   if (snapshot) {
     memoryToken = snapshot.token;
-    memorySnapshot = snapshot;
     return snapshot;
   }
-  memorySnapshot = null;
   memoryToken = await readStored(TOKEN_KEY);
   return null;
 }
@@ -63,7 +60,6 @@ export async function writeSessionToken(token: string): Promise<void> {
 
 export async function clearSessionToken(): Promise<void> {
   memoryToken = null;
-  memorySnapshot = null;
   await removeStored([TOKEN_KEY, SNAPSHOT_KEY]);
 }
 
@@ -73,7 +69,6 @@ export async function readSessionSnapshot(): Promise<SessionSnapshot | null> {
 
 export async function writeSessionSnapshot(snapshot: SessionSnapshot): Promise<void> {
   memoryToken = snapshot.token;
-  memorySnapshot = snapshot;
   await writeSessionToken(snapshot.token);
   await writeStored(SNAPSHOT_KEY, JSON.stringify(snapshot));
 }
