@@ -49,26 +49,6 @@ function loadScript(): Promise<void> {
   });
 }
 
-function requestIdToken(api: GoogleIdentity, clientId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    api.id.initialize({
-      client_id: clientId,
-      callback: (response) => {
-        if (response.credential) {
-          resolve(response.credential);
-          return;
-        }
-        reject(new Error('Google sign-in was cancelled.'));
-      },
-    });
-    api.id.prompt((notification) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        reject(new Error('one-tap-unavailable'));
-      }
-    });
-  });
-}
-
 function requestAccessToken(api: GoogleIdentity, clientId: string): Promise<string> {
   const oauth = api.oauth2;
   if (!oauth) {
@@ -135,12 +115,5 @@ export async function requestGoogleCredential(): Promise<GoogleCredential> {
   if (!api) {
     throw new Error('Could not load Google Sign-In.');
   }
-  try {
-    return { idToken: await requestIdToken(api, clientId) };
-  } catch (cause) {
-    if (!(cause instanceof Error) || cause.message !== 'one-tap-unavailable') {
-      throw cause instanceof Error ? cause : new Error('Google sign-in failed.');
-    }
-    return { accessToken: await requestAccessToken(api, clientId) };
-  }
+  return { accessToken: await requestAccessToken(api, clientId) };
 }
