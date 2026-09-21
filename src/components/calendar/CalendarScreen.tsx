@@ -60,8 +60,8 @@ export function CalendarScreen({
             <Text style={styles.syncTitle}>Google Calendar</Text>
             <Text style={styles.syncHint}>
               {google.connected
-                ? 'Events from your Google account appear here.'
-                : 'Bring your Google events into this calendar.'}
+                ? 'Collab and Google Calendar stay in sync.'
+                : 'Connect once. Both calendars stay in sync while this page is open.'}
             </Text>
             {google.error ? <Text style={styles.syncError}>{google.error}</Text> : null}
             {google.error === CALENDAR_API_DISABLED && googleClientId ? (
