@@ -76,8 +76,8 @@ describe('native session snapshot', () => {
     expect(map.size).toBeGreaterThan(0);
     vi.resetModules();
     const again = await import('./session.native');
-    expect(await again.readSessionToken()).toBe('tok-live');
     expect(await again.readSessionSnapshot()).toEqual({ token: 'tok-live', user });
+    expect(again.readSessionToken()).toBe('tok-live');
   });
 
   it('ignores a snapshot that is not a token plus AuthUser', async () => {
