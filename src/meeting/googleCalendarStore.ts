@@ -8,6 +8,10 @@ export function googleCalendarTokenKey(uid: string): string {
   return `collab.googleCalendar.${uid}.token`;
 }
 
+export function googleCalendarSyncTokenKey(uid: string): string {
+  return `collab.googleCalendar.${uid}.syncToken`;
+}
+
 export function readGoogleCalendarConnected(uid: string): boolean {
   try {
     return storage.read(googleCalendarConnectedKey(uid)) === '1';
@@ -36,6 +40,23 @@ export function readGoogleCalendarToken(uid: string): string | null {
 export function writeGoogleCalendarToken(uid: string, token: string | null): void {
   try {
     storage.write(googleCalendarTokenKey(uid), token ?? '');
+  } catch {
+    return;
+  }
+}
+
+export function readGoogleCalendarSyncToken(uid: string): string | null {
+  try {
+    const value = storage.read(googleCalendarSyncTokenKey(uid));
+    return value ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeGoogleCalendarSyncToken(uid: string, token: string | null): void {
+  try {
+    storage.write(googleCalendarSyncTokenKey(uid), token ?? '');
   } catch {
     return;
   }
