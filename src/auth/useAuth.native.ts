@@ -60,22 +60,26 @@ export function useAuth(): AuthState {
 
   useEffect(() => {
     let cancelled = false;
-    const snapshot = readSessionSnapshot();
-    if (snapshot?.user) {
-      setUser(snapshot.user);
-      setInitializing(false);
-    }
-    void restorePersistedSession(restoreAccount)
-      .then((restored) => {
+    void (async () => {
+      const snapshot = await readSessionSnapshot();
+      if (cancelled) {
+        return;
+      }
+      if (snapshot?.user) {
+        setUser(snapshot.user);
+        setInitializing(false);
+      }
+      try {
+        const restored = await restorePersistedSession(restoreAccount);
         if (!cancelled) {
           setUser(restored);
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setInitializing(false);
         }
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -92,7 +96,7 @@ export function useAuth(): AuthState {
       if (idToken) {
         try {
           const session = await loginWithGoogle({ idToken });
-          writeSessionSnapshot(session);
+          await writeSessionSnapshot(session);
           setUser(session.user);
           setError(null);
         } catch {
@@ -103,7 +107,7 @@ export function useAuth(): AuthState {
       if (accessToken && fetchUser === fetchGoogleUser) {
         try {
           const session = await loginWithGoogle({ accessToken });
-          writeSessionSnapshot(session);
+          await writeSessionSnapshot(session);
           setUser(session.user);
           setError(null);
         } catch {
@@ -145,7 +149,7 @@ export function useAuth(): AuthState {
     setError(null);
     try {
       const session = await loginAccount(email, password);
-      writeSessionSnapshot(session);
+      await writeSessionSnapshot(session);
       setUser(session.user);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : SIGN_IN_ERROR);
@@ -157,7 +161,7 @@ export function useAuth(): AuthState {
       setError(null);
       try {
         const session = await registerAccount(input);
-        writeSessionSnapshot(session);
+        await writeSessionSnapshot(session);
         setUser(session.user);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Could not create your account.');
@@ -167,7 +171,7 @@ export function useAuth(): AuthState {
   );
 
   const signOut = useCallback(async () => {
-    clearSessionToken();
+    await clearSessionToken();
     setUser(null);
   }, []);
 

@@ -1,64 +1,88 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AuthUser } from './types';
+import {
+  SNAPSHOT_KEY,
+  TOKEN_KEY,
+  isUnauthorizedRestore,
+  parseSnapshot,
+  restorePersistedSessionFromStore,
+  type SessionSnapshot,
+} from './sessionShared';
 
-export interface SessionSnapshot {
-  readonly token: string;
-  readonly user: AuthUser;
-}
+export type { SessionSnapshot };
+export { isUnauthorizedRestore };
 
 let memoryToken: string | null = null;
-let memorySnapshot: SessionSnapshot | null = null;
 
-export function isUnauthorizedRestore(cause: unknown): boolean {
-  if (!cause || typeof cause !== 'object') {
-    return false;
+async function readStored(key: string): Promise<string | null> {
+  try {
+    return (await AsyncStorage.getItem(key)) ?? null;
+  } catch {
+    return null;
   }
-  const record = cause as { status?: unknown; message?: unknown };
-  if (record.status === 401) {
-    return true;
+}
+
+async function writeStored(key: string, value: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(key, value);
+  } catch {
+    return;
   }
-  const message = typeof record.message === 'string' ? record.message.toLowerCase() : '';
-  return message.includes('unauthorized');
+}
+
+async function removeStored(keys: readonly string[]): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([...keys]);
+  } catch {
+    return;
+  }
+}
+
+export async function hydrateSession(): Promise<SessionSnapshot | null> {
+  const raw = await readStored(SNAPSHOT_KEY);
+  const snapshot = raw ? parseSnapshot(raw) : null;
+  if (snapshot) {
+    memoryToken = snapshot.token;
+    return snapshot;
+  }
+  memoryToken = await readStored(TOKEN_KEY);
+  return null;
 }
 
 export function readSessionToken(): string | null {
   return memoryToken;
 }
 
-export function writeSessionToken(token: string): void {
+export async function writeSessionToken(token: string): Promise<void> {
   memoryToken = token;
+  await writeStored(TOKEN_KEY, token);
 }
 
-export function clearSessionToken(): void {
+export async function clearSessionToken(): Promise<void> {
   memoryToken = null;
-  memorySnapshot = null;
+  await removeStored([TOKEN_KEY, SNAPSHOT_KEY]);
 }
 
-export function readSessionSnapshot(): SessionSnapshot | null {
-  return memorySnapshot;
+export async function readSessionSnapshot(): Promise<SessionSnapshot | null> {
+  return hydrateSession();
 }
 
-export function writeSessionSnapshot(snapshot: SessionSnapshot): void {
+export async function writeSessionSnapshot(snapshot: SessionSnapshot): Promise<void> {
   memoryToken = snapshot.token;
-  memorySnapshot = snapshot;
+  await writeSessionToken(snapshot.token);
+  await writeStored(SNAPSHOT_KEY, JSON.stringify(snapshot));
 }
 
 export async function restorePersistedSession(
   restore: (token: string) => Promise<AuthUser>,
 ): Promise<AuthUser | null> {
-  const snapshot = readSessionSnapshot();
-  const token = snapshot?.token ?? readSessionToken();
-  if (!token) {
-    return snapshot?.user ?? null;
-  }
-  try {
-    const next = await restore(token);
-    writeSessionSnapshot({ token, user: next });
-    return next;
-  } catch (cause) {
-    if (isUnauthorizedRestore(cause)) {
-      clearSessionToken();
-      return null;
-    }
-    return snapshot?.user ?? null;
-  }
+  return restorePersistedSessionFromStore(
+    {
+      readToken: readSessionToken,
+      readSnapshot: readSessionSnapshot,
+      writeSnapshot: writeSessionSnapshot,
+      clear: clearSessionToken,
+    },
+    restore,
+  );
 }
