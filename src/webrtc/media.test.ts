@@ -73,6 +73,36 @@ describe('media capture', () => {
     expect(video.contentHint).toBe('motion');
   });
 
+  it('opens any camera when the 720p ask is refused', async () => {
+    const track = { kind: 'video', contentHint: '' };
+    const getUserMedia = vi.fn(async (constraints: { video: unknown }) => {
+      if (constraints.video === CAMERA_CONSTRAINTS) {
+        throw new Error('OverconstrainedError');
+      }
+      return {
+        getVideoTracks: () => [track],
+        getAudioTracks: () => [],
+      };
+    });
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    await acquireLocalStream({ video: true, audio: true });
+    const later = await acquireCameraTrack();
+
+    expect(getUserMedia).toHaveBeenNthCalledWith(1, {
+      video: CAMERA_CONSTRAINTS,
+      audio: AUDIO_CONSTRAINTS,
+    });
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, {
+      video: true,
+      audio: AUDIO_CONSTRAINTS,
+    });
+    expect(getUserMedia).toHaveBeenNthCalledWith(3, { video: CAMERA_CONSTRAINTS });
+    expect(getUserMedia).toHaveBeenNthCalledWith(4, { video: true });
+    expect(later).toBe(track);
+    expect(track.contentHint).toBe('motion');
+  });
+
   it('leaves the camera out when joining as audio only', async () => {
     const getUserMedia = vi.fn(async () => ({
       getVideoTracks: () => [],
