@@ -54,7 +54,7 @@ describe('media capture', () => {
 
     await acquireCameraTrack();
 
-    expect(getUserMedia).toHaveBeenCalledWith({ video: CAMERA_CONSTRAINTS });
+    expect(getUserMedia).toHaveBeenCalledWith({ video: CAMERA_CONSTRAINTS, audio: false });
     expect(track.contentHint).toBe('motion');
   });
 
@@ -97,8 +97,8 @@ describe('media capture', () => {
       video: true,
       audio: AUDIO_CONSTRAINTS,
     });
-    expect(getUserMedia).toHaveBeenNthCalledWith(3, { video: CAMERA_CONSTRAINTS });
-    expect(getUserMedia).toHaveBeenNthCalledWith(4, { video: true });
+    expect(getUserMedia).toHaveBeenNthCalledWith(3, { video: CAMERA_CONSTRAINTS, audio: false });
+    expect(getUserMedia).toHaveBeenNthCalledWith(4, { video: true, audio: false });
     expect(later).toBe(track);
     expect(track.contentHint).toBe('motion');
   });

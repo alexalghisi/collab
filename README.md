@@ -33,7 +33,7 @@ The web app already points at that server (`EXPO_PUBLIC_SIGNALING_URL`). You do 
 **Call someone (for example a child on another phone or laptop):**
 
 1. You open https://alexalghisi.github.io/collab and sign in (email, or Continue with Google once a Google client ID is set).
-2. Click **New meeting**. Allow the microphone. Turn the camera on from the call if you want it.
+2. Click **New meeting**. Allow the camera and microphone.
 3. Copy the link from the address bar (it looks like `…/collab/?room=abc-defg-hij`) or use **Copy link** in the call.
 4. Send that link (WhatsApp, SMS, email). The other person opens it, signs in, and joins the same room.
 
@@ -81,7 +81,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 
 ## Features
 
-- Multi-party video and voice calls over a mesh of WebRTC peer connections. Meetings start with the microphone only; turn the camera on from the call toolbar when you want it, without renegotiation.
+- Multi-party video and voice calls over a mesh of WebRTC peer connections. Meetings start with the camera and microphone; turn the camera off from the call toolbar when you want audio only, without renegotiation.
 - **Call quality above a phone messenger**: 720p/30 fps capture, up to 2.5 Mbit/s of video (4 Mbit/s for a shared screen), and 64 kbit/s fullband Opus with echo cancellation, noise suppression, voice isolation and packet-loss recovery — see [Call quality](#call-quality).
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
