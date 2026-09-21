@@ -2,9 +2,9 @@
 
 [Open the live app](https://alexalghisi.github.io/collab)
 
-![Collab: a meeting started from the dashboard, a second person joining, chat and the shared editor](./assets/demo.gif)
+![Collab: home dashboard, then a meeting with a second participant and chat](./assets/demo.gif)
 
-_One run, start to finish: the dashboard, **New meeting**, the invite link, the second person joining through it, both cameras on, chat, and the shared editor picking up what the other person types. The tiles show a test camera because the machine that recorded it had no webcam._
+_Home after sign-in, **New meeting**, the invite panel, a second person joining, and in-call chat._
 
 > Cross-platform video conferencing built with React Native, Expo, WebRTC, and a Node.js signaling server. One codebase ships to **macOS, Windows, iOS, and Android**.
 
