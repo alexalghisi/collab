@@ -4,12 +4,19 @@ import { requestGoogleCalendarToken } from '../auth/googleWeb';
 import { readGoogleWebClientId } from '../auth/config';
 import { buildInviteLink } from './invite';
 import { generateRoomId } from './roomId';
-import { storage } from './storage';
+import {
+  readGoogleCalendarConnected,
+  readGoogleCalendarToken,
+  writeGoogleCalendarConnected,
+  writeGoogleCalendarToken,
+} from './googleCalendarStore';
 import {
   calendarWindow,
   insertGoogleEvent,
+  isGoogleUnauthorized,
   listGoogleEvents,
   meetingFromGoogleEvent,
+  retractCalendarMeeting,
   retractGoogleEvent,
   updateGoogleEvent,
 } from './googleCalendar';
@@ -29,44 +36,50 @@ export interface GoogleCalendarSync {
   retract: (meeting: Meeting) => Promise<void>;
 }
 
-const connectedKey = (uid: string) => `collab.googleCalendar.${uid}`;
-
-function readConnected(uid: string): boolean {
-  try {
-    return storage.read(connectedKey(uid)) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writeConnected(uid: string, connected: boolean): void {
-  try {
-    storage.write(connectedKey(uid), connected ? '1' : '');
-  } catch {
-    return;
-  }
-}
-
 export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleCalendarSync {
   const available = Platform.OS === 'web' && Boolean(readGoogleWebClientId());
-  const [connected, setConnected] = useState(() => readConnected(uid));
+  const [connected, setConnected] = useState(() => readGoogleCalendarConnected(uid));
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tokenRef = useRef<string | null>(null);
+  const tokenRef = useRef<string | null>(readGoogleCalendarToken(uid));
   const meetingsRef = useRef(meetings);
   meetingsRef.current = meetings;
 
   useEffect(() => {
-    tokenRef.current = null;
-    setConnected(readConnected(uid));
+    tokenRef.current = readGoogleCalendarToken(uid);
+    setConnected(readGoogleCalendarConnected(uid));
     setError(null);
   }, [uid]);
 
-  const token = useCallback(async (prompt: '' | 'consent') => {
-    const next = await requestGoogleCalendarToken(prompt);
-    tokenRef.current = next;
-    return next;
-  }, []);
+  const rememberToken = useCallback(
+    (value: string | null) => {
+      tokenRef.current = value;
+      writeGoogleCalendarToken(uid, value);
+    },
+    [uid],
+  );
+
+  const token = useCallback(
+    async (prompt: '' | 'consent') => {
+      const next = await requestGoogleCalendarToken(prompt);
+      rememberToken(next);
+      return next;
+    },
+    [rememberToken],
+  );
+
+  const forgetExpiredToken = useCallback(
+    (cause: unknown) => {
+      if (
+        isGoogleUnauthorized(cause) ||
+        (cause instanceof Error &&
+          cause.message === 'Google Calendar access expired. Connect it again.')
+      ) {
+        rememberToken(null);
+      }
+    },
+    [rememberToken],
+  );
 
   const pull = useCallback(async (accessToken: string) => {
     const { events } = await listGoogleEvents(accessToken, { window: calendarWindow() });
@@ -95,7 +108,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     setSyncing(true);
     try {
       const accessToken = await token('consent');
-      writeConnected(uid, true);
+      writeGoogleCalendarConnected(uid, true);
       setConnected(true);
       await pull(accessToken);
       await pushLocal(accessToken);
@@ -117,19 +130,19 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
       await pull(accessToken);
       await pushLocal(accessToken);
     } catch (cause) {
-      tokenRef.current = null;
+      forgetExpiredToken(cause);
       setError(cause instanceof Error ? cause.message : 'Could not sync Google Calendar.');
     } finally {
       setSyncing(false);
     }
-  }, [connected, pull, pushLocal, token]);
+  }, [connected, forgetExpiredToken, pull, pushLocal, token]);
 
   const disconnect = useCallback(() => {
-    tokenRef.current = null;
-    writeConnected(uid, false);
+    rememberToken(null);
+    writeGoogleCalendarConnected(uid, false);
     setConnected(false);
     setError(null);
-  }, [uid]);
+  }, [rememberToken, uid]);
 
   const publish = useCallback(
     async (meeting: Meeting) => {
@@ -152,11 +165,12 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
         await meetingsRef.current.save(next);
         return next;
       } catch (cause) {
+        forgetExpiredToken(cause);
         setError(cause instanceof Error ? cause.message : 'Could not add this meeting to Google.');
         return meeting;
       }
     },
-    [connected, token],
+    [connected, forgetExpiredToken, token],
   );
 
   const publishRef = useRef(publish);
@@ -176,13 +190,14 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
         await updateGoogleEvent(accessToken, meeting, buildInviteLink(meeting.roomId));
         return meeting;
       } catch (cause) {
+        forgetExpiredToken(cause);
         setError(
           cause instanceof Error ? cause.message : 'Could not update this meeting in Google.',
         );
         return meeting;
       }
     },
-    [connected, token],
+    [connected, forgetExpiredToken, token],
   );
 
   const retract = useCallback(
@@ -191,15 +206,24 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
         return;
       }
       try {
-        const accessToken = tokenRef.current ?? (await token(''));
-        await retractGoogleEvent(accessToken, meeting);
+        await retractCalendarMeeting(
+          meeting,
+          tokenRef.current,
+          () => {
+            rememberToken(null);
+            return token('consent');
+          },
+          retractGoogleEvent,
+        );
       } catch (cause) {
+        forgetExpiredToken(cause);
         setError(
           cause instanceof Error ? cause.message : 'Could not delete this meeting from Google.',
         );
+        throw cause;
       }
     },
-    [connected, token],
+    [connected, forgetExpiredToken, rememberToken, token],
   );
 
   return {
