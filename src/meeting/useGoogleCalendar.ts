@@ -4,10 +4,13 @@ import { requestGoogleCalendarToken } from '../auth/googleWeb';
 import { readGoogleWebClientId } from '../auth/config';
 import { buildInviteLink } from './invite';
 import { generateRoomId } from './roomId';
+import { CALENDAR_LIVE_SYNC_INTERVAL_MS, runCalendarLiveSync } from './calendarLiveSync';
 import {
   readGoogleCalendarConnected,
+  readGoogleCalendarSyncToken,
   readGoogleCalendarToken,
   writeGoogleCalendarConnected,
+  writeGoogleCalendarSyncToken,
   writeGoogleCalendarToken,
 } from './googleCalendarStore';
 import {
@@ -15,7 +18,6 @@ import {
   insertGoogleEvent,
   isGoogleUnauthorized,
   listGoogleEvents,
-  meetingFromGoogleEvent,
   retractCalendarMeeting,
   retractGoogleEvent,
   updateGoogleEvent,
@@ -42,19 +44,34 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(readGoogleCalendarToken(uid));
+  const syncTokenRef = useRef<string | null>(readGoogleCalendarSyncToken(uid));
+  const haltRef = useRef(false);
+  const flightRef = useRef<Promise<void> | null>(null);
+  const flightEpochRef = useRef<number | null>(null);
+  const epochRef = useRef(0);
   const meetingsRef = useRef(meetings);
   meetingsRef.current = meetings;
 
   useEffect(() => {
     tokenRef.current = readGoogleCalendarToken(uid);
+    syncTokenRef.current = readGoogleCalendarSyncToken(uid);
     setConnected(readGoogleCalendarConnected(uid));
     setError(null);
+    haltRef.current = false;
   }, [uid]);
 
   const rememberToken = useCallback(
     (value: string | null) => {
       tokenRef.current = value;
       writeGoogleCalendarToken(uid, value);
+    },
+    [uid],
+  );
+
+  const writeSyncToken = useCallback(
+    (value: string | null) => {
+      syncTokenRef.current = value;
+      writeGoogleCalendarSyncToken(uid, value);
     },
     [uid],
   );
@@ -81,14 +98,6 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     [rememberToken],
   );
 
-  const pull = useCallback(async (accessToken: string) => {
-    const { events } = await listGoogleEvents(accessToken, { window: calendarWindow() });
-    const drafts = events
-      .map((event) => meetingFromGoogleEvent(event, generateRoomId()))
-      .filter((draft): draft is NonNullable<typeof draft> => draft !== null);
-    await meetingsRef.current.applyGoogle(drafts);
-  }, []);
-
   const pushLocal = useCallback(async (accessToken: string) => {
     for (const meeting of meetingsRef.current.meetings) {
       if (meeting.fromGoogle || meeting.googleEventId || meeting.durationMinutes <= 0) {
@@ -103,39 +112,128 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     }
   }, []);
 
+  const runGuarded = useCallback(
+    async (accessToken: string, epoch: number) => {
+      if (haltRef.current || flightRef.current) {
+        return;
+      }
+      let resolveFlight: () => void = () => undefined;
+      const flight = new Promise<void>((resolve) => {
+        resolveFlight = resolve;
+      });
+      flightRef.current = flight;
+      flightEpochRef.current = epoch;
+      setSyncing(true);
+      try {
+        const result = await runCalendarLiveSync({
+          connected: true,
+          accessToken,
+          syncToken: syncTokenRef.current,
+          meetings: meetingsRef.current.meetings,
+          window: calendarWindow(),
+          fallbackRoomId: generateRoomId,
+          listEvents: listGoogleEvents,
+          applyGoogle: (drafts) => meetingsRef.current.applyGoogle(drafts),
+          removeMeeting: (id) => meetingsRef.current.remove(id),
+          pushLocal,
+          writeSyncToken,
+          rememberToken,
+          requestSilentToken: () => token(''),
+        });
+        if (epochRef.current !== epoch) {
+          return;
+        }
+        if (result.stopped) {
+          haltRef.current = true;
+          writeGoogleCalendarConnected(uid, false);
+          setConnected(false);
+          setError(result.error);
+          return;
+        }
+        setError(result.error);
+      } finally {
+        if (flightRef.current === flight) {
+          flightRef.current = null;
+        }
+        resolveFlight();
+        setSyncing(false);
+      }
+    },
+    [pushLocal, rememberToken, token, uid, writeSyncToken],
+  );
+
+  const runGuardedRef = useRef(runGuarded);
+  runGuardedRef.current = runGuarded;
+
+  useEffect(() => {
+    if (!connected || !readGoogleCalendarConnected(uid) || !tokenRef.current) {
+      return;
+    }
+    const epoch = epochRef.current;
+    let pending = false;
+    const kick = () => {
+      if (epochRef.current !== epoch || haltRef.current) {
+        return;
+      }
+      const accessToken = tokenRef.current;
+      if (!accessToken) {
+        return;
+      }
+      const inflight = flightRef.current;
+      if (inflight) {
+        if (pending) {
+          return;
+        }
+        pending = true;
+        const inflightEpoch = flightEpochRef.current;
+        void inflight.then(() => {
+          pending = false;
+          if (epochRef.current !== epoch || inflightEpoch === epoch) {
+            return;
+          }
+          kick();
+        });
+        return;
+      }
+      void runGuardedRef.current(accessToken, epoch);
+    };
+    kick();
+    const timer = setInterval(kick, CALENDAR_LIVE_SYNC_INTERVAL_MS);
+    return () => {
+      epochRef.current += 1;
+      clearInterval(timer);
+    };
+  }, [connected, uid]);
+
   const connect = useCallback(async () => {
     setError(null);
+    haltRef.current = false;
     setSyncing(true);
     try {
       const accessToken = await token('consent');
       writeGoogleCalendarConnected(uid, true);
       setConnected(true);
-      await pull(accessToken);
-      await pushLocal(accessToken);
+      await runGuarded(accessToken, epochRef.current);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not connect Google Calendar.');
     } finally {
       setSyncing(false);
     }
-  }, [pull, pushLocal, token, uid]);
+  }, [runGuarded, token, uid]);
 
   const sync = useCallback(async () => {
-    if (!connected) {
+    if (!connected || haltRef.current || flightRef.current) {
       return;
     }
     setError(null);
-    setSyncing(true);
     try {
       const accessToken = tokenRef.current ?? (await token(''));
-      await pull(accessToken);
-      await pushLocal(accessToken);
+      await runGuarded(accessToken, epochRef.current);
     } catch (cause) {
       forgetExpiredToken(cause);
       setError(cause instanceof Error ? cause.message : 'Could not sync Google Calendar.');
-    } finally {
-      setSyncing(false);
     }
-  }, [connected, forgetExpiredToken, pull, pushLocal, token]);
+  }, [connected, forgetExpiredToken, runGuarded, token]);
 
   const disconnect = useCallback(() => {
     rememberToken(null);
