@@ -1,21 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearLiveMeeting, readLiveMeeting, writeLiveMeeting } from './resume';
 
-const memory = new Map<string, string>();
+const sessionMemory = new Map<string, string>();
+const localMemory = new Map<string, string>();
 
-beforeEach(() => {
-  memory.clear();
-  const store = {
-    getItem: (key: string) => memory.get(key) ?? null,
+function createStore(mem: Map<string, string>) {
+  return {
+    getItem: (key: string) => mem.get(key) ?? null,
     setItem: (key: string, value: string) => {
-      memory.set(key, value);
+      mem.set(key, value);
     },
     removeItem: (key: string) => {
-      memory.delete(key);
+      mem.delete(key);
     },
   };
-  vi.stubGlobal('sessionStorage', store);
-  vi.stubGlobal('window', { localStorage: store });
+}
+
+beforeEach(() => {
+  sessionMemory.clear();
+  localMemory.clear();
+  vi.stubGlobal('sessionStorage', createStore(sessionMemory));
+  vi.stubGlobal('window', { localStorage: createStore(localMemory) });
 });
 
 afterEach(() => {
@@ -66,5 +71,14 @@ describe('live meeting resume', () => {
       displayName: '',
       video: false,
     });
+  });
+
+  it('does not resurrect meetings from localStorage when sessionStorage is empty on web', () => {
+    window.localStorage.setItem(
+      'collab.liveMeeting',
+      JSON.stringify({ roomId: 'stale-room', sessionId: 'stale-session' }),
+    );
+
+    expect(readLiveMeeting()).toBeNull();
   });
 });
