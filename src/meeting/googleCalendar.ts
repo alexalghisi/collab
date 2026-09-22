@@ -185,6 +185,11 @@ export async function insertGoogleEvent(
       start: { dateTime: new Date(meeting.startsAt).toISOString() },
       end: { dateTime: new Date(meetingEndsAt(meeting)).toISOString() },
       extendedProperties: { private: { collabMeetingId: meeting.id } },
+      ...(meeting.guests && meeting.guests.length > 0
+        ? {
+            attendees: meeting.guests.filter((g) => g.includes('@')).map((email) => ({ email })),
+          }
+        : {}),
     }),
   });
   const body = (await response.json().catch(() => ({}))) as CalendarErrorBody & {
@@ -221,6 +226,11 @@ export async function updateGoogleEvent(
       location: inviteLink,
       start: { dateTime: new Date(meeting.startsAt).toISOString() },
       end: { dateTime: new Date(meetingEndsAt(meeting)).toISOString() },
+      ...(meeting.guests && meeting.guests.length > 0
+        ? {
+            attendees: meeting.guests.filter((g) => g.includes('@')).map((email) => ({ email })),
+          }
+        : {}),
     }),
   });
   const body = (await response.json().catch(() => ({}))) as CalendarErrorBody & {

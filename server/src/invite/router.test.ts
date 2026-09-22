@@ -144,6 +144,43 @@ describe('the invite endpoint', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('delivers to a mixed list of emails and phone numbers and schedules reminders for each', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'collab-mixed-invites-'));
+    const reminders = new ReminderBook(join(dir, 'reminders.json'), () => 1_000);
+    const sendEmail = vi.fn(async () => undefined);
+    const sendSms = vi.fn(async () => undefined);
+    await serve({ sendEmail, sendSms }, undefined, 'https://collab.example', reminders);
+
+    const token = issueToken({ uid: 'host-1', email: 'host@example.com', displayName: 'Ada' });
+    const response = await fetch(`${base}/invite`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        contact: 'linus@example.com, +40721123456, tom@example.com',
+        roomId: 'room-10',
+        sessionId: '',
+        hostName: 'Ada',
+        link: 'https://collab.example/?room=room-10',
+        title: 'Weekly',
+        startsAt: 1_000 + 20 * 60_000,
+        reminderMinutes: 15,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    expect(sendSms).toHaveBeenCalledTimes(1);
+    expect(sendSms).toHaveBeenCalledWith(
+      '+40721123456',
+      'Ada invited you to a Collab call. Join: https://collab.example/?room=room-10',
+    );
+    expect(reminders.list()).toHaveLength(3);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('surfaces a provider failure', async () => {
     await serve({
       sendSms: async () => {

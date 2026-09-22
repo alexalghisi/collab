@@ -1,4 +1,4 @@
-import { InviteError, parseContact, parseEmailList, type ParsedContact } from './contact';
+import { InviteError, parseContactList, type ParsedContact } from './contact';
 
 export interface InviteRequest {
   readonly contact: string;
@@ -28,9 +28,8 @@ export async function sendContactInvite(
   baseUrl: string,
   request: InviteRequest,
 ): Promise<ParsedContact> {
-  const emails = parseEmailList(request.contact);
-  const contact = emails.length === 0 ? parseContact(request.contact) : null;
-  if (emails.length === 0 && !contact) {
+  const contacts = parseContactList(request.contact);
+  if (contacts.length === 0) {
     throw new InviteError('Enter an email address or a phone number.');
   }
 
@@ -54,8 +53,5 @@ export async function sendContactInvite(
       typeof body.error === 'string' ? body.error : 'The invite could not be sent.',
     );
   }
-  if (contact) {
-    return contact;
-  }
-  return { kind: 'email', value: emails[0] ?? '' };
+  return contacts[0];
 }

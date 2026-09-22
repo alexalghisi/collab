@@ -48,6 +48,28 @@ export function parseEmailList(input: string): string[] {
   return emails;
 }
 
+export function parseContactList(input: string): ParsedContact[] {
+  const seen = new Set<string>();
+  const contacts: ParsedContact[] = [];
+  for (const part of input.split(/[,;\n\r]+/)) {
+    const trimmed = part.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const parsed = parseContact(trimmed);
+    if (!parsed) {
+      continue;
+    }
+    const key = `${parsed.kind}:${parsed.value.toLowerCase()}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    contacts.push(parsed);
+  }
+  return contacts;
+}
+
 /**
  * Prefers a configured public origin so a phone does not receive a localhost
  * link the recipient cannot open. The client's own URL is used when it is
