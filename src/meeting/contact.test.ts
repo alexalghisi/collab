@@ -55,9 +55,14 @@ describe('invite copy', () => {
     );
   });
 
-  it('falls back to the meeting id when there is no https link', () => {
-    expect(inviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain('join with ID kqz-wrtm-pfa');
-    expect(smsInviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain('join with ID kqz-wrtm-pfa');
+  it('falls back to canonical web link and meeting id when link is empty or invalid', () => {
+    expect(inviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain(
+      'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
+    );
+    expect(inviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain('Meeting ID: kqz-wrtm-pfa');
+    expect(smsInviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain(
+      'Join: https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
+    );
   });
 });
 

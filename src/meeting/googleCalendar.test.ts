@@ -7,6 +7,7 @@ import {
   eventDurationMinutes,
   eventStartsAt,
   listGoogleEvents,
+  insertGoogleEvent,
   meetingFromGoogleEvent,
   retractGoogleEvent,
   roomIdFromEvent,
@@ -219,7 +220,9 @@ describe('pushing a Collab edit back to Google', () => {
     expect(body.summary).toBe('Weekly sync');
     expect(body.location).toBe(inviteLink);
     expect(body.description).toContain('Agenda and notes');
-    expect(body.description).toContain(`Join: ${inviteLink}`);
+    expect(body.description).toContain(`Join Collab meeting: ${inviteLink}`);
+    expect(body.description).toContain(`Meeting ID: ${meeting.roomId}`);
+    expect(calls[0].url).toContain('sendUpdates=all');
     expect(body.start.dateTime).toBe(new Date(meeting.startsAt).toISOString());
     expect(body.end.dateTime).toBe(
       new Date(meeting.startsAt + meeting.durationMinutes * 60_000).toISOString(),
@@ -230,6 +233,32 @@ describe('pushing a Collab edit back to Google', () => {
     await expect(
       updateGoogleEvent('ya29.token', { ...meeting, googleEventId: undefined }, inviteLink),
     ).rejects.toThrow(/not linked/i);
+  });
+
+  it('POSTs a new event with location, join link in description and sendUpdates=all', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    global.fetch = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ id: 'evt-created' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const id = await insertGoogleEvent('ya29.token', meeting, inviteLink);
+
+    expect(id).toBe('evt-created');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init.method).toBe('POST');
+    expect(calls[0].url).toContain('sendUpdates=all');
+    const body = JSON.parse(String(calls[0].init.body)) as {
+      summary: string;
+      description: string;
+      location: string;
+    };
+    expect(body.location).toBe(inviteLink);
+    expect(body.description).toContain(`Join Collab meeting: ${inviteLink}`);
+    expect(body.description).toContain(`Meeting ID: ${meeting.roomId}`);
   });
 
   it('surfaces an expired Google session instead of silently failing', async () => {

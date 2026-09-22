@@ -83,30 +83,31 @@ export function resolveInviteLink(roomId: string, clientLink: string, publicBase
       url.search = new URLSearchParams({ room: roomId }).toString();
       return url.toString();
     } catch {
-      // Fall through to whatever the client sent.
+      // Fall through
     }
   }
   if (/^https?:\/\//i.test(clientLink) && !LOCAL_HOST.test(clientLink)) {
     return clientLink;
   }
-  return /^https?:\/\//i.test(clientLink) ? clientLink : '';
+  return `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(roomId)}`;
 }
 
 export function inviteCopy(roomId: string, hostName: string, link: string): string {
   const host = hostName.trim() || 'Someone';
-  if (/^https?:\/\//i.test(link)) {
-    return `${host} invited you to a Collab meeting.\n\nJoin: ${link}`;
-  }
-  return `${host} invited you to a Collab meeting. Open Collab and join with ID ${roomId}.`;
+  const joinUrl =
+    /^https?:\/\//i.test(link) && !LOCAL_HOST.test(link)
+      ? link
+      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(roomId)}`;
+  return `${host} invited you to a Collab meeting.\n\nJoin: ${joinUrl}\nMeeting ID: ${roomId}`;
 }
 
-/** One SMS segment when the host name is short; carriers concatenate if not. */
 export function smsInviteCopy(roomId: string, hostName: string, link: string): string {
   const host = hostName.trim() || 'Someone';
-  if (/^https?:\/\//i.test(link)) {
-    return `${host} invited you to a Collab call. Join: ${link}`;
-  }
-  return `${host} invited you to a Collab call. Open Collab and join with ID ${roomId}`;
+  const joinUrl =
+    /^https?:\/\//i.test(link) && !LOCAL_HOST.test(link)
+      ? link
+      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(roomId)}`;
+  return `${host} invited you to a Collab call. Join: ${joinUrl}`;
 }
 
 export function inviteSubject(roomId: string): string {
