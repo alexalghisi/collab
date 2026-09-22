@@ -31,6 +31,16 @@ export default tseslint.config(
       ecmaVersion: 2022,
       sourceType: 'module',
     },
+  },
+  {
+    // Restores ESLint's *.cjs default. The block above forces sourceType
+    // "module" on every file, which drops the CommonJS globals (`module`).
+    files: ['**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/no-unused-vars': [
         'error',
