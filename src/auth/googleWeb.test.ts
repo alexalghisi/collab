@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { requestGoogleCalendarToken, requestGoogleCredential } from './googleWeb';
 
 const CLIENT_ID = 'collab.apps.googleusercontent.com';
@@ -50,6 +50,7 @@ function stubGoogle(response: TokenResponse): GoogleStub {
 
 beforeEach(() => {
   delete (globalThis as GoogleGlobal).google;
+  delete (globalThis as { electronAuth?: unknown }).electronAuth;
   delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 });
 
@@ -66,6 +67,18 @@ describe('requestGoogleCalendarToken', () => {
 
     await expect(requestGoogleCalendarToken('consent')).resolves.toBe('ya29.calendar');
     expect(stub.asked).toEqual([{ scope: CALENDAR_SCOPE, prompt: 'consent' }]);
+  });
+
+  it('delegates to electronAuth.requestCalendarToken when running in Electron', async () => {
+    const requestCalendarTokenStub = vi.fn().mockResolvedValue('ya29.electron-calendar');
+    (globalThis as { electronAuth?: unknown }).electronAuth = {
+      isElectron: true,
+      clientId: 'electron-client-id',
+      requestCalendarToken: requestCalendarTokenStub,
+    };
+
+    await expect(requestGoogleCalendarToken('consent')).resolves.toBe('ya29.electron-calendar');
+    expect(requestCalendarTokenStub).toHaveBeenCalledWith('electron-client-id', 'consent');
   });
 
   it('reports a refused consent instead of resolving without a token', async () => {
@@ -91,6 +104,24 @@ describe('requestGoogleCredential', () => {
 
     await expect(requestGoogleCredential()).resolves.toEqual({ accessToken: 'ya29.login' });
     expect(stub.asked).toEqual([{ scope: 'openid email profile', prompt: 'select_account' }]);
+  });
+
+  it('delegates to electronAuth.loginWithGoogle when running in Electron', async () => {
+    const loginWithGoogle = vi.fn().mockResolvedValue({
+      idToken: 'mock-id-token',
+      accessToken: 'mock-access-token',
+    });
+    (globalThis as { electronAuth?: unknown }).electronAuth = {
+      isElectron: true,
+      clientId: 'electron-client-id',
+      loginWithGoogle,
+    };
+
+    await expect(requestGoogleCredential()).resolves.toEqual({
+      idToken: 'mock-id-token',
+      accessToken: 'mock-access-token',
+    });
+    expect(loginWithGoogle).toHaveBeenCalledWith('electron-client-id');
   });
 
   it('does not call Google One Tap initialize or prompt', async () => {
