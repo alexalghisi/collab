@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+env:
+  EXPO_PUBLIC_SIGNALING_URL: ${{ vars.EXPO_PUBLIC_SIGNALING_URL || 'https://collab-signaling.onrender.com' }}
+  EXPO_PUBLIC_EXECUTION_URL: ${{ vars.EXPO_PUBLIC_SIGNALING_URL || 'https://collab-signaling.onrender.com' }}
+  EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '560742571865-eqeojukg2kqm2gmaumm79n2606e75pus.apps.googleusercontent.com' }}
+
 jobs:
   android:
     name: Build Android APK
