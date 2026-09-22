@@ -2,9 +2,11 @@
 
 [Open the live app](https://alexalghisi.github.io/collab)
 
-![Collab: home dashboard, then a meeting with a second participant and chat](./assets/demo.gif)
+<p align="center">
+  <img src="./assets/demo.gif" alt="Collab application runtime demo" width="800" />
+</p>
 
-_Home after sign-in, **New meeting**, the invite panel, a second person joining, and in-call chat._
+_Collab runtime: home dashboard, scheduling meetings with attendee auto-invitations, meeting room, and team chat._
 
 > Cross-platform video conferencing built with React Native, Expo, WebRTC, and a Node.js signaling server. One codebase ships to **macOS, Windows, iOS, and Android**.
 

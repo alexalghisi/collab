@@ -172,7 +172,17 @@ export async function insertGoogleEvent(
   meeting: Meeting,
   inviteLink: string,
 ): Promise<string> {
-  const response = await fetch(EVENTS_URL, {
+  const joinUrl =
+    /^https?:\/\//i.test(inviteLink) && !inviteLink.includes('localhost')
+      ? inviteLink
+      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(meeting.roomId)}`;
+  const description = [
+    meeting.description,
+    `Join Collab meeting: ${joinUrl}\nMeeting ID: ${meeting.roomId}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  const response = await fetch(`${EVENTS_URL}?sendUpdates=all`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -180,8 +190,8 @@ export async function insertGoogleEvent(
     },
     body: JSON.stringify({
       summary: meeting.title,
-      description: [meeting.description, `Join: ${inviteLink}`].filter(Boolean).join('\n\n'),
-      location: inviteLink,
+      description,
+      location: joinUrl,
       start: { dateTime: new Date(meeting.startsAt).toISOString() },
       end: { dateTime: new Date(meetingEndsAt(meeting)).toISOString() },
       extendedProperties: { private: { collabMeetingId: meeting.id } },
@@ -214,25 +224,38 @@ export async function updateGoogleEvent(
   if (!meeting.googleEventId) {
     throw new Error('This meeting is not linked to a Google Calendar event.');
   }
-  const response = await fetch(`${EVENTS_URL}/${encodeURIComponent(meeting.googleEventId)}`, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+  const joinUrl =
+    /^https?:\/\//i.test(inviteLink) && !inviteLink.includes('localhost')
+      ? inviteLink
+      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(meeting.roomId)}`;
+  const description = [
+    meeting.description,
+    `Join Collab meeting: ${joinUrl}\nMeeting ID: ${meeting.roomId}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  const response = await fetch(
+    `${EVENTS_URL}/${encodeURIComponent(meeting.googleEventId)}?sendUpdates=all`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        summary: meeting.title,
+        description,
+        location: joinUrl,
+        start: { dateTime: new Date(meeting.startsAt).toISOString() },
+        end: { dateTime: new Date(meetingEndsAt(meeting)).toISOString() },
+        ...(meeting.guests && meeting.guests.length > 0
+          ? {
+              attendees: meeting.guests.filter((g) => g.includes('@')).map((email) => ({ email })),
+            }
+          : {}),
+      }),
     },
-    body: JSON.stringify({
-      summary: meeting.title,
-      description: [meeting.description, `Join: ${inviteLink}`].filter(Boolean).join('\n\n'),
-      location: inviteLink,
-      start: { dateTime: new Date(meeting.startsAt).toISOString() },
-      end: { dateTime: new Date(meetingEndsAt(meeting)).toISOString() },
-      ...(meeting.guests && meeting.guests.length > 0
-        ? {
-            attendees: meeting.guests.filter((g) => g.includes('@')).map((email) => ({ email })),
-          }
-        : {}),
-    }),
-  });
+  );
   const body = (await response.json().catch(() => ({}))) as CalendarErrorBody & {
     readonly id?: string;
   };
