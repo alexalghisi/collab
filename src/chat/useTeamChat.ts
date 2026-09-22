@@ -13,7 +13,7 @@ import {
 } from './channels';
 
 export interface TeamChat {
-  /** False until a Firebase project is configured; channels need a shared backend. */
+  /** True whenever a user is present; backed by Firestore when configured, or local browser storage. */
   readonly enabled: boolean;
   readonly channels: Channel[];
   readonly activeChannelId: string | null;
@@ -32,15 +32,20 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
-    if (!db) {
-      return;
-    }
-    return subscribeChannels(db, setChannels);
+    return subscribeChannels(db, (nextChannels) => {
+      setChannels(nextChannels);
+      setActiveChannelId((current) => {
+        if (current && nextChannels.some((c) => c.id === current)) {
+          return current;
+        }
+        return nextChannels[0]?.id ?? null;
+      });
+    });
   }, [db]);
 
   useEffect(() => {
     setMessages([]);
-    if (!db || !activeChannelId) {
+    if (!activeChannelId) {
       return;
     }
     return subscribeMessages(db, activeChannelId, setMessages);
@@ -48,8 +53,11 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
 
   const create = useCallback(
     async (name: string) => {
-      if (db && user) {
-        await createChannel(db, name, user);
+      if (user) {
+        const res = await createChannel(db, name, user);
+        if (res && typeof res === 'object' && 'id' in res && typeof res.id === 'string') {
+          setActiveChannelId(res.id);
+        }
       }
     },
     [db, user],
@@ -57,7 +65,7 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
 
   const send = useCallback(
     async (text: string) => {
-      if (db && user && activeChannelId) {
+      if (user && activeChannelId) {
         await sendMessage(db, activeChannelId, user, text);
       }
     },
@@ -66,7 +74,7 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
 
   const edit = useCallback(
     async (id: string, text: string) => {
-      if (db && user && activeChannelId) {
+      if (user && activeChannelId) {
         await editMessage(db, activeChannelId, user, id, text);
       }
     },
@@ -75,7 +83,7 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
 
   const remove = useCallback(
     async (id: string) => {
-      if (db && user && activeChannelId) {
+      if (user && activeChannelId) {
         await deleteMessage(db, activeChannelId, user, id);
       }
     },
@@ -83,7 +91,7 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
   );
 
   return {
-    enabled: db !== null,
+    enabled: user !== null,
     channels,
     activeChannelId,
     messages,

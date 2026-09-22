@@ -67,16 +67,28 @@ function parseLive(raw: string | null): LiveMeeting | null {
 }
 
 export function readLiveMeeting(): LiveMeeting | null {
-  return parseLive(readSession(LIVE_KEY)) ?? parseLive(readLocal(LIVE_KEY));
+  const fromSession = parseLive(readSession(LIVE_KEY));
+  if (fromSession) {
+    return fromSession;
+  }
+  // On web, a live meeting is strictly scoped to the active browser tab (sessionStorage).
+  // Falling back to persistent localStorage resurrects meetings across new tabs and cold starts.
+  if (typeof sessionStorage !== 'undefined') {
+    return null;
+  }
+  return parseLive(readLocal(LIVE_KEY));
 }
 
 export function writeLiveMeeting(meeting: LiveMeeting): void {
   const raw = JSON.stringify(meeting);
   writeSession(LIVE_KEY, raw);
-  try {
-    storage.write(LIVE_KEY, raw);
-  } catch {
-    return;
+  // Only persist to device storage when sessionStorage is unavailable (e.g. React Native).
+  if (typeof sessionStorage === 'undefined') {
+    try {
+      storage.write(LIVE_KEY, raw);
+    } catch {
+      return;
+    }
   }
 }
 
