@@ -17,9 +17,22 @@ export function readFirebaseConfig(): FirebaseOptions | null {
   return { apiKey, authDomain, projectId, appId };
 }
 
+export const DEFAULT_GOOGLE_WEB_CLIENT_ID =
+  '560742571865-eqeojukg2kqm2gmaumm79n2606e75pus.apps.googleusercontent.com';
+
 export function readGoogleWebClientId(): string | null {
   const id = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
-  return id && id.length > 0 ? id : null;
+  if (id && id.length > 0) {
+    return id;
+  }
+  if (
+    typeof globalThis !== 'undefined' &&
+    (globalThis as unknown as { electronAuth?: { clientId?: string } }).electronAuth?.clientId
+  ) {
+    return (globalThis as unknown as { electronAuth?: { clientId?: string } }).electronAuth!
+      .clientId!;
+  }
+  return null;
 }
 
 export interface GoogleClientIds {
@@ -40,14 +53,19 @@ export interface NativeAuthConfig {
  * Facebook app ID. Returns null when no provider is configured.
  */
 export function readNativeAuthConfig(): NativeAuthConfig | null {
-  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+  const webClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() || DEFAULT_GOOGLE_WEB_CLIENT_ID;
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
+  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim();
   const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? null;
 
   const google =
     webClientId || iosClientId || androidClientId
-      ? { webClientId, iosClientId, androidClientId }
+      ? {
+          webClientId: webClientId || undefined,
+          iosClientId: iosClientId || undefined,
+          androidClientId: androidClientId || undefined,
+        }
       : null;
 
   if (!google && !facebookAppId) {
