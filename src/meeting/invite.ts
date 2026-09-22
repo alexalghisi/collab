@@ -11,11 +11,20 @@ export function buildInviteLink(roomId: string): string {
   const base = process.env.EXPO_PUBLIC_APP_URL?.trim();
   let url: URL;
   try {
-    url = base
-      ? new URL(base.includes('://') ? base : `https://${base}`)
-      : new URL(window.location.href);
+    if (base) {
+      url = new URL(base.includes('://') ? base : `https://${base}`);
+    } else if (
+      typeof window !== 'undefined' &&
+      window.location?.origin &&
+      !window.location.origin.includes('localhost') &&
+      !window.location.origin.startsWith('file:')
+    ) {
+      url = new URL(window.location.href);
+    } else {
+      url = new URL('https://alexalghisi.github.io/collab/');
+    }
   } catch {
-    url = new URL(window.location.href);
+    url = new URL('https://alexalghisi.github.io/collab/');
   }
   url.search = new URLSearchParams({ [ROOM_PARAM]: roomId }).toString();
   return url.toString();

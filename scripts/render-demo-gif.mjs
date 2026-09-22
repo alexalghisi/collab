@@ -8,12 +8,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = join(root, 'assets', 'demo.gif');
 const chrome =
   process.env.CHROME_PATH ||
-  ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/local/bin/google-chrome'].find(
-    (bin) => {
-      const probe = spawnSync(bin, ['--version'], { encoding: 'utf8' });
-      return probe.status === 0;
-    },
-  );
+  [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/local/bin/google-chrome',
+  ].find((bin) => {
+    const probe = spawnSync(bin, ['--version'], { encoding: 'utf8' });
+    return probe.status === 0;
+  });
 const ffmpeg = 'ffmpeg';
 
 if (!chrome) {
@@ -176,11 +179,34 @@ const together = page(
   </div>`,
 );
 
+const schedule = page(
+  'schedule',
+  `<div class="app">${sidebar}<main>
+    <h1>Schedule a meeting</h1>
+    <div class="field" style="margin-top:14px">Weekly team sync</div>
+    <div style="display:flex;gap:12px">
+      <div class="field" style="flex:1">2026-09-22</div>
+      <div class="field" style="flex:1">15:00</div>
+    </div>
+    <div style="margin-top:10px;font-weight:600;font-size:13px;display:flex;justify-content:space-between">
+      <span>Attendees (emails or phone numbers)</span>
+      <span style="color:${palette.primary}">✨ Auto-invites enabled</span>
+    </div>
+    <div class="field">alex@example.com, +1 555 123 4567</div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <span style="background:${palette.raised};border:1px solid ${palette.primary};padding:4px 8px;border-radius:6px;font-size:11px">✉️ alex@example.com</span>
+      <span style="background:${palette.raised};border:1px solid #34d399;padding:4px 8px;border-radius:6px;font-size:11px">📞 +15551234567</span>
+    </div>
+    <div style="margin-top:16px"><div class="btn">Save meeting</div></div>
+  </main></div>`,
+);
+
 const dir = mkdtempSync(join(tmpdir(), 'collab-demo-'));
 const frames = [
   ['home.html', home, '01.png'],
-  ['meeting.html', meeting, '02.png'],
-  ['together.html', together, '03.png'],
+  ['schedule.html', schedule, '02.png'],
+  ['meeting.html', meeting, '03.png'],
+  ['together.html', together, '04.png'],
 ];
 
 for (const [name, html, png] of frames) {
@@ -247,5 +273,9 @@ if (gif.status !== 0) {
   throw new Error(gif.stderr || 'ffmpeg gif encode failed');
 }
 
+const previewFile = join(root, 'assets', 'runtime-preview.png');
+writeFileSync(previewFile, readFileSync(join(dir, '01.png')));
+
 const bytes = readFileSync(outFile).byteLength;
 process.stdout.write(`Wrote ${outFile} (${bytes} bytes)\n`);
+process.stdout.write(`Wrote ${previewFile}\n`);
