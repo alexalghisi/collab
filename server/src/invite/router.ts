@@ -2,8 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import {
   inviteCopy,
   inviteSubject,
-  parseContact,
-  parseEmailList,
+  parseContactList,
   resolveInviteLink,
   smsInviteCopy,
 } from '../../../src/meeting/contact';
@@ -74,9 +73,8 @@ export function inviteRouter({
       return;
     }
 
-    const emails = parseEmailList(contactInput);
-    const contact = emails.length === 0 ? parseContact(contactInput) : null;
-    if (emails.length === 0 && !contact) {
+    const contacts = parseContactList(contactInput);
+    if (contacts.length === 0) {
       response.status(400).json({ error: 'Enter an email address or a phone number.' });
       return;
     }
@@ -91,17 +89,24 @@ export function inviteRouter({
     const minutes = reminderMinutes(request);
     const when = startsAt(request);
     try {
-      if (contact?.kind === 'phone') {
-        await transport.sendSms(contact.value, smsInviteCopy(roomId, hostName, link));
-        response.json({ ok: true, kind: contact.kind, to: contact.value });
-        return;
-      }
-      const recipients = emails.length > 0 ? emails : [contact?.value ?? ''];
-      for (const to of recipients) {
-        await transport.sendEmail(to, inviteSubject(roomId), inviteCopy(roomId, hostName, link));
+      const emailRecipients: string[] = [];
+      const phoneRecipients: string[] = [];
+
+      for (const item of contacts) {
+        if (item.kind === 'phone') {
+          await transport.sendSms(item.value, smsInviteCopy(roomId, hostName, link));
+          phoneRecipients.push(item.value);
+        } else {
+          await transport.sendEmail(
+            item.value,
+            inviteSubject(roomId),
+            inviteCopy(roomId, hostName, link),
+          );
+          emailRecipients.push(item.value);
+        }
         if (reminders && when !== null) {
           reminders.schedule({
-            to,
+            to: item.value,
             roomId,
             hostName,
             link,
@@ -111,11 +116,18 @@ export function inviteRouter({
           });
         }
       }
+
+      if (contacts.length === 1 && contacts[0].kind === 'phone') {
+        response.json({ ok: true, kind: 'phone', to: contacts[0].value });
+        return;
+      }
+
       response.json({
         ok: true,
-        kind: 'email',
-        to: recipients[0],
-        recipients,
+        kind: emailRecipients.length > 0 ? 'email' : 'phone',
+        to: contacts[0]?.value,
+        recipients: contacts.map((c) => c.value),
+        count: contacts.length,
       });
     } catch (cause) {
       const status = isUnconfigured(cause) ? 503 : 502;

@@ -8,7 +8,7 @@ import { createSignaling } from './src/signaling';
 import { nextHalfHour } from './src/meeting/calendar';
 import { readSessionToken } from './src/auth/session';
 import { EXECUTION_URL } from './src/code/config';
-import { InviteError, parseEmailList } from './src/meeting/contact';
+import { InviteError, parseContactList } from './src/meeting/contact';
 import { buildInviteLink, readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
 import { sendContactInvite } from './src/meeting/sendInvite';
 import { clearLiveMeeting, readLiveMeeting } from './src/meeting/resume';
@@ -85,18 +85,41 @@ export default function App() {
   };
 
   const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
+
+  const sendMeetingInvites = async (meeting: Meeting) => {
+    if (!meeting.guests || meeting.guests.length === 0) {
+      return;
+    }
+    const token = readSessionToken();
+    try {
+      await sendContactInvite(EXECUTION_URL, {
+        contact: meeting.guests.join(', '),
+        roomId: meeting.roomId,
+        sessionId: '',
+        hostName: auth.user?.displayName ?? 'Someone',
+        link: buildInviteLink(meeting.roomId),
+        token: token ?? undefined,
+        title: meeting.title,
+        startsAt: meeting.startsAt,
+        reminderMinutes: meeting.reminderMinutes ?? 15,
+      });
+    } catch (err) {
+      console.warn('Could not dispatch automatic meeting invites:', err);
+    }
+  };
+
   const inviteMeeting = async (meeting: Meeting, invite: MeetingInviteRequest): Promise<string> => {
-    const typed = parseEmailList(invite.emails);
+    const typed = parseContactList(invite.emails).map((c) => c.value);
     const guests = typed.length > 0 ? typed : [...(meeting.guests ?? [])];
     if (guests.length === 0) {
       throw new InviteError('Enter an email address or a phone number.');
     }
     const token = readSessionToken();
     if (!token) {
-      throw new InviteError('Sign in again to send email invites.');
+      throw new InviteError('Sign in again to send invites.');
     }
     await sendContactInvite(EXECUTION_URL, {
-      contact: guests.join(','),
+      contact: guests.join(', '),
       roomId: meeting.roomId,
       sessionId: '',
       hostName: auth.user?.displayName ?? 'Someone',
@@ -111,7 +134,7 @@ export default function App() {
       guests,
       reminderMinutes: invite.reminderMinutes,
     });
-    return `Email sent to ${guests.join(', ')}. They get a reminder ${invite.reminderMinutes} minutes before.`;
+    return `Invites sent to ${guests.join(', ')}. They get a reminder ${invite.reminderMinutes} minutes before.`;
   };
   const deleteMeeting = (meeting: Meeting) => {
     void retractThenRemove(meeting, googleCalendar.retract, meetings.remove);
@@ -165,9 +188,19 @@ export default function App() {
   const saveMeeting = (draft: MeetingDraft) => {
     if (editingMeeting) {
       const updated: Meeting = { ...editingMeeting, ...draft };
-      void meetings.save(updated).then(() => googleCalendar.update(updated));
+      void meetings.save(updated).then(() => {
+        void googleCalendar.update(updated);
+        if (draft.guests && draft.guests.length > 0) {
+          void sendMeetingInvites(updated);
+        }
+      });
     } else {
-      void meetings.schedule(draft).then((meeting) => googleCalendar.publish(meeting));
+      void meetings.schedule(draft).then((meeting) => {
+        void googleCalendar.publish(meeting);
+        if (draft.guests && draft.guests.length > 0) {
+          void sendMeetingInvites(meeting);
+        }
+      });
     }
     setEditingMeeting(null);
     setView('meetings');

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   inviteCopy,
   parseContact,
+  parseContactList,
   parseEmailList,
   reminderCopy,
   reminderSubject,
@@ -23,6 +24,17 @@ describe('parseContact', () => {
     expect(
       parseEmailList('Ada@Example.com, linus@kernel.org; not-an-email  tom@collab.dev'),
     ).toEqual(['ada@example.com', 'linus@kernel.org', 'tom@collab.dev']);
+  });
+
+  it('parses a mixed list of email addresses and phone numbers', () => {
+    expect(
+      parseContactList('ada@example.com, +1 555 123 4567\nlinus@kernel.org; +40721123456, invalid'),
+    ).toEqual([
+      { kind: 'email', value: 'ada@example.com' },
+      { kind: 'phone', value: '+15551234567' },
+      { kind: 'email', value: 'linus@kernel.org' },
+      { kind: 'phone', value: '+40721123456' },
+    ]);
   });
 
   it('rejects an empty field, a broken email, or too few digits', () => {
