@@ -11,7 +11,7 @@ import { EXECUTION_URL } from './src/code/config';
 import { InviteError, parseEmailList } from './src/meeting/contact';
 import { buildInviteLink, readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
 import { sendContactInvite } from './src/meeting/sendInvite';
-import { readLiveMeeting } from './src/meeting/resume';
+import { clearLiveMeeting, readLiveMeeting } from './src/meeting/resume';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
 import { deleteMeeting as retractThenRemove } from './src/meeting/deleteMeeting';
 import { useMeetings } from './src/meeting/useMeetings';
@@ -46,6 +46,7 @@ export default function App() {
   const [roomId, setRoomId] = useState(() => readRoomFromLink() ?? '');
   const [displayName, setDisplayName] = useState('');
   const resumeAttempted = useRef(false);
+  const wasInMeeting = useRef(false);
 
   useEffect(() => {
     const name = auth.user?.displayName;
@@ -58,10 +59,17 @@ export default function App() {
   const inMeeting = session.roomId !== null;
 
   useEffect(() => {
-    if (inMeeting || roomId.trim()) {
-      syncRoomInLink(roomId.trim() || null);
+    if (inMeeting && session.roomId) {
+      wasInMeeting.current = true;
+      syncRoomInLink(session.roomId);
+    } else {
+      syncRoomInLink(null);
+      if (wasInMeeting.current) {
+        wasInMeeting.current = false;
+        setRoomId('');
+      }
     }
-  }, [inMeeting, roomId]);
+  }, [inMeeting, session.roomId]);
 
   const joinRoom = async (nextRoomId: string, video: boolean) => {
     setRoomId(nextRoomId);
@@ -113,12 +121,16 @@ export default function App() {
     if (resumeAttempted.current || !auth.user || session.status !== 'idle') {
       return;
     }
+    resumeAttempted.current = true;
+    const linkRoom = readRoomFromLink();
     const live = readLiveMeeting();
-    if (!live) {
+    // Only resume a live meeting if the user actually refreshed while in that meeting (link matches live room).
+    // If the user navigates directly to the base URL (no ?room=...), do not auto-join; start clean on Home.
+    if (!linkRoom || !live || live.roomId !== linkRoom) {
+      clearLiveMeeting();
       return;
     }
     const name = (live.displayName || displayName || auth.user.displayName || 'Guest').trim();
-    resumeAttempted.current = true;
     setDisplayName(name);
     setRoomId(live.roomId);
     void session
