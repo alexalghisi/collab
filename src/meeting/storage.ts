@@ -1,12 +1,28 @@
 /** Persists small JSON blobs in the browser when no Firebase project is configured. */
 export const storage = {
   read(key: string): string | null {
-    return window.localStorage.getItem(key);
+    try {
+      return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+    } catch {
+      return null;
+    }
   },
   write(key: string, value: string): void {
-    window.localStorage.setItem(key, value);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(key, value);
+      }
+    } catch {
+      return;
+    }
   },
   remove(key: string): void {
-    window.localStorage.removeItem(key);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(key);
+      }
+    } catch {
+      return;
+    }
   },
 };
