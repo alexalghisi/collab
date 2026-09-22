@@ -70,9 +70,30 @@ function requestAccessToken(api: GoogleIdentity, clientId: string): Promise<stri
   });
 }
 
+interface ElectronAuth {
+  readonly isElectron?: boolean;
+  readonly clientId?: string;
+  loginWithGoogle?(clientId: string): Promise<GoogleCredential>;
+  requestCalendarToken?(clientId: string, prompt: string): Promise<string>;
+}
+
+function getElectronAuth(): ElectronAuth | undefined {
+  const candidate = (globalThis as unknown as { electronAuth?: ElectronAuth }).electronAuth;
+  return candidate?.isElectron ? candidate : undefined;
+}
+
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 
 export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): Promise<string> {
+  const electronAuth = getElectronAuth();
+  if (electronAuth?.requestCalendarToken) {
+    const clientId = readGoogleWebClientId() || electronAuth.clientId;
+    if (!clientId) {
+      throw new Error('Google Calendar is not configured on this deployment.');
+    }
+    return electronAuth.requestCalendarToken(clientId, prompt);
+  }
+
   const clientId = readGoogleWebClientId();
   if (!clientId) {
     throw new Error('Google Calendar is not configured on this deployment.');
@@ -106,6 +127,15 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
 }
 
 export async function requestGoogleCredential(): Promise<GoogleCredential> {
+  const electronAuth = getElectronAuth();
+  if (electronAuth?.loginWithGoogle) {
+    const clientId = readGoogleWebClientId() || electronAuth.clientId;
+    if (!clientId) {
+      throw new Error('Google sign-in is not configured on this deployment.');
+    }
+    return electronAuth.loginWithGoogle(clientId);
+  }
+
   const clientId = readGoogleWebClientId();
   if (!clientId) {
     throw new Error('Google sign-in is not configured on this deployment.');
