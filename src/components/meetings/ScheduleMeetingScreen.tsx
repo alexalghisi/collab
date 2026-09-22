@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { parseDateTime, toDateInput, toTimeInput } from '../../meeting/calendar';
+import { parseContactList } from '../../meeting/contact';
 import { generateRoomId } from '../../meeting/roomId';
 import type { Meeting, MeetingDraft } from '../../meeting/types';
 import { colors } from '../../theme';
@@ -34,20 +35,28 @@ export function ScheduleMeetingScreen({
   );
   const [description, setDescription] = useState(initialMeeting?.description ?? '');
   const [roomId, setRoomId] = useState(() => initialMeeting?.roomId ?? generateRoomId());
+  const [attendees, setAttendees] = useState(() => (initialMeeting?.guests ?? []).join(', '));
+  const [reminderMinutes, setReminderMinutes] = useState<15 | 30>(
+    initialMeeting?.reminderMinutes ?? 15,
+  );
 
   const startsAt = parseDateTime(date, time);
   const ready = title.trim().length > 0 && startsAt !== null;
+  const parsedContacts = parseContactList(attendees);
 
   const save = () => {
     if (startsAt === null) {
       return;
     }
+    const guests = parsedContacts.map((c) => c.value);
     onSave({
       title: title.trim(),
       roomId,
       startsAt,
       durationMinutes,
       description: description.trim(),
+      guests: guests.length > 0 ? guests : undefined,
+      reminderMinutes,
     });
   };
 
@@ -121,6 +130,58 @@ export function ScheduleMeetingScreen({
         multiline
       />
 
+      <View style={styles.sectionHeader}>
+        <Text style={styles.label}>Attendees (emails or phone numbers)</Text>
+        <View style={styles.autoInviteBadge}>
+          <Ionicons name="sparkles" size={12} color={colors.primary} />
+          <Text style={styles.autoInviteBadgeText}>Auto-invites enabled</Text>
+        </View>
+      </View>
+      <TextInput
+        style={styles.input}
+        value={attendees}
+        onChangeText={setAttendees}
+        placeholder="alex@example.com, +1 555 123 4567, linus@kernel.org"
+        placeholderTextColor={colors.textSubtle}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      {parsedContacts.length > 0 ? (
+        <View style={styles.attendeeChips}>
+          {parsedContacts.map((c) => (
+            <View key={`${c.kind}:${c.value}`} style={styles.attendeeChip}>
+              <Ionicons
+                name={c.kind === 'email' ? 'mail-outline' : 'call-outline'}
+                size={14}
+                color={colors.primary}
+              />
+              <Text style={styles.attendeeChipText}>{c.value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <Text style={styles.helperText}>
+        Invites with direct join links and reminders will be dispatched automatically upon saving.
+      </Text>
+
+      <Text style={styles.label}>Send reminder before start</Text>
+      <View style={styles.chips}>
+        {([15, 30] as const).map((mins) => {
+          const selected = mins === reminderMinutes;
+          return (
+            <Pressable
+              key={mins}
+              style={[styles.chip, selected && styles.chipSelected]}
+              onPress={() => setReminderMinutes(mins)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+            >
+              <Text style={styles.chipText}>{mins} min before</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <Text style={styles.label}>Meeting ID</Text>
       <View style={styles.inline}>
         <Text style={[styles.input, styles.roomId]}>{roomId}</Text>
@@ -167,6 +228,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 8,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  autoInviteBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  autoInviteBadgeText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   input: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -176,6 +259,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  attendeeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  attendeeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  attendeeChipText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  helperText: {
+    color: colors.textSubtle,
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
   },
   multiline: {
     minHeight: 96,

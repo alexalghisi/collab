@@ -57,4 +57,26 @@ describe('ReminderBook', () => {
     expect(reminders.list()).toHaveLength(1);
     expect(reminders.list()[0]?.to).toBe('linus@example.com');
   });
+
+  it('sends an SMS reminder when the recipient is a phone number', async () => {
+    const reminders = book(900_000);
+    const sendSms = vi.fn(async () => undefined);
+    reminders.schedule({
+      to: '+40721123456',
+      roomId: 'room-1',
+      hostName: 'Ada',
+      link: 'https://collab.example/?room=room-1',
+      title: 'Standup',
+      minutes: 15,
+      startsAt: 900_000 + 15 * 60_000,
+    });
+
+    await expect(reminders.dispatch({ sendEmail: vi.fn(), sendSms })).resolves.toBe(1);
+    expect(sendSms).toHaveBeenCalledTimes(1);
+    expect(sendSms).toHaveBeenCalledWith(
+      '+40721123456',
+      expect.stringContaining('Ada invited you to a Collab call. Join:'),
+    );
+    expect(reminders.list()).toHaveLength(0);
+  });
 });
