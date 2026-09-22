@@ -30,10 +30,9 @@ export function TeamChatScreen({ chat, selfId }: TeamChatScreenProps) {
     return (
       <View style={styles.disabled}>
         <Ionicons name="chatbubbles-outline" size={40} color={colors.textSubtle} />
-        <Text style={styles.disabledTitle}>Team chat needs a shared backend</Text>
+        <Text style={styles.disabledTitle}>Sign in to use Team Chat</Text>
         <Text style={styles.disabledText}>
-          Channels are stored in Firestore. Configure the Firebase project and sign in to chat with
-          your team outside of meetings.
+          Sign in to your account to collaborate in team channels outside of meetings.
         </Text>
       </View>
     );
