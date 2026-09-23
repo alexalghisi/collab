@@ -170,6 +170,64 @@ describe('attachMediaStream', () => {
     expect(audio.remove).toHaveBeenCalledTimes(1);
   });
 
+  it('plays a remote voice through the context unlocked on join', () => {
+    const connect = vi.fn();
+    const createMediaStreamSource = vi.fn(() => ({ connect, disconnect: vi.fn() }));
+    const resume = vi.fn(async () => undefined);
+    vi.stubGlobal('window', {
+      AudioContext: vi.fn(function AudioContext() {
+        return {
+          state: 'running',
+          resume,
+          createMediaStreamSource,
+          destination: { id: 'speakers' },
+          createBufferSource: vi.fn(() => ({
+            buffer: null,
+            connect: vi.fn(),
+            start: vi.fn(),
+          })),
+          createBuffer: vi.fn(() => ({})),
+        };
+      }),
+    });
+    const audio = {
+      autoplay: false,
+      muted: false,
+      setAttribute: vi.fn(),
+      getAttribute: vi.fn(() => '1'),
+      style: { cssText: '' },
+      tagName: 'AUDIO',
+      srcObject: null as unknown,
+      volume: 1,
+      play: vi.fn(async () => undefined),
+      remove: vi.fn(),
+    };
+    vi.stubGlobal('document', {
+      createElement: () => audio,
+      body: { appendChild: vi.fn() },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return { id: 'voice' };
+      }),
+    );
+    const stream = {
+      getAudioTracks: () => [{ id: 'mic' }],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStream;
+
+    unlockAudioPlayback();
+    attachRemoteAudio(stream);
+
+    expect(createMediaStreamSource).toHaveBeenCalledWith(stream);
+    expect(connect).toHaveBeenCalledWith({ id: 'speakers' });
+    expect(audio.muted).toBe(true);
+  });
+
   it('opens the audio context on the join click so a later remote track can play', () => {
     const start = vi.fn();
     const resume = vi.fn(async () => undefined);

@@ -17,6 +17,7 @@ export interface HomeScreenProps {
   roomId: string;
   onRoomIdChange: (value: string) => void;
   onJoin: (roomId: string, video: boolean) => void;
+  onCancelJoin: () => void;
   onSchedule: () => void;
   connecting: boolean;
   error: string | null;
@@ -66,6 +67,7 @@ export function HomeScreen({
   roomId,
   onRoomIdChange,
   onJoin,
+  onCancelJoin,
   onSchedule,
   connecting,
   error,
@@ -129,10 +131,12 @@ export function HomeScreen({
             onPress={() => onJoin(roomId.trim(), true)}
             disabled={!canJoin}
           />
+          {connecting && <Button label="Cancel" variant="secondary" onPress={onCancelJoin} />}
         </View>
         {connecting && (
           <Text style={styles.connecting}>
-            Connecting… allow the camera and microphone if the browser asks.
+            Allow the camera and microphone if the browser asks. If it does not, we join without
+            them — you can turn them on in the meeting.
           </Text>
         )}
         {error && <Text style={styles.error}>{error}</Text>}

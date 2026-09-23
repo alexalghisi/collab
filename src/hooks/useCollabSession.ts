@@ -46,7 +46,8 @@ import {
 import { PeerConnectionManager } from '../webrtc/PeerConnectionManager';
 import {
   acquireCameraTrack,
-  acquireLocalStream,
+  acquireJoinStream,
+  acquireMicrophoneTrack,
   acquireScreenTrack,
   toggleTrack,
 } from '../webrtc/media';
@@ -226,6 +227,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechRef = useRef(createSpeechCapture());
   const selfPeerIdRef = useRef<string | null>(null);
+  /** Bumped on leave so a late getUserMedia cannot resume a cancelled join. */
+  const joinGenerationRef = useRef(0);
 
   const updateSelf = useCallback((patch: Partial<PeerState>) => {
     const next = { ...selfRef.current, ...patch };
@@ -327,6 +330,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
   const leave = useCallback(
     (options?: { keepLive?: boolean }) => {
+      joinGenerationRef.current += 1;
       disconnectRoom();
 
       if (reactionTimerRef.current) {
@@ -586,15 +590,13 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const join = useCallback(
     async ({ roomId: nextRoomId, displayName, video }: JoinOptions) => {
       unlockAudioPlayback();
+      const generation = ++joinGenerationRef.current;
       setStatus('connecting');
       setError(null);
 
-      let stream: MediaStream;
-      try {
-        stream = await acquireLocalStream({ video, audio: true });
-      } catch {
-        setError(MEDIA_ERROR);
-        setStatus('error');
+      const stream = await acquireJoinStream(video);
+      if (generation !== joinGenerationRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
         return false;
       }
       streamRef.current = stream;
@@ -636,6 +638,22 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const toggleMic = useCallback(() => {
     const stream = streamRef.current;
     if (!stream) {
+      return;
+    }
+    const tracks = stream.getAudioTracks();
+    if (tracks.length === 0) {
+      void (async () => {
+        let track: MediaStreamTrack;
+        try {
+          track = await acquireMicrophoneTrack();
+        } catch {
+          setError(MEDIA_ERROR);
+          return;
+        }
+        stream.addTrack(track);
+        await managerRef.current?.replaceAudioTrack(track);
+        updateSelf({ audioMuted: false });
+      })();
       return;
     }
     const audioMuted = !selfRef.current.audioMuted;
