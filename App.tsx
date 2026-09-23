@@ -147,8 +147,6 @@ export default function App() {
     resumeAttempted.current = true;
     const linkRoom = readRoomFromLink();
     const live = readLiveMeeting();
-    // A bare visit to the app stays on Home. An invite link (?room=) goes straight in,
-    // without waiting on the camera prompt that was freezing guests on Connecting.
     if (!linkRoom) {
       clearLiveMeeting();
       return;
@@ -162,7 +160,6 @@ export default function App() {
         roomId: linkRoom,
         displayName: name,
         video: sameRoom?.video ?? true,
-        requestMedia: sameRoom !== null,
       })
       .then((joined) => {
         if (joined) {
