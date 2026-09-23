@@ -46,7 +46,6 @@ import {
 import { PeerConnectionManager } from '../webrtc/PeerConnectionManager';
 import {
   acquireCameraTrack,
-  acquireJoinStream,
   acquireMicrophoneTrack,
   acquireScreenTrack,
   toggleTrack,
@@ -90,12 +89,6 @@ export interface JoinOptions {
   readonly displayName: string;
   /** false joins as a voice call: microphone only, camera can be enabled later. */
   readonly video: boolean;
-  /**
-   * false enters the room first and waits for an explicit tap before asking for
-   * the camera. An invite link has no user gesture yet, and a pending permission
-   * prompt freezes the page on "Connecting…".
-   */
-  readonly requestMedia?: boolean;
 }
 
 export interface CollabSession {
@@ -233,7 +226,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechRef = useRef(createSpeechCapture());
   const selfPeerIdRef = useRef<string | null>(null);
-  /** Bumped on leave so a late getUserMedia cannot resume a cancelled join. */
   const joinGenerationRef = useRef(0);
 
   const updateSelf = useCallback((patch: Partial<PeerState>) => {
@@ -593,54 +585,16 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     [createSignaling, patchParticipant, dropParticipant, leave, beginCaptions],
   );
 
-  const attachCapturedMedia = useCallback((generation: number, video: boolean) => {
-    void acquireJoinStream(video).then(async (live) => {
-      if (generation !== joinGenerationRef.current) {
-        live.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      const current = streamRef.current;
-      if (!current) {
-        live.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      for (const track of live.getTracks()) {
-        current.addTrack(track);
-      }
-      const audio = live.getAudioTracks()[0] ?? null;
-      const videoTrack = live.getVideoTracks()[0] ?? null;
-      if (audio) {
-        await managerRef.current?.replaceAudioTrack(audio);
-      }
-      if (videoTrack) {
-        await managerRef.current?.replaceVideoTrack(videoTrack);
-      }
-      const next = {
-        ...selfRef.current,
-        audioMuted: audio === null,
-        videoOff: videoTrack === null,
-      };
-      selfRef.current = next;
-      setSelf(next);
-      signalingRef.current?.emit('peer:state', next);
-    });
-  }, []);
-
   const join = useCallback(
-    async ({ roomId: nextRoomId, displayName, video, requestMedia = true }: JoinOptions) => {
+    async ({ roomId: nextRoomId, displayName, video }: JoinOptions) => {
       unlockAudioPlayback();
-      const generation = ++joinGenerationRef.current;
+      joinGenerationRef.current += 1;
       setStatus('connecting');
       setError(null);
 
       const stream = new MediaStream();
       streamRef.current = stream;
       setLocalStream(stream);
-      // Ask during the click, but do not wait. A permission prompt that never
-      // closes used to leave the guest on "Connecting…" forever.
-      if (requestMedia) {
-        attachCapturedMedia(generation, video);
-      }
 
       const initialState: PeerState = {
         ...INITIAL_PEER_STATE,
@@ -662,7 +616,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
       return connectRoom(nextRoomId);
     },
-    [attachCapturedMedia, connectRoom],
+    [connectRoom],
   );
 
   const switchRoom = useCallback(
@@ -687,12 +641,19 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     }
     const tracks = stream.getAudioTracks();
     if (tracks.length === 0) {
+      const generation = joinGenerationRef.current;
       void (async () => {
         let track: MediaStreamTrack;
         try {
           track = await acquireMicrophoneTrack();
         } catch {
-          setError(MEDIA_ERROR);
+          if (generation === joinGenerationRef.current) {
+            setError(MEDIA_ERROR);
+          }
+          return;
+        }
+        if (generation !== joinGenerationRef.current || streamRef.current !== stream) {
+          track.stop();
           return;
         }
         stream.addTrack(track);
