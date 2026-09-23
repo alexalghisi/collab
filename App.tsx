@@ -260,6 +260,7 @@ export default function App() {
             roomId={roomId}
             onRoomIdChange={setRoomId}
             onJoin={(nextRoomId, video) => void joinRoom(nextRoomId, video)}
+            onCancelJoin={() => session.leave()}
             onSchedule={() => openSchedule()}
             connecting={session.status === 'connecting'}
             error={session.error}

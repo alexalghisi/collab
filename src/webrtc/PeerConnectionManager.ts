@@ -110,6 +110,16 @@ export class PeerConnectionManager {
     stopAllPeerAudio();
   }
 
+  /** Swaps the outgoing microphone on every connection without renegotiating. */
+  async replaceAudioTrack(track: MediaStreamTrack | null): Promise<void> {
+    await Promise.all(
+      [...this.peers.values()].map(async (entry) => {
+        await entry.senders.audio.replaceTrack(track);
+        await tuneAudioSender(entry.senders.audio);
+      }),
+    );
+  }
+
   /** Swaps the outgoing video (camera, screen, or nothing) on every connection. */
   async replaceVideoTrack(track: MediaStreamTrack | null): Promise<void> {
     const content = videoContentOf(track);

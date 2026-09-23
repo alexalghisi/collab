@@ -25,12 +25,27 @@ export async function loadIceServers(
       }
       return [
         ...DEFAULT_ICE_SERVERS,
-        { urls: body.uris, username: body.username, credential: body.password },
+        {
+          urls: withTcpTurn(body.uris),
+          username: body.username,
+          credential: body.password,
+        },
       ];
     },
     'POST',
   );
   return relay ?? DEFAULT_ICE_SERVERS;
+}
+
+/** UDP-only relays fail on many mobile networks; ask for TCP on the same host. */
+function withTcpTurn(uris: readonly string[]): string[] {
+  const urls = new Set(uris);
+  for (const uri of uris) {
+    if (uri.includes('transport=udp')) {
+      urls.add(uri.replace('transport=udp', 'transport=tcp'));
+    }
+  }
+  return [...urls];
 }
 
 async function readJson<T>(

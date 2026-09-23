@@ -33,7 +33,7 @@ describe('loadIceServers', () => {
     await expect(loadIceServers('https://signal.example', fetchImpl)).resolves.toEqual([
       ...DEFAULT_ICE_SERVERS,
       {
-        urls: ['turn:203.0.113.8:3478?transport=udp'],
+        urls: ['turn:203.0.113.8:3478?transport=udp', 'turn:203.0.113.8:3478?transport=tcp'],
         username: 'u',
         credential: 'p',
       },
