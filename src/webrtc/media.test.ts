@@ -3,6 +3,7 @@ import {
   AUDIO_CONSTRAINTS,
   CAMERA_CONSTRAINTS,
   acquireCameraTrack,
+  acquireJoinStream,
   acquireLocalStream,
   acquireScreenTrack,
 } from './media';
@@ -116,6 +117,68 @@ describe('media capture', () => {
       video: false,
       audio: AUDIO_CONSTRAINTS,
     });
+  });
+
+  it('gives up when the permission prompt never answers', async () => {
+    const getUserMedia = vi.fn(() => new Promise(() => undefined));
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    await expect(acquireLocalStream({ video: true, audio: true }, 20)).rejects.toThrow(
+      'media-timeout',
+    );
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops a late grant after the join wait has already moved on', async () => {
+    let grant!: (stream: { getTracks: () => { stop: ReturnType<typeof vi.fn> }[] }) => void;
+    const stop = vi.fn();
+    const getUserMedia = vi.fn(
+      () =>
+        new Promise<{ getTracks: () => { stop: ReturnType<typeof vi.fn> }[] }>((resolve) => {
+          grant = resolve;
+        }),
+    );
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    await expect(acquireLocalStream({ video: false, audio: true }, 20)).rejects.toThrow(
+      'media-timeout',
+    );
+    grant({ getTracks: () => [{ stop }] });
+    await Promise.resolve();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('joins without devices when the browser never answers the prompt', async () => {
+    vi.stubGlobal('navigator', {
+      mediaDevices: { getUserMedia: vi.fn(() => new Promise(() => undefined)) },
+    });
+
+    const stream = await acquireJoinStream(true, 20);
+
+    expect(stream.getTracks()).toEqual([]);
+    expect(stream.getVideoTracks()).toEqual([]);
+    expect(stream.getAudioTracks()).toEqual([]);
+  });
+
+  it('falls back to the microphone when only the camera is refused', async () => {
+    const mic = { kind: 'audio', contentHint: '', stop: vi.fn() };
+    const getUserMedia = vi.fn(async (constraints: { video: unknown }) => {
+      if (constraints.video) {
+        throw new DOMException('Permission denied', 'NotAllowedError');
+      }
+      return {
+        getTracks: () => [mic],
+        getVideoTracks: () => [],
+        getAudioTracks: () => [mic],
+      };
+    });
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    const stream = await acquireJoinStream(true, 50);
+
+    expect(stream.getAudioTracks()).toEqual([mic]);
+    expect(getUserMedia).toHaveBeenCalledTimes(3);
   });
 
   it('shares the screen at full resolution and without tab audio', async () => {
