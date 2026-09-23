@@ -6,7 +6,6 @@ export interface WakeOptions {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   pauseMs?: number;
-  /** One health request must not sit open forever; a stuck socket never reaches the deadline. */
   probeTimeoutMs?: number;
 }
 
@@ -31,6 +30,21 @@ export async function waitUntilSignalingReady(
   if (isLoopbackSignalingUrl(url)) {
     return;
   }
+  const timeoutMs = options.timeoutMs ?? 12_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new SignalingUnavailableError(url)), timeoutMs);
+  });
+  const polling = pollHealth(url, options);
+  void polling.catch(() => undefined);
+  try {
+    await Promise.race([polling, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function pollHealth(url: string, options: WakeOptions): Promise<void> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 12_000;
   const pauseMs = options.pauseMs ?? 1_000;
