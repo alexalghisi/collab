@@ -6,7 +6,7 @@
   <img src="./assets/demo.gif" alt="Collab application runtime demo" width="800" />
 </p>
 
-_Collab runtime: home dashboard, scheduling meetings with attendee auto-invitations, meeting room, and team chat._
+_Collab runtime: sign in (Continue with Google or email), home dashboard, scheduling with attendee invites, the meeting room, and team chat._
 
 > Cross-platform video conferencing built with React Native, Expo, WebRTC, and a Node.js signaling server. One codebase ships to **macOS, Windows, iOS, and Android**.
 
