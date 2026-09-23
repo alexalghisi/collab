@@ -112,6 +112,16 @@ const css = `
   .bubble { border-radius: 12px; padding: 8px 10px; margin: 8px 0; font-size: 13px; max-width: 90%; }
   .me { background: ${palette.primary}; margin-left: auto; }
   .them { background: ${palette.raised}; }
+  .auth { height: 562px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+  .auth-card { width: 380px; display: flex; flex-direction: column; gap: 12px; }
+  .brand-center { margin: 0; text-align: center; font-size: 40px; font-weight: 800; }
+  .lead { margin: 0; text-align: center; color: ${palette.muted}; font-size: 16px; line-height: 22px; }
+  .google { background: #ffffff; color: #1f2937; border-radius: 12px; padding: 16px; text-align: center; font-weight: 700; }
+  .or { text-align: center; color: ${palette.subtle}; font-size: 14px; }
+  .tabs { display: flex; background: ${palette.surface}; border-radius: 12px; padding: 4px; }
+  .tab { flex: 1; text-align: center; padding: 10px; border-radius: 10px; color: ${palette.muted}; font-weight: 700; }
+  .tab.on { background: ${palette.raised}; color: ${palette.text}; }
+  .wide { display: block; text-align: center; padding: 16px; border-radius: 12px; }
 `;
 
 function page(title, body) {
@@ -201,12 +211,28 @@ const schedule = page(
   </main></div>`,
 );
 
+const signIn = page(
+  'sign-in',
+  `<div class="auth"><div class="auth-card">
+    <h1 class="brand-center">Collab</h1>
+    <p class="lead">Sign in to start or join a meeting.</p>
+    <div class="google">Continue with Google</div>
+    <div class="or">or use email</div>
+    <div class="tabs"><div class="tab on">Sign in</div><div class="tab">Create account</div></div>
+    <div class="field">Work email</div>
+    <div class="field">Password</div>
+    <div class="btn wide">Sign in</div>
+    <p class="lead">Need an account? <strong style="color:${palette.text}">Create one</strong></p>
+  </div></div>`,
+);
+
 const dir = mkdtempSync(join(tmpdir(), 'collab-demo-'));
 const frames = [
-  ['home.html', home, '01.png'],
-  ['schedule.html', schedule, '02.png'],
-  ['meeting.html', meeting, '03.png'],
-  ['together.html', together, '04.png'],
+  ['sign-in.html', signIn, '01.png'],
+  ['home.html', home, '02.png'],
+  ['schedule.html', schedule, '03.png'],
+  ['meeting.html', meeting, '04.png'],
+  ['together.html', together, '05.png'],
 ];
 
 for (const [name, html, png] of frames) {
