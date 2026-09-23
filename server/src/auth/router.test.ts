@@ -13,10 +13,17 @@ import type { GoogleTokenLookup } from './google';
 async function start(
   dir: string,
   googleLookup?: GoogleTokenLookup,
+  googleAccessLookup?: GoogleTokenLookup,
 ): Promise<{ url: string; close: () => Promise<void> }> {
   const app = express();
   app.use(express.json());
-  app.use(authRouter({ store: new UserStore(join(dir, 'users.json')), googleLookup }));
+  app.use(
+    authRouter({
+      store: new UserStore(join(dir, 'users.json')),
+      googleLookup,
+      googleAccessLookup,
+    }),
+  );
   const server = createServer(app);
   server.listen(0);
   await once(server, 'listening');
@@ -142,6 +149,44 @@ describe('auth router', () => {
         body: JSON.stringify({ email: 'student@university.edu', password: 'password1' }),
       });
       expect(passwordLogin.status).toBe(401);
+    } finally {
+      await close();
+      if (previous === undefined) {
+        delete process.env.GOOGLE_CLIENT_ID;
+      } else {
+        process.env.GOOGLE_CLIENT_ID = previous;
+      }
+    }
+  });
+
+  it('signs in with the access token returned by Continue with Google', async () => {
+    const previous = process.env.GOOGLE_CLIENT_ID;
+    process.env.GOOGLE_CLIENT_ID = 'test.apps.googleusercontent.com';
+    const dir = mkdtempSync(join(tmpdir(), 'collab-auth-'));
+    dirs.push(dir);
+    const { url, close } = await start(dir, undefined, async () => ({
+      azp: 'test.apps.googleusercontent.com',
+      email: 'Student@University.edu',
+      verified_email: true,
+      name: 'Alex Student',
+      user_id: 'google-sub-1',
+      picture: 'https://example.com/a.png',
+    }));
+    try {
+      const created = await fetch(`${url}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: 'ya29.token' }),
+      });
+      expect(created.status).toBe(200);
+      const body = (await created.json()) as {
+        token: string;
+        user: { email: string; displayName: string; photoURL: string | null };
+      };
+      expect(body.user.email).toBe('student@university.edu');
+      expect(body.user.displayName).toBe('Alex Student');
+      expect(body.user.photoURL).toBe('https://example.com/a.png');
+      expect(typeof body.token).toBe('string');
     } finally {
       await close();
       if (previous === undefined) {
