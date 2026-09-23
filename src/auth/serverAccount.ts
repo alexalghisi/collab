@@ -1,5 +1,8 @@
 import { SIGNALING_URL } from '../signaling/config';
+import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
 import type { AuthUser, GoogleCredential } from './types';
+
+const UNREACHABLE = 'Could not reach the account service. Try again in a moment.';
 
 export interface AuthSession {
   readonly token: string;
@@ -29,7 +32,18 @@ function toUser(body: AuthResponseBody['user']): AuthUser | null {
   };
 }
 
-async function request(path: string, init?: RequestInit): Promise<AuthSession> {
+async function wakeAccountService(): Promise<void> {
+  if (isLoopbackSignalingUrl(SIGNALING_URL)) {
+    return;
+  }
+  try {
+    await waitUntilSignalingReady(SIGNALING_URL);
+  } catch {
+    throw new Error(UNREACHABLE);
+  }
+}
+
+async function postAccount(path: string, init?: RequestInit): Promise<AuthSession> {
   let response: Response;
   try {
     response = await fetch(`${SIGNALING_URL}${path}`, {
@@ -37,7 +51,7 @@ async function request(path: string, init?: RequestInit): Promise<AuthSession> {
       signal: init?.signal ?? AbortSignal.timeout(20_000),
     });
   } catch {
-    throw new Error('Could not reach the account service. Try again in a moment.');
+    throw new Error(UNREACHABLE);
   }
   const body = (await response.json().catch(() => ({}))) as AuthResponseBody;
   if (!response.ok) {
@@ -50,6 +64,23 @@ async function request(path: string, init?: RequestInit): Promise<AuthSession> {
     throw new Error('The account service returned an unexpected response.');
   }
   return { token: body.token, user };
+}
+
+async function request(path: string, init?: RequestInit): Promise<AuthSession> {
+  await wakeAccountService();
+  try {
+    return await postAccount(path, init);
+  } catch (cause) {
+    if (
+      isLoopbackSignalingUrl(SIGNALING_URL) ||
+      !(cause instanceof Error) ||
+      cause.message !== UNREACHABLE
+    ) {
+      throw cause;
+    }
+    await wakeAccountService();
+    return postAccount(path, init);
+  }
 }
 
 export async function registerAccount(input: {
