@@ -12,6 +12,8 @@ import {
   type User,
 } from 'firebase/auth';
 import { firebaseAuth as firebase } from '../firebase/app';
+import { SIGNALING_URL } from '../signaling/config';
+import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
 import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
 import { requestGoogleCredential } from './googleWeb';
 import {
@@ -94,6 +96,9 @@ export function useAuth(): AuthState {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isLoopbackSignalingUrl(SIGNALING_URL)) {
+      void waitUntilSignalingReady(SIGNALING_URL).catch(() => undefined);
+    }
     let cancelled = false;
     const snapshot = readSessionSnapshot();
     if (snapshot?.user) {

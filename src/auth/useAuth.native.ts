@@ -3,6 +3,8 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import type { AuthSessionResult } from 'expo-auth-session';
+import { SIGNALING_URL } from '../signaling/config';
+import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
 import { readNativeAuthConfig } from './config';
 import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
 import {
@@ -59,6 +61,9 @@ export function useAuth(): AuthState {
   });
 
   useEffect(() => {
+    if (!isLoopbackSignalingUrl(SIGNALING_URL)) {
+      void waitUntilSignalingReady(SIGNALING_URL).catch(() => undefined);
+    }
     let cancelled = false;
     void (async () => {
       const snapshot = await readSessionSnapshot();
