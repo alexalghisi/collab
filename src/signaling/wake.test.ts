@@ -58,6 +58,21 @@ describe('waitUntilSignalingReady', () => {
     expect(hits).toBe(3);
   });
 
+  it('rejects when health never settles and the request ignores abort', async () => {
+    const fetchImpl = () => new Promise<Response>(() => undefined);
+    const started = Date.now();
+
+    const cause = await waitUntilSignalingReady('https://signal.example', {
+      fetchImpl,
+      timeoutMs: 40,
+      pauseMs: 1,
+      probeTimeoutMs: 1_000,
+    }).catch((error: unknown) => error);
+
+    expect(cause).toBeInstanceOf(SignalingUnavailableError);
+    expect(Date.now() - started).toBeLessThan(400);
+  });
+
   it('does not wait forever on a health request that never answers', async () => {
     const fetchImpl = (_input: RequestInfo | URL, init?: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
