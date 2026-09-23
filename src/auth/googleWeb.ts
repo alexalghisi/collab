@@ -140,10 +140,17 @@ export async function requestGoogleCredential(): Promise<GoogleCredential> {
   if (!clientId) {
     throw new Error('Google sign-in is not configured on this deployment.');
   }
-  await loadScript();
-  const api = googleApi();
+  const ready = googleApi();
+  if (!ready) {
+    await loadScript();
+  }
+  const api = ready ?? googleApi();
   if (!api) {
     throw new Error('Could not load Google Sign-In.');
   }
   return { accessToken: await requestAccessToken(api, clientId) };
+}
+
+if (typeof document !== 'undefined') {
+  void loadScript().catch(() => undefined);
 }
