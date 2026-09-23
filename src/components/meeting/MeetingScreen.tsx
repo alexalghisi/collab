@@ -247,6 +247,20 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
         />
       )}
 
+      {session.localStream !== null && session.localStream.getAudioTracks().length === 0 && (
+        <Pressable
+          style={styles.micBanner}
+          onPress={session.toggleMic}
+          accessibilityRole="button"
+          accessibilityLabel="Turn on microphone"
+        >
+          <Ionicons name="mic" size={18} color={colors.text} />
+          <Text style={styles.micBannerText}>
+            Tap to turn on the microphone so others can hear you
+          </Text>
+        </Pressable>
+      )}
+
       <View style={styles.toolbar}>
         <ToolbarButton
           icon={session.self.audioMuted ? 'mic-off' : 'mic'}
@@ -406,6 +420,23 @@ const styles = StyleSheet.create({
   },
   overlayPanel: {
     ...StyleSheet.absoluteFillObject,
+  },
+  micBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  micBannerText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
   },
   toolbar: {
     flexDirection: 'row',

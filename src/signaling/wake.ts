@@ -6,6 +6,8 @@ export interface WakeOptions {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   pauseMs?: number;
+  /** One health request must not sit open forever; a stuck socket never reaches the deadline. */
+  probeTimeoutMs?: number;
 }
 
 export function isLoopbackSignalingUrl(url: string): boolean {
@@ -30,14 +32,20 @@ export async function waitUntilSignalingReady(
     return;
   }
   const fetchImpl = options.fetchImpl ?? fetch;
-  const timeoutMs = options.timeoutMs ?? 45_000;
+  const timeoutMs = options.timeoutMs ?? 12_000;
   const pauseMs = options.pauseMs ?? 1_000;
+  const probeTimeoutMs = options.probeTimeoutMs ?? 4_000;
   const deadline = Date.now() + timeoutMs;
   const health = `${url.replace(/\/$/, '')}/health`;
   for (;;) {
     let ready: boolean;
     try {
-      ready = (await fetchImpl(health, { cache: 'no-store' })).ok;
+      ready = (
+        await fetchImpl(health, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(probeTimeoutMs),
+        })
+      ).ok;
     } catch {
       ready = false;
     }
