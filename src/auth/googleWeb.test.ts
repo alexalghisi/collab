@@ -106,6 +106,16 @@ describe('requestGoogleCredential', () => {
     expect(stub.asked).toEqual([{ scope: 'openid email profile', prompt: 'select_account' }]);
   });
 
+  it('opens the account picker in the same turn once Google is loaded', () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    const stub = stubGoogle({ access_token: 'ya29.login' });
+
+    const pending = requestGoogleCredential();
+
+    expect(stub.asked).toEqual([{ scope: 'openid email profile', prompt: 'select_account' }]);
+    return expect(pending).resolves.toEqual({ accessToken: 'ya29.login' });
+  });
+
   it('delegates to electronAuth.loginWithGoogle when running in Electron', async () => {
     const loginWithGoogle = vi.fn().mockResolvedValue({
       idToken: 'mock-id-token',
