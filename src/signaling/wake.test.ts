@@ -58,6 +58,22 @@ describe('waitUntilSignalingReady', () => {
     expect(hits).toBe(3);
   });
 
+  it('does not wait forever on a health request that never answers', async () => {
+    const fetchImpl = (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+
+    const cause = await waitUntilSignalingReady('https://signal.example', {
+      fetchImpl,
+      timeoutMs: 30,
+      pauseMs: 1,
+      probeTimeoutMs: 5,
+    }).catch((error: unknown) => error);
+
+    expect(cause).toBeInstanceOf(SignalingUnavailableError);
+  });
+
   it('names the URL when health never comes up', async () => {
     const fetchImpl = async () => {
       throw new Error('ECONNRESET');

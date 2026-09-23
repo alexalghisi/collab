@@ -147,24 +147,26 @@ export default function App() {
     resumeAttempted.current = true;
     const linkRoom = readRoomFromLink();
     const live = readLiveMeeting();
-    // Only resume a live meeting if the user actually refreshed while in that meeting (link matches live room).
-    // If the user navigates directly to the base URL (no ?room=...), do not auto-join; start clean on Home.
-    if (!linkRoom || !live || live.roomId !== linkRoom) {
+    // A bare visit to the app stays on Home. An invite link (?room=) goes straight in,
+    // without waiting on the camera prompt that was freezing guests on Connecting.
+    if (!linkRoom) {
       clearLiveMeeting();
       return;
     }
-    const name = (live.displayName || displayName || auth.user.displayName || 'Guest').trim();
+    const sameRoom = live?.roomId === linkRoom ? live : null;
+    const name = (sameRoom?.displayName || displayName || auth.user.displayName || 'Guest').trim();
     setDisplayName(name);
-    setRoomId(live.roomId);
+    setRoomId(linkRoom);
     void session
       .join({
-        roomId: live.roomId,
+        roomId: linkRoom,
         displayName: name,
-        video: live.video,
+        video: sameRoom?.video ?? true,
+        requestMedia: sameRoom !== null,
       })
       .then((joined) => {
         if (joined) {
-          void meetings.recordInstant(live.roomId);
+          void meetings.recordInstant(linkRoom);
         }
       });
   }, [auth.user, displayName, session.status]);

@@ -90,6 +90,12 @@ export interface JoinOptions {
   readonly displayName: string;
   /** false joins as a voice call: microphone only, camera can be enabled later. */
   readonly video: boolean;
+  /**
+   * false enters the room first and waits for an explicit tap before asking for
+   * the camera. An invite link has no user gesture yet, and a pending permission
+   * prompt freezes the page on "Connecting…".
+   */
+  readonly requestMedia?: boolean;
 }
 
 export interface CollabSession {
@@ -561,18 +567,18 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       });
       signaling.on('code:files', (files) => setWorkspaceFiles([...files]));
 
-      const manager = new PeerConnectionManager({
-        signaling,
-        localStream: stream,
-        iceServers: await loadIceServers(SIGNALING_URL),
-        onRemoteStream: (peerId, remoteStream) =>
-          setParticipants((current) => rememberRemoteStream(current, peerId, remoteStream)),
-        onPeerClosed: dropParticipant,
-      });
-      manager.start();
-      managerRef.current = manager;
-
       try {
+        const manager = new PeerConnectionManager({
+          signaling,
+          localStream: stream,
+          iceServers: await loadIceServers(SIGNALING_URL),
+          onRemoteStream: (peerId, remoteStream) =>
+            setParticipants((current) => rememberRemoteStream(current, peerId, remoteStream)),
+          onPeerClosed: dropParticipant,
+        });
+        manager.start();
+        managerRef.current = manager;
+
         await signaling.connect();
         setStatus('connected');
         beginCaptions();
@@ -587,22 +593,60 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     [createSignaling, patchParticipant, dropParticipant, leave, beginCaptions],
   );
 
+  const attachCapturedMedia = useCallback((generation: number, video: boolean) => {
+    void acquireJoinStream(video).then(async (live) => {
+      if (generation !== joinGenerationRef.current) {
+        live.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const current = streamRef.current;
+      if (!current) {
+        live.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      for (const track of live.getTracks()) {
+        current.addTrack(track);
+      }
+      const audio = live.getAudioTracks()[0] ?? null;
+      const videoTrack = live.getVideoTracks()[0] ?? null;
+      if (audio) {
+        await managerRef.current?.replaceAudioTrack(audio);
+      }
+      if (videoTrack) {
+        await managerRef.current?.replaceVideoTrack(videoTrack);
+      }
+      const next = {
+        ...selfRef.current,
+        audioMuted: audio === null,
+        videoOff: videoTrack === null,
+      };
+      selfRef.current = next;
+      setSelf(next);
+      signalingRef.current?.emit('peer:state', next);
+    });
+  }, []);
+
   const join = useCallback(
-    async ({ roomId: nextRoomId, displayName, video }: JoinOptions) => {
+    async ({ roomId: nextRoomId, displayName, video, requestMedia = true }: JoinOptions) => {
       unlockAudioPlayback();
       const generation = ++joinGenerationRef.current;
       setStatus('connecting');
       setError(null);
 
-      const stream = await acquireJoinStream(video);
-      if (generation !== joinGenerationRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return false;
-      }
+      const stream = new MediaStream();
       streamRef.current = stream;
       setLocalStream(stream);
+      // Ask during the click, but do not wait. A permission prompt that never
+      // closes used to leave the guest on "Connecting…" forever.
+      if (requestMedia) {
+        attachCapturedMedia(generation, video);
+      }
 
-      const initialState: PeerState = { ...INITIAL_PEER_STATE, videoOff: !video };
+      const initialState: PeerState = {
+        ...INITIAL_PEER_STATE,
+        videoOff: true,
+        audioMuted: true,
+      };
       selfRef.current = initialState;
       setSelf(initialState);
       displayNameRef.current = displayName;
@@ -618,7 +662,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
       return connectRoom(nextRoomId);
     },
-    [connectRoom],
+    [attachCapturedMedia, connectRoom],
   );
 
   const switchRoom = useCallback(
@@ -636,6 +680,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   }, [breakoutOf, switchRoom]);
 
   const toggleMic = useCallback(() => {
+    unlockAudioPlayback();
     const stream = streamRef.current;
     if (!stream) {
       return;
