@@ -10,7 +10,11 @@ import { readSessionToken } from './src/auth/session';
 import { EXECUTION_URL } from './src/code/config';
 import { InviteError, parseContactList } from './src/meeting/contact';
 import { buildInviteLink, readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
-import { deliverMeetingGuests, sendMeetingInvite } from './src/meeting/calendarInvite';
+import {
+  deliverMeetingGuests,
+  sendCallInvite,
+  sendMeetingInvite,
+} from './src/meeting/calendarInvite';
 import { clearLiveMeeting, readLiveMeeting } from './src/meeting/resume';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
 import { deleteMeeting as retractThenRemove } from './src/meeting/deleteMeeting';
@@ -85,6 +89,27 @@ export default function App() {
   };
 
   const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
+
+  const inviteFromCall = (input: string) =>
+    sendCallInvite(input, session.sendInvite, async (emails) => {
+      const activeRoom = session.roomId ?? roomId.trim();
+      const found = meetings.meetings.find((item) => item.roomId === activeRoom);
+      const now = Date.now();
+      const meeting: Meeting = found ?? {
+        id: crypto.randomUUID(),
+        title: activeRoom,
+        roomId: activeRoom,
+        startsAt: now,
+        durationMinutes: 60,
+        description: '',
+        createdAt: now,
+      };
+      await googleCalendar.shareGuests({
+        ...meeting,
+        durationMinutes: meeting.durationMinutes > 0 ? meeting.durationMinutes : 60,
+        guests: [...new Set([...(meeting.guests ?? []), ...emails])],
+      });
+    });
 
   const dispatchGuests = (meeting: Meeting, guests: readonly string[], reminderMinutes: 15 | 30) =>
     deliverMeetingGuests({
@@ -242,7 +267,12 @@ export default function App() {
     return (
       <SafeAreaView style={styles.screen}>
         <StatusBar style="light" />
-        <MeetingScreen session={session} roomId={roomId.trim()} displayName={displayName.trim()} />
+        <MeetingScreen
+          session={session}
+          roomId={roomId.trim()}
+          displayName={displayName.trim()}
+          onInvite={inviteFromCall}
+        />
       </SafeAreaView>
     );
   }

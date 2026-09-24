@@ -1,4 +1,4 @@
-import { InviteError, type ParsedContact } from './contact';
+import { InviteError, parseContactList, type ParsedContact } from './contact';
 import { sendContactInvite, type InviteRequest } from './sendInvite';
 import { INITIAL_PEER_STATE } from '../signaling/events';
 import { createSocketSignaling } from '../signaling/SocketSignaling';
@@ -35,6 +35,23 @@ export async function sendMeetingInvite(
   } finally {
     channel.disconnect();
   }
+}
+
+export async function sendCallInvite(
+  input: string,
+  send: (input: string) => Promise<ParsedContact>,
+  mail: (emails: readonly string[]) => Promise<void>,
+): Promise<ParsedContact> {
+  const contacts = parseContactList(input);
+  if (contacts.length === 0) {
+    throw new InviteError('Enter an email address or a phone number.');
+  }
+  await deliverMeetingGuests({
+    send: () => send(input),
+    mailThroughCalendar: () =>
+      mail(contacts.filter((item) => item.kind === 'email').map((item) => item.value)),
+  });
+  return contacts[0];
 }
 
 export async function deliverMeetingGuests(input: {
