@@ -29,6 +29,7 @@ export interface MeetingScreenProps {
   /** Main room id; invites always point here, even from a breakout room. */
   roomId: string;
   displayName: string;
+  onInvite?: CollabSession['sendInvite'];
 }
 
 type Panel = 'participants' | 'chat' | 'invite' | null;
@@ -49,7 +50,7 @@ function columnsFor(tileCount: number, width: number): number {
   return Math.min(tileCount, max);
 }
 
-export function MeetingScreen({ session, roomId, displayName }: MeetingScreenProps) {
+export function MeetingScreen({ session, roomId, displayName, onInvite }: MeetingScreenProps) {
   const { width } = useWindowDimensions();
   const [panel, setPanel] = useState<Panel>(() =>
     session.messages.length > 0 ? 'chat' : 'invite',
@@ -230,7 +231,7 @@ export function MeetingScreen({ session, roomId, displayName }: MeetingScreenPro
             {panel === 'invite' && (
               <InvitePanel
                 roomId={roomId}
-                onSend={session.sendInvite}
+                onSend={onInvite ?? session.sendInvite}
                 onClose={() => setPanel(null)}
               />
             )}
