@@ -35,6 +35,7 @@ export interface GoogleCalendarSync {
   disconnect: () => void;
   publish: (meeting: Meeting) => Promise<Meeting>;
   update: (meeting: Meeting) => Promise<Meeting>;
+  shareGuests: (meeting: Meeting) => Promise<Meeting>;
   retract: (meeting: Meeting) => Promise<void>;
 }
 
@@ -298,6 +299,27 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     [connected, forgetExpiredToken, token],
   );
 
+  const shareGuests = useCallback(
+    async (meeting: Meeting) => {
+      try {
+        const accessToken = tokenRef.current ?? (await token('consent'));
+        writeGoogleCalendarConnected(uid, true);
+        setConnected(true);
+        const eventId = meeting.googleEventId
+          ? await updateGoogleEvent(accessToken, meeting, buildInviteLink(meeting.roomId))
+          : await insertGoogleEvent(accessToken, meeting, buildInviteLink(meeting.roomId));
+        const next = { ...meeting, googleEventId: eventId };
+        await meetingsRef.current.save(next);
+        return next;
+      } catch (cause) {
+        forgetExpiredToken(cause);
+        setError(cause instanceof Error ? cause.message : 'Could not mail the guests.');
+        throw cause;
+      }
+    },
+    [forgetExpiredToken, token, uid],
+  );
+
   const retract = useCallback(
     async (meeting: Meeting) => {
       if (!connected || !meeting.googleEventId) {
@@ -334,6 +356,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     disconnect,
     publish,
     update,
+    shareGuests,
     retract,
   };
 }
