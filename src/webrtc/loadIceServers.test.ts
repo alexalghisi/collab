@@ -14,6 +14,25 @@ describe('loadIceServers', () => {
     await expect(loadIceServers('https://signal.example', fetchImpl)).resolves.toEqual(iceServers);
   });
 
+  it('uses the public relay on a remote host without asking /ice', async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          uris: ['turn:203.0.113.8:3478?transport=udp'],
+          username: 'u',
+          password: 'p',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as typeof fetch;
+
+    await loadIceServers('https://collab-signaling.onrender.com', fetchImpl);
+
+    const urls = vi.mocked(fetchImpl).mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => url.includes('/ice'))).toBe(false);
+    expect(urls.some((url) => url.includes('turn.elixir-webrtc.org'))).toBe(true);
+  });
+
   it('asks a public relay when /ice is missing', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
