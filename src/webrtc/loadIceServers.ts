@@ -1,3 +1,4 @@
+import { isLoopbackSignalingUrl } from '../signaling/wake';
 import { DEFAULT_ICE_SERVERS, type IceServerConfig } from './config';
 
 const ICE_WAIT_MS = 2500;
@@ -7,6 +8,13 @@ export async function loadIceServers(
   baseUrl: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<readonly IceServerConfig[]> {
+  const remote = !isLoopbackSignalingUrl(baseUrl);
+  if (remote) {
+    const relay = await readPublicRelay(fetchImpl);
+    if (relay) {
+      return relay;
+    }
+  }
   const hosted = await readJson(
     fetchImpl,
     `${baseUrl.replace(/\/$/, '')}/ice`,
@@ -16,7 +24,15 @@ export async function loadIceServers(
   if (hosted) {
     return hosted;
   }
-  const relay = await readJson(
+  if (remote) {
+    return DEFAULT_ICE_SERVERS;
+  }
+  const relay = await readPublicRelay(fetchImpl);
+  return relay ?? DEFAULT_ICE_SERVERS;
+}
+
+function readPublicRelay(fetchImpl: typeof fetch): Promise<IceServerConfig[] | null> {
+  return readJson(
     fetchImpl,
     PUBLIC_TURN_URL,
     (body: { uris?: string[]; username?: string; password?: string }) => {
@@ -34,7 +50,6 @@ export async function loadIceServers(
     },
     'POST',
   );
-  return relay ?? DEFAULT_ICE_SERVERS;
 }
 
 /** UDP-only relays fail on many mobile networks; ask for TCP on the same host. */

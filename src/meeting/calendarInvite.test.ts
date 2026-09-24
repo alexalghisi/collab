@@ -11,7 +11,7 @@ import {
   type CollabServer,
 } from '../../server/src/SignalingServer';
 import { InviteError } from './contact';
-import { deliverMeetingGuests, sendMeetingInvite } from './calendarInvite';
+import { deliverMeetingGuests, sendCallInvite, sendMeetingInvite } from './calendarInvite';
 
 const sent: string[] = [];
 let stopServer: (() => Promise<void>) | null = null;
@@ -68,6 +68,36 @@ describe('sendMeetingInvite', () => {
 
     expect(contact).toEqual({ kind: 'email', value: 'guest@example.com' });
     expect(sent).toEqual(['guest@example.com']);
+  });
+});
+
+describe('sendCallInvite', () => {
+  it('returns the contact when the server accepts the invite', async () => {
+    const mail = vi.fn(async () => undefined);
+
+    await expect(
+      sendCallInvite(
+        'ada@example.com',
+        async () => ({ kind: 'email', value: 'ada@example.com' }),
+        mail,
+      ),
+    ).resolves.toEqual({ kind: 'email', value: 'ada@example.com' });
+    expect(mail).not.toHaveBeenCalled();
+  });
+
+  it('mails the guest through the calendar when the server cannot send email', async () => {
+    const mail = vi.fn(async () => undefined);
+
+    await expect(
+      sendCallInvite(
+        'ada@example.com',
+        async () => {
+          throw new InviteError('Email invites are not configured on the server.');
+        },
+        mail,
+      ),
+    ).resolves.toEqual({ kind: 'email', value: 'ada@example.com' });
+    expect(mail).toHaveBeenCalledWith(['ada@example.com']);
   });
 });
 
