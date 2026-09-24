@@ -10,7 +10,7 @@ import { readSessionToken } from './src/auth/session';
 import { EXECUTION_URL } from './src/code/config';
 import { InviteError, parseContactList } from './src/meeting/contact';
 import { buildInviteLink, readRoomFromLink, syncRoomInLink } from './src/meeting/invite';
-import { sendContactInvite } from './src/meeting/sendInvite';
+import { deliverMeetingGuests, sendMeetingInvite } from './src/meeting/calendarInvite';
 import { clearLiveMeeting, readLiveMeeting } from './src/meeting/resume';
 import type { Meeting, MeetingDraft } from './src/meeting/types';
 import { deleteMeeting as retractThenRemove } from './src/meeting/deleteMeeting';
@@ -86,23 +86,35 @@ export default function App() {
 
   const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
 
+  const dispatchGuests = (meeting: Meeting, guests: readonly string[], reminderMinutes: 15 | 30) =>
+    deliverMeetingGuests({
+      send: () =>
+        sendMeetingInvite(EXECUTION_URL, {
+          contact: guests.join(', '),
+          roomId: meeting.roomId,
+          sessionId: '',
+          hostName: auth.user?.displayName ?? 'Someone',
+          link: buildInviteLink(meeting.roomId),
+          token: readSessionToken() ?? undefined,
+          title: meeting.title,
+          startsAt: meeting.startsAt,
+          reminderMinutes,
+        }),
+      mailThroughCalendar: async () => {
+        await googleCalendar.shareGuests({
+          ...meeting,
+          guests: [...guests],
+          reminderMinutes,
+        });
+      },
+    });
+
   const sendMeetingInvites = async (meeting: Meeting) => {
     if (!meeting.guests || meeting.guests.length === 0) {
       return;
     }
-    const token = readSessionToken();
     try {
-      await sendContactInvite(EXECUTION_URL, {
-        contact: meeting.guests.join(', '),
-        roomId: meeting.roomId,
-        sessionId: '',
-        hostName: auth.user?.displayName ?? 'Someone',
-        link: buildInviteLink(meeting.roomId),
-        token: token ?? undefined,
-        title: meeting.title,
-        startsAt: meeting.startsAt,
-        reminderMinutes: meeting.reminderMinutes ?? 15,
-      });
+      await dispatchGuests(meeting, meeting.guests, meeting.reminderMinutes ?? 15);
     } catch (err) {
       console.warn('Could not dispatch automatic meeting invites:', err);
     }
@@ -114,27 +126,19 @@ export default function App() {
     if (guests.length === 0) {
       throw new InviteError('Enter an email address or a phone number.');
     }
-    const token = readSessionToken();
-    if (!token) {
+    if (!readSessionToken()) {
       throw new InviteError('Sign in again to send invites.');
     }
-    await sendContactInvite(EXECUTION_URL, {
-      contact: guests.join(', '),
-      roomId: meeting.roomId,
-      sessionId: '',
-      hostName: auth.user?.displayName ?? 'Someone',
-      link: buildInviteLink(meeting.roomId),
-      token,
-      title: meeting.title,
-      startsAt: meeting.startsAt,
-      reminderMinutes: invite.reminderMinutes,
-    });
-    await meetings.save({
-      ...meeting,
-      guests,
-      reminderMinutes: invite.reminderMinutes,
-    });
-    return `Invites sent to ${guests.join(', ')}. They get a reminder ${invite.reminderMinutes} minutes before.`;
+    const outcome = await dispatchGuests(meeting, guests, invite.reminderMinutes);
+    if (outcome === 'server') {
+      await meetings.save({
+        ...meeting,
+        guests,
+        reminderMinutes: invite.reminderMinutes,
+      });
+    }
+    const through = outcome === 'calendar' ? ' through Google Calendar' : '';
+    return `Invites sent to ${guests.join(', ')}${through}. They get a reminder ${invite.reminderMinutes} minutes before.`;
   };
   const deleteMeeting = (meeting: Meeting) => {
     void retractThenRemove(meeting, googleCalendar.retract, meetings.remove);
