@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { settle, startRoomServer, type RoomServer } from '../testing/roomServer';
+import { settle, startRoomServer, until, type RoomServer } from '../testing/roomServer';
 import {
   INITIAL_PEER_STATE,
   type RoomJoinedPayload,
@@ -73,6 +73,40 @@ describe('SocketSignaling against the signaling server', () => {
     const late = await server.join('b', 'Linus');
 
     expect(late.joined.strokes).toEqual([stroke]);
+  });
+
+  it('shares a straight line and a letter stamp with the other person', async () => {
+    const host = await server.join('a', 'Ada');
+    const guest = await server.join('b', 'Linus');
+    const line: Stroke = {
+      id: 'line-1',
+      peerId: host.joined.selfPeerId,
+      color: '#111827',
+      width: 3,
+      points: [0.1, 0.2, 0.8, 0.9],
+      kind: 'line',
+    };
+    const stamp: Stroke = {
+      id: 'stamp-1',
+      peerId: host.joined.selfPeerId,
+      color: '#2563eb',
+      width: 4,
+      points: [0.4, 0.5],
+      kind: 'letter',
+      text: 'A',
+    };
+    const seen: Stroke[] = [];
+    guest.channel.on('board:stroke', (incoming) => seen.push(incoming));
+
+    host.channel.emit('board:stroke', line);
+    host.channel.emit('board:stroke', stamp);
+    host.channel.emit('board:stroke', { ...stamp, id: 'junk', text: 'not-a-stamp' });
+    await until(() => seen.length >= 2);
+    await settle();
+
+    expect(seen).toEqual([line, stamp]);
+    const returning = await server.join('c', 'Grace');
+    expect(returning.joined.strokes).toEqual([line, stamp]);
   });
 
   it('replays a pasted file to a late joiner', async () => {

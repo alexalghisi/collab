@@ -108,7 +108,7 @@ export interface ChatDeletePayload {
   readonly id: string;
 }
 
-/** One freehand line on the shared whiteboard. */
+/** One mark on the shared whiteboard: a freehand trail, a shape, or a letter stamp. */
 export interface Stroke {
   readonly id: string;
   readonly peerId: string;
@@ -116,6 +116,12 @@ export interface Stroke {
   readonly width: number;
   /** Flat x,y pairs normalised to 0..1 so every screen size renders the same drawing. */
   readonly points: number[];
+  /**
+   * Omitted for a freehand trail. Shapes use the first and last point as the drag.
+   * `letter` is one of the predefined stamps.
+   */
+  readonly kind?: 'free' | 'line' | 'arrow' | 'rect' | 'ellipse' | 'letter';
+  readonly text?: string;
 }
 
 export interface BoardFile {

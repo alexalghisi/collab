@@ -4,7 +4,9 @@ import { requestGoogleCalendarToken } from '../auth/googleWeb';
 import { readGoogleWebClientId } from '../auth/config';
 import { buildInviteLink } from './invite';
 import { generateRoomId } from './roomId';
+import { onCalendarRedirect, takeCalendarError, takeCalendarHandoff } from '../auth/googleRedirect';
 import { CALENDAR_LIVE_SYNC_INTERVAL_MS, runCalendarLiveSync } from './calendarLiveSync';
+import { subscribeToPageReturn } from './pageReturn';
 import {
   readGoogleCalendarConnected,
   readGoogleCalendarSyncToken,
@@ -200,11 +202,41 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     };
     kick();
     const timer = setInterval(kick, CALENDAR_LIVE_SYNC_INTERVAL_MS);
+    const stopWatch = subscribeToPageReturn(
+      kick,
+      typeof document === 'undefined' ? null : document,
+      typeof window === 'undefined' ? null : window,
+    );
     return () => {
       epochRef.current += 1;
       clearInterval(timer);
+      stopWatch();
     };
   }, [connected, uid]);
+
+  useEffect(() => {
+    if (uid === 'guest') {
+      return;
+    }
+    const apply = (token: string) => {
+      haltRef.current = false;
+      rememberToken(token);
+      writeGoogleCalendarConnected(uid, true);
+      setError(null);
+      setConnected(true);
+    };
+    const handed = takeCalendarHandoff();
+    const refused = takeCalendarError();
+    if (handed) {
+      apply(handed);
+    } else if (refused) {
+      setError(refused);
+    }
+    return onCalendarRedirect((token) => {
+      takeCalendarHandoff();
+      apply(token);
+    });
+  }, [rememberToken, uid]);
 
   const connect = useCallback(async () => {
     setError(null);

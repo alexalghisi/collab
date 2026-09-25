@@ -1,5 +1,8 @@
 import { readGoogleWebClientId } from './config';
+import { beginGoogleRedirect, prefersGoogleRedirect } from './googleRedirect';
 import type { GoogleCredential } from './types';
+
+const SIGN_IN_SCOPE = 'openid email profile';
 
 interface GoogleIdentity {
   id: {
@@ -57,10 +60,18 @@ function requestAccessToken(api: GoogleIdentity, clientId: string): Promise<stri
   return new Promise((resolve, reject) => {
     const client = oauth.initTokenClient({
       client_id: clientId,
-      scope: 'openid email profile',
+      scope: SIGN_IN_SCOPE,
       callback: (response) => {
         if (response.access_token) {
           resolve(response.access_token);
+          return;
+        }
+        if (response.error === 'popup_blocked' || response.error === 'popup_failed') {
+          void beginGoogleRedirect({
+            purpose: 'sign-in',
+            scope: SIGN_IN_SCOPE,
+            prompt: 'select_account',
+          }).catch(reject);
           return;
         }
         reject(new Error(response.error || 'Google sign-in was cancelled.'));
@@ -97,6 +108,10 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
   const clientId = readGoogleWebClientId();
   if (!clientId) {
     throw new Error('Google Calendar is not configured on this deployment.');
+  }
+  if (prefersGoogleRedirect() && prompt !== '') {
+    await beginGoogleRedirect({ purpose: 'calendar', scope: CALENDAR_SCOPE, prompt });
+    return new Promise(() => undefined);
   }
   await loadScript();
   const api = googleApi();
@@ -139,6 +154,14 @@ export async function requestGoogleCredential(): Promise<GoogleCredential> {
   const clientId = readGoogleWebClientId();
   if (!clientId) {
     throw new Error('Google sign-in is not configured on this deployment.');
+  }
+  if (prefersGoogleRedirect()) {
+    await beginGoogleRedirect({
+      purpose: 'sign-in',
+      scope: SIGN_IN_SCOPE,
+      prompt: 'select_account',
+    });
+    return new Promise(() => undefined);
   }
   const ready = googleApi();
   if (!ready) {

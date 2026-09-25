@@ -31,6 +31,18 @@ export const AUDIO_CONSTRAINTS: MediaTrackConstraints & { voiceIsolation?: boole
   sampleRate: 48000,
 };
 
+/**
+ * Same noise cancellation without `voiceIsolation` or a fixed sample rate.
+ * Those two are the constraints browsers reject; dropping them must not drop
+ * noise suppression itself, or a refused mic ask would come back raw.
+ */
+export const NOISE_CANCELLATION_CONSTRAINTS: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: 1,
+};
+
 /** Shared text has to stay legible, so resolution beats frame rate here. */
 const SCREEN_CONSTRAINTS: MediaTrackConstraints = {
   width: { ideal: 1920, max: 2560 },
@@ -119,23 +131,35 @@ function isOverconstrained(cause: unknown): boolean {
   return cause instanceof DOMException && cause.name === 'OverconstrainedError';
 }
 
+async function openWithNoiseCancellation(
+  video: boolean | MediaTrackConstraints,
+  timeoutMs: number,
+): Promise<MediaStream> {
+  try {
+    return await openUserMedia(video, AUDIO_CONSTRAINTS, timeoutMs);
+  } catch (cause) {
+    if (isMediaTimeout(cause) || !isOverconstrained(cause)) {
+      throw cause;
+    }
+    return openUserMedia(video, NOISE_CANCELLATION_CONSTRAINTS, timeoutMs);
+  }
+}
+
 async function openDevices(
   video: boolean | MediaTrackConstraints,
   audio: boolean,
   timeoutMs: number,
 ): Promise<MediaStream> {
+  if (!audio) {
+    return openUserMedia(video, false, timeoutMs);
+  }
   try {
-    return await openUserMedia(video, audio ? AUDIO_CONSTRAINTS : false, timeoutMs);
+    return await openWithNoiseCancellation(video, timeoutMs);
   } catch (cause) {
     // Only loosen the microphone once the camera ask is already the loose one.
     // A strict camera failure must stay a camera failure, or the retry loop
     // asks for the same camera again.
-    if (
-      !audio ||
-      isMediaTimeout(cause) ||
-      !isOverconstrained(cause) ||
-      (video !== false && video !== true)
-    ) {
+    if (isMediaTimeout(cause) || !isOverconstrained(cause) || (video !== false && video !== true)) {
       throw cause;
     }
     return openUserMedia(video, true, timeoutMs);
