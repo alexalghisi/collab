@@ -15,7 +15,9 @@ export function FilesCard({ ownerId }: FilesCardProps) {
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Files</Text>
-      <Text style={styles.subtitle}>Drop a PDF, image or zip here, or click to pick one.</Text>
+      <Text style={styles.subtitle}>
+        Drop several images, PDFs or other files at once, or click to pick them.
+      </Text>
       <FileDrop onFiles={(files) => void library.add(files)} disabled={library.busy}>
         <View style={styles.drop}>
           <Ionicons name="cloud-upload-outline" size={28} color={colors.textMuted} />

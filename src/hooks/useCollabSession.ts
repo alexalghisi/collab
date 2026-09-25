@@ -26,6 +26,7 @@ import { loadIceServers } from '../webrtc/loadIceServers';
 import { joinRemotePeer, rememberRemoteStream, syncRoomPeers } from '../webrtc/participants';
 import type { TranscriptSegment } from '../transcript/segments';
 import { normalizeBoardFile } from '../whiteboard/boardFiles';
+import { sanitizeStroke } from '../whiteboard/marks';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -464,7 +465,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('chat:edited', applyChatUpdate);
       signaling.on('chat:deleted', applyChatUpdate);
       // Firestore echoes our own strokes back, so adding is keyed by id.
-      signaling.on('board:stroke', (stroke) => {
+      signaling.on('board:stroke', (incoming) => {
+        const stroke = sanitizeStroke(incoming);
+        if (!stroke) {
+          return;
+        }
         setStrokes((current) => {
           if (current.some((existing) => existing.id === stroke.id)) {
             return current;
@@ -789,7 +794,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
   const addStroke = useCallback(
     (draft: Omit<Stroke, 'id' | 'peerId'>) => {
-      const stroke: Stroke = { ...draft, id: randomUUID(), peerId: selfPeerId ?? 'self' };
+      const stroke = sanitizeStroke({ ...draft, id: randomUUID(), peerId: selfPeerId ?? 'self' });
+      if (!stroke) {
+        return;
+      }
       setStrokes((current) => {
         const next = [...current, stroke];
         const id = roomIdRef.current;

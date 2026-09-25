@@ -16,6 +16,7 @@ import { SIGNALING_URL } from '../signaling/config';
 import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
 import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
 import { requestGoogleCredential } from './googleWeb';
+import { resumeGoogleRedirect } from './googleRedirect';
 import {
   clearSessionToken,
   readSessionSnapshot,
@@ -100,6 +101,29 @@ export function useAuth(): AuthState {
       void waitUntilSignalingReady(SIGNALING_URL).catch(() => undefined);
     }
     let cancelled = false;
+    void resumeGoogleRedirect().then(async (result) => {
+      if (cancelled || !result || result.purpose === 'calendar') {
+        return;
+      }
+      if ('error' in result) {
+        setError(result.error);
+        return;
+      }
+      try {
+        const session = await loginWithGoogle({ accessToken: result.accessToken });
+        if (cancelled) {
+          return;
+        }
+        await rememberGoogleSession({ accessToken: result.accessToken }, session);
+        setUser(session.user);
+      } catch (cause) {
+        if (!cancelled) {
+          setError(
+            cause instanceof Error ? cause.message : 'Google sign-in failed. Please try again.',
+          );
+        }
+      }
+    });
     const snapshot = readSessionSnapshot();
     if (snapshot?.user) {
       setUser(snapshot.user);
@@ -119,7 +143,7 @@ export function useAuth(): AuthState {
     };
 
     if (firebase) {
-      return onAuthStateChanged(firebase, (next) => {
+      const unsubscribe = onAuthStateChanged(firebase, (next) => {
         const firebaseUser = next ? toAuthUser(next) : null;
         if (firebaseUser && !cancelled) {
           setUser(firebaseUser);
@@ -129,6 +153,10 @@ export function useAuth(): AuthState {
           applyRestored(restored, firebaseUser);
         });
       });
+      return () => {
+        cancelled = true;
+        unsubscribe();
+      };
     }
 
     void restorePersistedSession(restoreAccount).then((restored) => {

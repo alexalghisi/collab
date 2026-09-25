@@ -127,16 +127,23 @@ export function HomeScreen({
         <View style={styles.joinActions}>
           <Button
             label={connecting ? 'Connecting…' : 'Join'}
-            icon="call"
+            icon="videocam"
             onPress={() => onJoin(roomId.trim(), true)}
+            disabled={!canJoin}
+          />
+          <Button
+            label="Audio only"
+            icon="mic"
+            variant="secondary"
+            onPress={() => onJoin(roomId.trim(), false)}
             disabled={!canJoin}
           />
           {connecting && <Button label="Cancel" variant="secondary" onPress={onCancelJoin} />}
         </View>
         {connecting && (
           <Text style={styles.connecting}>
-            Allow the camera and microphone if the browser asks. If it does not, we join without
-            them — you can turn them on in the meeting.
+            Allow the microphone, and the camera if you joined with video. You can turn the camera
+            on later and still hear each other either way.
           </Text>
         )}
         {error && <Text style={styles.error}>{error}</Text>}

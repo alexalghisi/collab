@@ -150,4 +150,55 @@ describe('requestGoogleCredential', () => {
 
     await expect(requestGoogleCredential()).rejects.toThrow('popup_closed_by_user');
   });
+
+  it('leaves the page for Google when the popup is blocked', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    stubGoogle({ error: 'popup_blocked' });
+    const assign = vi.fn();
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    });
+    vi.stubGlobal('location', {
+      origin: 'https://alexalghisi.github.io',
+      pathname: '/collab/',
+      search: '',
+      assign,
+    });
+
+    void requestGoogleCredential();
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalled());
+    expect(String(assign.mock.calls[0][0])).toContain(
+      'https://accounts.google.com/o/oauth2/v2/auth',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves the page for Google on an iPhone instead of opening a popup', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    const assign = vi.fn();
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)',
+      maxTouchPoints: 5,
+    });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    });
+    vi.stubGlobal('location', {
+      origin: 'https://alexalghisi.github.io',
+      pathname: '/collab/',
+      search: '',
+      assign,
+    });
+
+    void requestGoogleCredential();
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalled());
+    expect(String(assign.mock.calls[0][0])).toContain('prompt=select_account');
+    vi.unstubAllGlobals();
+  });
 });

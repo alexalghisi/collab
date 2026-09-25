@@ -93,6 +93,16 @@ describe('room snapshot', () => {
     ).toEqual([stroke('a'), stroke('b')]);
   });
 
+  it('keeps a line and a letter stamp and drops a letter that is not a stamp', () => {
+    const line: Stroke = { ...stroke('line'), kind: 'line', points: [0, 0, 1, 1] };
+    const stamp: Stroke = { ...stroke('stamp'), kind: 'letter', text: 'A', points: [0.2, 0.3] };
+
+    expect(mergeStrokes([line, stamp, { ...stamp, id: 'nope', text: 'hello' }])).toEqual([
+      line,
+      stamp,
+    ]);
+  });
+
   it('merges captions by id and ignores a missing list', () => {
     const first = turn('a', 1);
     const extra = turn('b', 2);

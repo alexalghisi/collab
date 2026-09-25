@@ -5,6 +5,7 @@ import {
   saveChatHistory,
 } from '../chat/history';
 import type { ChatMessage, Stroke } from '../signaling/events';
+import { sanitizeStroke } from '../whiteboard/marks';
 import { normalizeTranscriptSegment, type TranscriptSegment } from '../transcript/segments';
 import { storage } from './storage';
 
@@ -21,30 +22,18 @@ export interface RoomSnapshot {
   readonly transcript: TranscriptSegment[];
 }
 
-function isStroke(value: unknown): value is Stroke {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const stroke = value as Partial<Stroke>;
-  return (
-    typeof stroke.id === 'string' &&
-    stroke.id !== '' &&
-    typeof stroke.peerId === 'string' &&
-    typeof stroke.color === 'string' &&
-    typeof stroke.width === 'number' &&
-    Number.isFinite(stroke.width) &&
-    Array.isArray(stroke.points) &&
-    stroke.points.length > 0 &&
-    stroke.points.length % 2 === 0 &&
-    stroke.points.every((point) => typeof point === 'number' && Number.isFinite(point))
-  );
-}
-
 export function parseStrokes(value: unknown): Stroke[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.filter(isStroke).slice(-MAX_STROKES);
+  const strokes: Stroke[] = [];
+  for (const item of value) {
+    const stroke = sanitizeStroke(item);
+    if (stroke) {
+      strokes.push(stroke);
+    }
+  }
+  return strokes.slice(-MAX_STROKES);
 }
 
 export function mergeStrokes(
@@ -55,8 +44,9 @@ export function mergeStrokes(
     if (!Array.isArray(list)) {
       continue;
     }
-    for (const stroke of list) {
-      if (!isStroke(stroke) || byId.has(stroke.id)) {
+    for (const item of list) {
+      const stroke = sanitizeStroke(item);
+      if (!stroke || byId.has(stroke.id)) {
         continue;
       }
       byId.set(stroke.id, stroke);

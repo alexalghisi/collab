@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AUDIO_CONSTRAINTS,
   CAMERA_CONSTRAINTS,
+  NOISE_CANCELLATION_CONSTRAINTS,
   acquireCameraTrack,
   acquireJoinStream,
   acquireLocalStream,
@@ -34,6 +35,34 @@ describe('media capture', () => {
       channelCount: 1,
       sampleRate: 48000,
     });
+  });
+
+  it('keeps noise cancellation when voice isolation is refused', async () => {
+    const mic = { kind: 'audio', contentHint: '' };
+    const camera = { kind: 'video', contentHint: '' };
+    const getUserMedia = vi.fn(async (constraints: { audio: unknown }) => {
+      if (constraints.audio === AUDIO_CONSTRAINTS) {
+        throw new DOMException('voiceIsolation', 'OverconstrainedError');
+      }
+      return {
+        getVideoTracks: () => [camera],
+        getAudioTracks: () => [mic],
+      };
+    });
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    await acquireLocalStream({ video: true, audio: true });
+
+    expect(getUserMedia).toHaveBeenNthCalledWith(1, {
+      video: CAMERA_CONSTRAINTS,
+      audio: AUDIO_CONSTRAINTS,
+    });
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, {
+      video: CAMERA_CONSTRAINTS,
+      audio: NOISE_CANCELLATION_CONSTRAINTS,
+    });
+    expect(NOISE_CANCELLATION_CONSTRAINTS.noiseSuppression).toBe(true);
+    expect(mic.contentHint).toBe('speech');
   });
 
   it('asks the camera for 720p at 30 fps', async () => {
