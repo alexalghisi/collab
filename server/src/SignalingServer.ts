@@ -17,6 +17,7 @@ import {
 import type { FileAttachment } from '../../src/files/attachments';
 import { normalizeTranscriptSegment, type TranscriptSegment } from '../../src/transcript/segments';
 import { normalizeBoardFile } from '../../src/whiteboard/boardFiles';
+import { sanitizeStroke } from '../../src/whiteboard/marks';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -498,9 +499,10 @@ function registerSocket(
 
   socket.on('board:stroke', (stroke) => {
     const room = currentRoom();
-    if (room && socket.data.roomId) {
-      room.strokes.push(stroke);
-      socket.to(socket.data.roomId).emit('board:stroke', stroke);
+    const clean = sanitizeStroke(stroke);
+    if (room && socket.data.roomId && clean) {
+      room.strokes.push(clean);
+      socket.to(socket.data.roomId).emit('board:stroke', clean);
     }
   });
 

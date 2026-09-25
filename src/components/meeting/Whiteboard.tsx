@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Linking,
   Platform,
@@ -9,12 +9,18 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import type { FileAttachment } from '../../files/attachments';
 import { AttachmentError, type UploadableFile, type UploadProgress } from '../../files/upload';
 import type { BoardFile, Stroke } from '../../signaling/events';
 import { colors } from '../../theme';
 import { previewSize } from '../../whiteboard/boardFiles';
+import {
+  BOARD_LETTERS,
+  describeMark,
+  type BoardLetter,
+  type ShapeMark,
+} from '../../whiteboard/marks';
 import { BoardFilePreview } from './BoardFilePreview';
 import { BoardSurface } from './BoardSurface';
 
@@ -31,19 +37,18 @@ export interface WhiteboardProps {
 
 const PALETTE = ['#111827', '#dc2626', '#2563eb', '#16a34a', '#f59e0b'];
 const WIDTHS = [3, 8];
+const SHAPES: readonly { readonly kind: ShapeMark; readonly label: string }[] = [
+  { kind: 'line', label: 'Line' },
+  { kind: 'arrow', label: 'Arrow' },
+  { kind: 'rect', label: 'Box' },
+  { kind: 'ellipse', label: 'Oval' },
+];
+
+type DrawTool = 'pen' | ShapeMark;
 
 interface Size {
   readonly width: number;
   readonly height: number;
-}
-
-function toPath(points: number[], { width, height }: Size): string {
-  const segments: string[] = [];
-  for (let index = 0; index < points.length; index += 2) {
-    const command = index === 0 ? 'M' : 'L';
-    segments.push(`${command}${points[index] * width} ${points[index + 1] * height}`);
-  }
-  return points.length === 2 ? `${segments[0]} l0.1 0` : segments.join(' ');
 }
 
 function openHref(href: string): void {
@@ -67,6 +72,8 @@ export function Whiteboard({
   const [size, setSize] = useState<Size>({ width: 1, height: 1 });
   const [color, setColor] = useState(PALETTE[0]);
   const [width, setWidth] = useState(WIDTHS[0]);
+  const [tool, setTool] = useState<DrawTool>('pen');
+  const [letter, setLetter] = useState<BoardLetter | null>(null);
   const [draft, setDraft] = useState<number[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,23 +124,62 @@ export function Whiteboard({
     return [locationX / size.width, locationY / size.height];
   };
 
+  const selectLetter = (next: BoardLetter) => {
+    setLetter((current) => (current === next ? null : next));
+    setTool('pen');
+  };
+
+  const selectTool = (next: DrawTool) => {
+    setTool(next);
+    setLetter(null);
+  };
+
   const begin = (event: GestureResponderEvent) => {
-    draftRef.current = pointOf(event);
+    const point = pointOf(event);
+    if (letter) {
+      onAddStroke({ color, width, points: point, kind: 'letter', text: letter });
+      draftRef.current = [];
+      setDraft(null);
+      return;
+    }
+    draftRef.current = tool === 'pen' ? point : [...point, ...point];
     setDraft(draftRef.current);
   };
 
   const extend = (event: GestureResponderEvent) => {
-    draftRef.current = [...draftRef.current, ...pointOf(event)];
+    if (letter || draftRef.current.length === 0) {
+      return;
+    }
+    const point = pointOf(event);
+    draftRef.current =
+      tool === 'pen'
+        ? [...draftRef.current, ...point]
+        : [...draftRef.current.slice(0, 2), ...point];
     setDraft(draftRef.current);
   };
 
   const finish = () => {
-    if (draftRef.current.length >= 2) {
-      onAddStroke({ color, width, points: draftRef.current });
+    if (!letter && draftRef.current.length >= 2) {
+      onAddStroke(
+        tool === 'pen'
+          ? { color, width, points: draftRef.current }
+          : { color, width, points: draftRef.current.slice(0, 4), kind: tool },
+      );
     }
     draftRef.current = [];
     setDraft(null);
   };
+
+  const draftStroke: Stroke | null = draft
+    ? {
+        id: 'draft',
+        peerId: selfPeerId ?? 'self',
+        color,
+        width,
+        points: draft,
+        ...(tool === 'pen' ? {} : { kind: tool }),
+      }
+    : null;
 
   const ownStrokes = strokes.filter((stroke) => stroke.peerId === selfPeerId);
   const empty = strokes.length === 0 && boardFiles.length === 0;
@@ -154,6 +200,41 @@ export function Whiteboard({
             accessibilityLabel={`Colour ${entry}`}
             accessibilityState={{ selected: entry === color }}
           />
+        ))}
+        <View style={styles.divider} />
+        <Pressable
+          style={[styles.tool, tool === 'pen' && !letter && styles.toolActive]}
+          onPress={() => selectTool('pen')}
+          accessibilityRole="button"
+          accessibilityLabel="Pen"
+          accessibilityState={{ selected: tool === 'pen' && !letter }}
+        >
+          <Text style={styles.toolLabel}>Pen</Text>
+        </Pressable>
+        {SHAPES.map((entry) => (
+          <Pressable
+            key={entry.kind}
+            style={[styles.tool, tool === entry.kind && !letter && styles.toolActive]}
+            onPress={() => selectTool(entry.kind)}
+            accessibilityRole="button"
+            accessibilityLabel={entry.label}
+            accessibilityState={{ selected: tool === entry.kind && !letter }}
+          >
+            <Text style={styles.toolLabel}>{entry.label}</Text>
+          </Pressable>
+        ))}
+        <View style={styles.divider} />
+        {BOARD_LETTERS.map((entry) => (
+          <Pressable
+            key={entry}
+            style={[styles.tool, letter === entry && styles.toolActive]}
+            onPress={() => selectLetter(entry)}
+            accessibilityRole="button"
+            accessibilityLabel={`Letter ${entry}`}
+            accessibilityState={{ selected: letter === entry }}
+          >
+            <Text style={styles.toolLabel}>{entry}</Text>
+          </Pressable>
         ))}
         <View style={styles.divider} />
         {WIDTHS.map((entry) => (
@@ -193,7 +274,13 @@ export function Whiteboard({
           <Ionicons name="trash-outline" size={18} color={colors.text} />
           <Text style={styles.toolLabel}>Clear</Text>
         </Pressable>
-        <Text style={styles.hint}>{busy ? 'Adding file…' : 'Paste or drop a file'}</Text>
+        <Text style={styles.hint}>
+          {busy
+            ? 'Adding file…'
+            : letter
+              ? `Tap the board to place ${letter}`
+              : 'Paste or drop images and PDFs'}
+        </Text>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -215,27 +302,35 @@ export function Whiteboard({
             onResponderTerminate={finish}
           >
             <Svg width="100%" height="100%">
-              {strokes.map((stroke) => (
-                <Path
-                  key={stroke.id}
-                  d={toPath(stroke.points, size)}
-                  stroke={stroke.color}
-                  strokeWidth={stroke.width}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              ))}
-              {draft && (
-                <Path
-                  d={toPath(draft, size)}
-                  stroke={color}
-                  strokeWidth={width}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              )}
+              {[...strokes, ...(draftStroke ? [draftStroke] : [])].map((stroke) => {
+                const drawing = describeMark(stroke, size);
+                return (
+                  <Fragment key={stroke.id}>
+                    {drawing.d ? (
+                      <Path
+                        d={drawing.d}
+                        stroke={stroke.color}
+                        strokeWidth={stroke.width}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
+                      />
+                    ) : null}
+                    {drawing.label ? (
+                      <SvgText
+                        x={drawing.label.x}
+                        y={drawing.label.y}
+                        fill={stroke.color}
+                        fontSize={drawing.label.fontSize}
+                        fontWeight="700"
+                        textAnchor="middle"
+                      >
+                        {drawing.label.text}
+                      </SvgText>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </Svg>
           </View>
           {boardFiles.map((item) => (
