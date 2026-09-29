@@ -2,7 +2,7 @@
   "expo": {
     "name": "Collab",
     "slug": "collab",
-    "version": "1.3.2",
+    "version": "1.4.0",
     "orientation": "portrait",
     "scheme": "collab",
     "icon": "./assets/icon.png",
