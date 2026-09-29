@@ -46,6 +46,8 @@ export function CodeOutput({ runs }: CodeOutputProps) {
               {run.running && <ActivityIndicator size="small" color={colors.textMuted} />}
               <Text style={[styles.status, { color: status.color }]}>{status.text}</Text>
             </View>
+            <Text style={styles.streamLabel}>stdin</Text>
+            <Text style={styles.stdout}>{consoleText(run.stdin)}</Text>
             <Text style={styles.streamLabel}>stdout</Text>
             <Text style={styles.stdout}>{consoleText(run.stdout)}</Text>
             <Text style={styles.streamLabel}>stderr</Text>
