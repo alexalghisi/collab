@@ -189,6 +189,29 @@ const together = page(
   </div>`,
 );
 
+const files = page(
+  'files',
+  `<div class="meeting">
+    <div class="header">
+      <div><div class="room">nbq-vxey-nfg</div><div class="meta">2 participants</div></div>
+      <div class="invite">Invite</div>
+    </div>
+    <div class="body">
+      <div class="grid">
+        <div class="tile"><div class="letter">A</div><div class="label">Alex (You)<span class="host">Host</span></div></div>
+        <div class="tile"><div class="letter">S</div><div class="label">Sam</div></div>
+      </div>
+      <div class="panel">
+        <h3>Files</h3>
+        <p>Drop an image, PDF or document. Everyone in the call sees it.</p>
+        <div class="field">spec.pdf · 240 KB · Alex</div>
+        <div class="field" style="height:120px;display:flex;align-items:center;justify-content:center;color:${palette.muted}">PDF preview</div>
+      </div>
+    </div>
+    <div class="toolbar"><div class="tool"></div><div class="tool"></div><div class="tool"></div><div class="tool"></div><div class="tool"></div><div class="tool blue"></div><div class="tool red"></div></div>
+  </div>`,
+);
+
 const schedule = page(
   'schedule',
   `<div class="app">${sidebar}<main>
@@ -233,6 +256,7 @@ const frames = [
   ['schedule.html', schedule, '03.png'],
   ['meeting.html', meeting, '04.png'],
   ['together.html', together, '05.png'],
+  ['files.html', files, '06.png'],
 ];
 
 for (const [name, html, png] of frames) {
