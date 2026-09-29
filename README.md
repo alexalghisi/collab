@@ -46,7 +46,7 @@ The first join after the server has been idle can take about a minute — Render
 ## Table of contents
 
 - [Use it now (Zoom-style call)](#use-it-now-zoom-style-call)
-- [Download & run (for recruiters)](#download--run-for-recruiters)
+- [Download & run](#download--run)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Call setup flow](#call-setup-flow)
@@ -58,7 +58,7 @@ The first join after the server has been idle can take about a minute — Render
 
 ---
 
-## Download & run (for recruiters)
+## Download & run
 
 Prebuilt binaries are published automatically for every tagged release.
 
@@ -75,7 +75,7 @@ Prebuilt binaries are published automatically for every tagged release.
 | Linux (AppImage)      | [`Collab-1.3.2.AppImage`](https://github.com/alexalghisi/collab/releases/download/v1.3.2/Collab-1.3.2.AppImage)                   | `chmod +x` the file, then run it. Works on most distributions.                             |
 | Linux (Debian/Ubuntu) | [`collab-desktop_1.3.2_amd64.deb`](https://github.com/alexalghisi/collab/releases/download/v1.3.2/collab-desktop_1.3.2_amd64.deb) | Install with `sudo dpkg -i collab-desktop_1.3.2_amd64.deb`, then launch **Collab**.        |
 
-> The macOS and Windows builds are unsigned in this scaffold. On macOS, right-click the app and choose **Open** the first time to bypass Gatekeeper. On Windows, choose **More info -> Run anyway** on the SmartScreen prompt.
+> The macOS and Windows builds are unsigned. On macOS, right-click the app and choose **Open** the first time to bypass Gatekeeper. On Windows, choose **More info -> Run anyway** on the SmartScreen prompt.
 
 iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloaded `.ipa` directly, so it must be sideloaded (AltStore / Sideloadly) or, for the signed route, installed via TestFlight — see [iOS distribution](#ios-distribution-eas--testflight).
 
