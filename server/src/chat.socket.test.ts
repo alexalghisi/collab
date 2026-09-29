@@ -43,6 +43,24 @@ describe('sending a message with a file', () => {
     expect(await (await fetch(`${server.url}${seen[0].file?.url}`)).text()).toBe('a diagram');
   });
 
+  it('relays a file with no caption so both people can open it from Files', async () => {
+    const host = await server.join('a', 'Ada', roomId);
+    const guest = await server.join('b', 'Linus', roomId);
+    const seen: ChatMessage[] = [];
+    host.channel.on('chat:message', (message) => seen.push(message));
+    const attachment = await upload('b');
+
+    guest.channel.emit('chat:message', { text: '', file: attachment });
+    await settle();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].text).toBe('');
+    expect(seen[0].file).toEqual(attachment);
+
+    const late = await server.join('c', 'Grace', roomId);
+    expect(late.joined.messages.some((message) => message.file?.id === attachment.id)).toBe(true);
+  });
+
   it('describes the file from the store rather than from the sender', async () => {
     const host = await server.join('a', 'Ada', roomId);
     const guest = await server.join('b', 'Linus', roomId);
