@@ -87,6 +87,7 @@ interface CodeRunDoc {
   readonly byPeerId: string;
   readonly byDisplayName: string;
   readonly language: CodeLanguage;
+  readonly stdin?: string;
   readonly startedAt: number;
   readonly stdout?: string;
   readonly stderr?: string;
@@ -764,6 +765,7 @@ class FirestoreChannel implements SignalingChannel {
       byPeerId: this.peerId,
       byDisplayName: this.options.displayName,
       language: request.language,
+      stdin: request.stdin,
       startedAt: Date.now(),
     };
     await setDoc(entry, started);
@@ -808,6 +810,7 @@ class FirestoreChannel implements SignalingChannel {
             byPeerId: run.byPeerId,
             byDisplayName: run.byDisplayName,
             language: run.language,
+            stdin: run.stdin ?? '',
           });
         }
         this.dispatchRunOutput(runId, run);

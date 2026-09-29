@@ -68,6 +68,7 @@ export interface CodeRun {
   readonly byPeerId: string;
   readonly byDisplayName: string;
   readonly language: CodeLanguage;
+  readonly stdin: string;
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number | null;
@@ -527,6 +528,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           ...current,
           {
             ...run,
+            stdin: run.stdin ?? '',
             stdout: '',
             stderr: '',
             exitCode: null,
@@ -891,6 +893,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
             byPeerId: selfPeerIdRef.current ?? sessionIdRef.current,
             byDisplayName: displayNameRef.current,
             language: payload.language,
+            stdin: payload.stdin,
             stdout: '',
             stderr: '',
             exitCode: null,
