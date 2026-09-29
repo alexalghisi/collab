@@ -37,7 +37,7 @@ describe('a code run is shared live with the whole room', () => {
     host.channel.emit('code:run', {
       language: 'javascript',
       code: "console.log('hi')",
-      stdin: '',
+      stdin: '2\n',
       files: [],
     });
 
@@ -46,6 +46,7 @@ describe('a code run is shared live with the whole room', () => {
     expect(started).toHaveLength(1);
     expect(started[0].byDisplayName).toBe('Ada');
     expect(started[0].language).toBe('javascript');
+    expect(started[0].stdin).toBe('2\n');
     expect(output.map((chunk) => chunk.text).join('')).toBe('live output\n');
     expect(finished[0].runId).toBe(started[0].runId);
     expect(finished[0].exitCode).toBe(0);
