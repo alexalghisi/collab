@@ -80,6 +80,7 @@ describe('running code from the meeting', () => {
     expect(watching.started).toHaveLength(1);
     expect(watching.started[0].byDisplayName).toBe('Ada');
     expect(watching.started[0].language).toBe('python');
+    expect(watching.started[0].stdin).toBe('');
     expect(watching.output.map((entry) => entry.text)).toEqual(['ok\n']);
     expect(watching.finished[0]).toMatchObject({ exitCode: 0, timedOut: false, error: null });
     expect(running.started[0].runId).toBe(watching.started[0].runId);
@@ -87,14 +88,17 @@ describe('running code from the meeting', () => {
 
   it('passes the submitted code and input to the sandbox', async () => {
     const ada = await server.join('a', 'Ada');
+    const linus = await server.join('b', 'Linus');
+    const watching = record(linus.channel);
 
     ada.channel.emit('code:run', {
       ...request,
       stdin: '41\n',
       files: [{ name: 'date.in', content: 'x' }],
     });
-    await until(() => runner.seen.length === 1);
+    await until(() => runner.seen.length === 1 && watching.started.length === 1);
 
+    expect(watching.started[0].stdin).toBe('41\n');
     expect(runner.seen).toEqual([
       {
         language: 'python',

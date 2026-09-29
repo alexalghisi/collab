@@ -29,6 +29,7 @@ export interface RunStarted {
   readonly byPeerId: string;
   readonly byDisplayName: string;
   readonly language: CodeLanguage;
+  readonly stdin: string;
 }
 
 export interface RunOutput extends ExecutionChunk {
@@ -67,6 +68,11 @@ export const REJECTION_MESSAGES: Record<ExecutionRejection, string> = {
 
 const byteLength = (value: string): number => new TextEncoder().encode(value).length;
 
+export function stdinFrom(payload: unknown): string {
+  const stdin = (payload as { stdin?: unknown } | null)?.stdin;
+  return typeof stdin === 'string' ? stdin : '';
+}
+
 /**
  * Validates a run request at the trust boundary: it arrives from a client and
  * ends up inside a sandbox, so neither its size nor its language is assumed.
@@ -75,7 +81,7 @@ export function validateExecutionRequest(
   request: unknown,
 ): { ok: true; request: ExecutionRequest } | { ok: false; reason: ExecutionRejection } {
   const payload = (request ?? {}) as Partial<ExecutionRequest>;
-  const { language, code, stdin } = payload;
+  const { language, code } = payload;
   if (!isCodeLanguage(language)) {
     return { ok: false, reason: 'unsupported-language' };
   }
@@ -85,7 +91,7 @@ export function validateExecutionRequest(
   if (byteLength(code) > MAX_CODE_BYTES) {
     return { ok: false, reason: 'code-too-large' };
   }
-  const input = typeof stdin === 'string' ? stdin : '';
+  const input = stdinFrom(payload);
   if (byteLength(input) > MAX_STDIN_BYTES) {
     return { ok: false, reason: 'stdin-too-large' };
   }
