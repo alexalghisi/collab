@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_CODE_BYTES, MAX_STDIN_BYTES, validateExecutionRequest } from './execution';
+import { MAX_CODE_BYTES, MAX_STDIN_BYTES, stdinFrom, validateExecutionRequest } from './execution';
 
 describe('validateExecutionRequest', () => {
   it('accepts a supported language and normalises missing input', () => {
@@ -76,5 +76,13 @@ describe('validateExecutionRequest', () => {
         files: [{ name: 'date.in', content: '7\n' }],
       },
     });
+  });
+});
+
+describe('stdinFrom', () => {
+  it('reads the submitted input and treats a missing field as empty', () => {
+    expect(stdinFrom({ stdin: '41\n' })).toBe('41\n');
+    expect(stdinFrom({ language: 'python' })).toBe('');
+    expect(stdinFrom(null)).toBe('');
   });
 });

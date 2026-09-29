@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import * as Y from 'yjs';
-import { REJECTION_MESSAGES } from '../../src/code/execution';
+import { REJECTION_MESSAGES, stdinFrom } from '../../src/code/execution';
 import { mergeWorkspaceFiles, normalizeWorkspaceFiles } from '../../src/code/workspaceFiles';
 import type { WorkspaceFile } from '../../src/code/workspaceFiles';
 import { decodeUpdate, encodeUpdate } from '../../src/code/updates';
@@ -575,12 +575,12 @@ function registerSocket(
     );
 
     if (!accepted.ok) {
-      // Only the sender hears about a refusal; the room never saw a run start.
       socket.emit('code:run:started', {
         runId,
         byPeerId: socket.id,
         byDisplayName: displayName,
         language: (payload as { language?: CodeLanguage })?.language ?? 'javascript',
+        stdin: stdinFrom(payload),
       });
       socket.emit('code:run:finished', {
         runId,
@@ -598,6 +598,7 @@ function registerSocket(
       byPeerId: socket.id,
       byDisplayName: displayName,
       language: request.language,
+      stdin: request.stdin,
     });
     try {
       const result = await execution.run(request, (chunk) => {
