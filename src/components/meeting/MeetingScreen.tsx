@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { sharedRoomFiles } from '../../files/roomFiles';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
 import { CAN_RECORD } from '../../meeting/recording';
@@ -17,6 +18,7 @@ import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
+import { FilesPanel } from './FilesPanel';
 import { InvitePanel } from './InvitePanel';
 import { CodePanel } from './CodePanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
@@ -32,7 +34,7 @@ export interface MeetingScreenProps {
   onInvite?: CollabSession['sendInvite'];
 }
 
-type Panel = 'participants' | 'chat' | 'invite' | null;
+type Panel = 'participants' | 'chat' | 'invite' | 'files' | null;
 /** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
 type Stage = 'grid' | 'whiteboard' | 'code';
 
@@ -102,6 +104,11 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
       isHost: participant.peerId === session.hostPeerId,
     })),
   ];
+  const namesByPeerId: Record<string, string> = {};
+  for (const row of rows) {
+    namesByPeerId[row.peerId] = row.displayName;
+  }
+  const files = sharedRoomFiles(session.messages, session.boardFiles, namesByPeerId);
 
   const tiles: Array<[string, ReactNode]> = [
     [
@@ -235,6 +242,14 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
                 onClose={() => setPanel(null)}
               />
             )}
+            {panel === 'files' && (
+              <FilesPanel
+                files={files}
+                onUpload={session.shareFile}
+                onShare={(file) => session.sendMessage({ text: '', file })}
+                onClose={() => setPanel(null)}
+              />
+            )}
           </View>
         )}
       </View>
@@ -328,6 +343,13 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           active={panel === 'chat'}
           badge={unread}
           onPress={() => togglePanel('chat')}
+        />
+        <ToolbarButton
+          icon="folder-outline"
+          label="Files"
+          active={panel === 'files'}
+          badge={files.length}
+          onPress={() => togglePanel('files')}
         />
         <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
       </View>
