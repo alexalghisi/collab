@@ -310,11 +310,8 @@ describe('runCalendarLiveSync', () => {
     expect(pushLocal).toHaveBeenCalledWith('ya29.token');
   });
 
-  it('retries once with a silent token after 401', async () => {
-    const listEvents = vi
-      .fn<CalendarLiveSyncCycle['listEvents']>()
-      .mockRejectedValueOnce(expired)
-      .mockResolvedValueOnce({ events: [], nextSyncToken: 'tok-2' });
+  it('stops on 401 without asking Google for another token', async () => {
+    const listEvents = vi.fn<CalendarLiveSyncCycle['listEvents']>().mockRejectedValue(expired);
     const requestSilentToken = vi.fn(async () => 'ya29.fresh');
     const rememberToken = vi.fn();
     const pushLocal = vi.fn(async () => undefined);
@@ -330,40 +327,13 @@ describe('runCalendarLiveSync', () => {
       }),
     );
 
-    expect(outcome).toEqual({ stopped: false, error: null });
-    expect(requestSilentToken).toHaveBeenCalledOnce();
-    expect(rememberToken).toHaveBeenCalledWith('ya29.fresh');
-    expect(listEvents).toHaveBeenNthCalledWith(1, 'ya29.dead', { syncToken: 'tok-1' });
-    expect(listEvents).toHaveBeenNthCalledWith(2, 'ya29.fresh', { syncToken: 'tok-1' });
-    expect(pushLocal).toHaveBeenCalledWith('ya29.fresh');
-  });
-
-  it('stops the loop when the silent token request fails', async () => {
-    const listEvents = vi.fn<CalendarLiveSyncCycle['listEvents']>().mockRejectedValue(expired);
-    const requestSilentToken = vi.fn(async () => {
-      throw new Error('Google Calendar access was cancelled.');
-    });
-    const rememberToken = vi.fn();
-    const pushLocal = vi.fn(async () => undefined);
-
-    const outcome = await runCalendarLiveSync(
-      cycle({
-        accessToken: 'ya29.dead',
-        syncToken: 'tok-1',
-        listEvents,
-        requestSilentToken,
-        rememberToken,
-        pushLocal,
-      }),
-    );
-
-    expect(requestSilentToken).toHaveBeenCalledOnce();
+    expect(requestSilentToken).not.toHaveBeenCalled();
     expect(listEvents).toHaveBeenCalledOnce();
     expect(pushLocal).not.toHaveBeenCalled();
     expect(rememberToken).toHaveBeenCalledWith(null);
     expect(outcome).toEqual({
       stopped: true,
-      error: 'Google Calendar access was cancelled.',
+      error: 'Google Calendar access expired. Connect it again.',
     });
   });
 });
