@@ -14,6 +14,7 @@ import {
 import { firebaseAuth as firebase } from '../firebase/app';
 import { SIGNALING_URL } from '../signaling/config';
 import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
+import { ensureFirebaseSession } from './ensureFirebaseSession';
 import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
 import { requestGoogleCredential } from './googleWeb';
 import {
@@ -103,7 +104,6 @@ export function useAuth(): AuthState {
     const snapshot = readSessionSnapshot();
     if (snapshot?.user) {
       setUser(snapshot.user);
-      setInitializing(false);
     }
 
     const applyRestored = (restored: AuthUser | null, firebaseUser: AuthUser | null) => {
@@ -119,16 +119,27 @@ export function useAuth(): AuthState {
     };
 
     if (firebase) {
-      return onAuthStateChanged(firebase, (next) => {
-        const firebaseUser = next ? toAuthUser(next) : null;
-        if (firebaseUser && !cancelled) {
-          setUser(firebaseUser);
-          setInitializing(false);
+      const unsub = onAuthStateChanged(firebase, (next) => {
+        if (cancelled || !next || next.isAnonymous) {
+          return;
         }
+        setUser(toAuthUser(next));
+        setInitializing(false);
+      });
+      void ensureFirebaseSession(firebase).finally(() => {
         void restorePersistedSession(restoreAccount).then((restored) => {
-          applyRestored(restored, firebaseUser);
+          applyRestored(
+            restored,
+            firebase.currentUser && !firebase.currentUser.isAnonymous
+              ? toAuthUser(firebase.currentUser)
+              : null,
+          );
         });
       });
+      return () => {
+        cancelled = true;
+        unsub();
+      };
     }
 
     void restorePersistedSession(restoreAccount).then((restored) => {

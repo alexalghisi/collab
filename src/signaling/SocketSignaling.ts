@@ -52,7 +52,11 @@ class SocketChannel implements SignalingChannel {
   };
 
   async connect(): Promise<void> {
-    await waitUntilSignalingReady(this.url);
+    try {
+      await waitUntilSignalingReady(this.url);
+    } catch {
+      /* health can fail while socket.io still answers */
+    }
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (error?: Error) => {
