@@ -61,6 +61,7 @@ import {
 import {
   AdmissionDeniedError,
   SignalingEmitter,
+  SignalingUnavailableError,
   type OutgoingEvent,
   type OutgoingPayload,
   type SignalingChannel,
@@ -134,6 +135,26 @@ type Senders = { [E in OutgoingEvent]: (payload: OutgoingPayload<E>) => void };
 
 const HEARTBEAT_MS = 20_000;
 const STALE_AFTER_MS = 60_000;
+const CONNECT_WAIT_MS = 8_000;
+
+function timed<T>(work: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new SignalingUnavailableError('firestore')),
+      CONNECT_WAIT_MS,
+    );
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (cause) => {
+        clearTimeout(timer);
+        reject(cause);
+      },
+    );
+  });
+}
 /** Cursor moves are continuous; participant documents are not free to write. */
 const AWARENESS_THROTTLE_MS = 200;
 /** Above this, the host squashes the update log so late joiners replay less. */
@@ -325,12 +346,14 @@ class FirestoreChannel implements SignalingChannel {
   };
 
   async connect(): Promise<void> {
-    const current = await this.syncRoom(false);
-    // Without a live host nobody could admit us, so the waiting room only applies when one exists.
+    const current = await timed(this.syncRoom(false));
     if (current.settings.waitingRoom && current.hostPeerId) {
       await this.waitForAdmission();
     }
+    await timed(this.takeSeat());
+  }
 
+  private async takeSeat(): Promise<void> {
     this.joinedAt = Date.now();
     const self: ParticipantDoc = {
       displayName: this.options.displayName,
@@ -366,7 +389,6 @@ class FirestoreChannel implements SignalingChannel {
     this.pageHide.attach();
 
     await this.subscribeParticipants(room);
-    // After room:joined, so the existing drawing streams in as board:stroke events.
     this.subscribeStrokes();
     this.subscribeBoardFiles();
     this.subscribeCodeUpdates();

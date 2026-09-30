@@ -81,33 +81,17 @@ export async function runCalendarLiveSync(
   if (!input.connected || !input.accessToken) {
     return { stopped: false, error: null };
   }
-  let accessToken = input.accessToken;
-  let syncToken = input.syncToken;
-  let retried = false;
   const writeSyncToken = (value: string | null) => {
-    syncToken = value;
     input.writeSyncToken(value);
   };
-  for (;;) {
-    try {
-      await pullOnce(input, accessToken, syncToken, writeSyncToken);
-      return { stopped: false, error: null };
-    } catch (cause) {
-      if (!isAuthExpired(cause) || retried) {
-        if (isAuthExpired(cause)) {
-          input.rememberToken(null);
-          return { stopped: true, error: messageOf(cause) };
-        }
-        return { stopped: false, error: messageOf(cause) };
-      }
-      retried = true;
-      try {
-        accessToken = await input.requestSilentToken();
-      } catch (silentCause) {
-        input.rememberToken(null);
-        return { stopped: true, error: messageOf(silentCause) };
-      }
-      input.rememberToken(accessToken);
+  try {
+    await pullOnce(input, input.accessToken, input.syncToken, writeSyncToken);
+    return { stopped: false, error: null };
+  } catch (cause) {
+    if (isAuthExpired(cause)) {
+      input.rememberToken(null);
+      return { stopped: true, error: messageOf(cause) };
     }
+    return { stopped: false, error: messageOf(cause) };
   }
 }
