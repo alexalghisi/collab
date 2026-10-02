@@ -1,4 +1,4 @@
-import { meetingEndsAt, type Meeting, type MeetingDraft } from './types';
+import { meetingEndsAt, meetingInviteContacts, type Meeting, type MeetingDraft } from './types';
 
 const EVENTS_URL = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const ROOM_IN_TEXT = /(?:\?|&)room=([a-z0-9-]+)/i;
@@ -25,6 +25,13 @@ export interface GoogleCalendarEvent {
   readonly location?: string;
   readonly start?: { readonly dateTime?: string; readonly date?: string };
   readonly end?: { readonly dateTime?: string; readonly date?: string };
+}
+
+function calendarAttendees(
+  meeting: Meeting,
+): { attendees: Array<{ email: string }> } | Record<string, never> {
+  const emails = meetingInviteContacts(meeting).filter((value) => value.includes('@'));
+  return emails.length > 0 ? { attendees: emails.map((email) => ({ email })) } : {};
 }
 
 interface CalendarErrorBody {
@@ -195,11 +202,7 @@ export async function insertGoogleEvent(
       start: { dateTime: new Date(meeting.startsAt).toISOString() },
       end: { dateTime: new Date(meetingEndsAt(meeting)).toISOString() },
       extendedProperties: { private: { collabMeetingId: meeting.id } },
-      ...(meeting.guests && meeting.guests.length > 0
-        ? {
-            attendees: meeting.guests.filter((g) => g.includes('@')).map((email) => ({ email })),
-          }
-        : {}),
+      ...calendarAttendees(meeting),
     }),
   });
   const body = (await response.json().catch(() => ({}))) as CalendarErrorBody & {
@@ -248,11 +251,7 @@ export async function updateGoogleEvent(
         location: joinUrl,
         start: { dateTime: new Date(meeting.startsAt).toISOString() },
         end: { dateTime: new Date(meetingEndsAt(meeting)).toISOString() },
-        ...(meeting.guests && meeting.guests.length > 0
-          ? {
-              attendees: meeting.guests.filter((g) => g.includes('@')).map((email) => ({ email })),
-            }
-          : {}),
+        ...calendarAttendees(meeting),
       }),
     },
   );

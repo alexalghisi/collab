@@ -43,13 +43,37 @@ export interface JoinRoomPayload {
   readonly breakoutOf?: string;
 }
 
+/** What fills the meeting body for everyone in the room. Only the host may change this. */
+export type RoomStage = 'grid' | 'whiteboard' | 'code';
+
+export function isRoomStage(value: unknown): value is RoomStage {
+  return value === 'grid' || value === 'whiteboard' || value === 'code';
+}
+
 /** Room-wide options only the host may change. */
 export interface RoomSettings {
   readonly waitingRoom: boolean;
   readonly breakoutOpen: boolean;
+  readonly stage: RoomStage;
 }
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = { waitingRoom: false, breakoutOpen: false };
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+  waitingRoom: false,
+  breakoutOpen: false,
+  stage: 'grid',
+};
+
+export function normalizeRoomSettings(
+  value: Partial<RoomSettings> | null | undefined,
+  fallback: RoomSettings = DEFAULT_ROOM_SETTINGS,
+): RoomSettings {
+  const raw = value ?? {};
+  return {
+    waitingRoom: typeof raw.waitingRoom === 'boolean' ? raw.waitingRoom : fallback.waitingRoom,
+    breakoutOpen: typeof raw.breakoutOpen === 'boolean' ? raw.breakoutOpen : fallback.breakoutOpen,
+    stage: isRoomStage(raw.stage) ? raw.stage : fallback.stage,
+  };
+}
 
 export type HostCommand =
   | { readonly action: 'mute' }
@@ -135,7 +159,6 @@ export interface RoomJoinedPayload {
   readonly peers: PeerInfo[];
   /** Whiteboard content so far; transports that stream strokes send an empty list here. */
   readonly strokes: Stroke[];
-  readonly notes: string;
   readonly settings: RoomSettings;
   /**
    * Merged state of the shared code document, base64-encoded, or null when the
@@ -185,7 +208,6 @@ export interface ClientToServerEvents {
   'board:stroke': (stroke: Stroke) => void;
   'board:file': (item: BoardFile) => void;
   'board:remove': (strokeIds: string[]) => void;
-  'notes:update': (text: string) => void;
   /** Base64-encoded Yjs document update for the shared code editor. */
   'code:update': (update: string) => void;
   /** Base64-encoded Yjs awareness update: cursors, selections and editor presence. */
@@ -217,7 +239,6 @@ export interface ServerToClientEvents {
   'board:stroke': (stroke: Stroke) => void;
   'board:file': (item: BoardFile) => void;
   'board:remove': (strokeIds: string[]) => void;
-  'notes:update': (text: string) => void;
   'code:update': (update: string) => void;
   'code:awareness': (update: string) => void;
   'code:run:started': (payload: RunStarted) => void;

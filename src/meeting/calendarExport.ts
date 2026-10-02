@@ -1,4 +1,4 @@
-import { meetingEndsAt, type Meeting } from './types';
+import { meetingEndsAt, meetingInviteContacts, type Meeting } from './types';
 
 /** `20260913T141500Z` — the compact UTC form shared by Google Calendar links and iCalendar. */
 function toUtcStamp(ms: number): string {
@@ -16,6 +16,10 @@ export function googleCalendarUrl(meeting: Meeting, inviteLink: string): string 
     details: [meeting.description, `Join: ${inviteLink}`].filter(Boolean).join('\n\n'),
     location: inviteLink,
   });
+  const emails = meetingInviteContacts(meeting).filter((value) => value.includes('@'));
+  if (emails.length > 0) {
+    params.set('add', emails.join(','));
+  }
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
@@ -23,6 +27,9 @@ const escapeIcsText = (value: string) =>
   value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 
 export function buildIcs(meeting: Meeting, inviteLink: string): string {
+  const attendees = meetingInviteContacts(meeting)
+    .filter((value) => value.includes('@'))
+    .map((email) => `ATTENDEE:mailto:${escapeIcsText(email)}`);
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -36,6 +43,7 @@ export function buildIcs(meeting: Meeting, inviteLink: string): string {
     `DESCRIPTION:${escapeIcsText([meeting.description, `Join: ${inviteLink}`].filter(Boolean).join('\n'))}`,
     `LOCATION:${escapeIcsText(inviteLink)}`,
     `URL:${inviteLink}`,
+    ...attendees,
     'END:VEVENT',
     'END:VCALENDAR',
     '',

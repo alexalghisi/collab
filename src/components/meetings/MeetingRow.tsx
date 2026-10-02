@@ -4,7 +4,7 @@ import { buildIcs, googleCalendarUrl } from '../../meeting/calendarExport';
 import { formatDay, formatTime } from '../../meeting/calendar';
 import { downloadTextFile } from '../../meeting/download';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
-import { meetingEndsAt, type Meeting } from '../../meeting/types';
+import { meetingAttendeeNames, meetingEndsAt, type Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
@@ -30,6 +30,7 @@ function describeWhen(meeting: Meeting): string {
 export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: MeetingRowProps) {
   const upcoming = meetingEndsAt(meeting) >= Date.now();
   const inviteLink = buildInviteLink(meeting.roomId);
+  const who = meetingAttendeeNames(meeting);
   const [inviting, setInviting] = useState(false);
   const [emails, setEmails] = useState(() => (meeting.guests ?? []).join(', '));
   const [reminderMinutes, setReminderMinutes] = useState<15 | 30>(meeting.reminderMinutes ?? 15);
@@ -58,6 +59,11 @@ export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: Mee
             {meeting.title}
           </Text>
           <Text style={styles.when}>{describeWhen(meeting)}</Text>
+          {who.length > 0 ? (
+            <Text style={styles.who} numberOfLines={2}>
+              {who.join(', ')}
+            </Text>
+          ) : null}
           <Text style={styles.roomId}>ID {meeting.roomId}</Text>
         </View>
         <View style={styles.actions}>
@@ -212,6 +218,10 @@ const styles = StyleSheet.create({
   when: {
     color: colors.textMuted,
     fontSize: 14,
+  },
+  who: {
+    color: colors.text,
+    fontSize: 13,
   },
   roomId: {
     color: colors.textSubtle,

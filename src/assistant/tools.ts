@@ -53,7 +53,6 @@ export async function gatherContext(
   const hits = formatHits(
     await findDiscussion(store, embedder, context.question, context.meetingId),
   );
-  const notes = context.notes.trim() || '(no shared notes)';
   return [
     `Question: ${context.question}`,
     '',
@@ -62,8 +61,5 @@ export async function gatherContext(
     '',
     'Matching passages:',
     hits,
-    '',
-    'Shared notes:',
-    notes,
   ].join('\n');
 }
