@@ -100,9 +100,50 @@ class FakeModel implements EditorModel {
 
 class FakeEditor implements EditorApi {
   selection: { start: number; end: number; head?: number } | null = { start: 0, end: 0, head: 0 };
+  /** Monaco reports the shoved caret on a later turn, after the edit returns. */
+  replayRemoteCaret = false;
   private cursorListeners: Array<() => void> = [];
 
-  constructor(readonly model: FakeModel) {}
+  constructor(readonly model: FakeModel) {
+    const apply = model.applyEdits.bind(model);
+    // Monaco moves a caret that sits on an insertion to the end of that insertion.
+    model.applyEdits = (edits) => {
+      let head = this.selection?.head;
+      if (head != null) {
+        for (const edit of edits) {
+          const range = edit.range as Range;
+          const start = model.getOffsetAt({
+            lineNumber: range.startLineNumber,
+            column: range.startColumn,
+          });
+          const end = model.getOffsetAt({
+            lineNumber: range.endLineNumber,
+            column: range.endColumn,
+          });
+          const inserted = edit.text.length;
+          const removed = Math.max(0, end - start);
+          if (head > end) {
+            head += inserted - removed;
+          } else if (head > start || (head === start && removed === 0)) {
+            head = start + inserted;
+          }
+        }
+      }
+      apply(edits);
+      if (this.selection && head != null) {
+        const shoved = head;
+        this.selection = { start: shoved, end: shoved, head: shoved };
+        if (this.replayRemoteCaret) {
+          queueMicrotask(() => {
+            this.selection = { start: shoved, end: shoved, head: shoved };
+            for (const listener of this.cursorListeners) {
+              listener();
+            }
+          });
+        }
+      }
+    };
+  }
 
   getModel(): EditorModel {
     return this.model;
@@ -146,6 +187,26 @@ class FakeEditor implements EditorApi {
 
   moveCursor(start: number, end = start, head = end): void {
     this.selection = { start, end, head };
+    for (const listener of this.cursorListeners) {
+      listener();
+    }
+  }
+
+  setSelection(selection: {
+    selectionStartLineNumber: number;
+    selectionStartColumn: number;
+    positionLineNumber: number;
+    positionColumn: number;
+  }): void {
+    const anchor = this.model.getOffsetAt({
+      lineNumber: selection.selectionStartLineNumber,
+      column: selection.selectionStartColumn,
+    });
+    const head = this.model.getOffsetAt({
+      lineNumber: selection.positionLineNumber,
+      column: selection.positionColumn,
+    });
+    this.selection = { start: Math.min(anchor, head), end: Math.max(anchor, head), head };
     for (const listener of this.cursorListeners) {
       listener();
     }
@@ -238,6 +299,24 @@ describe('MonacoTextBinding', () => {
     document.applyState(remoteEdit(document, (text) => text.delete(5, 7)));
 
     expect(model.getValue()).toBe('keep\n');
+  });
+
+  it('leaves the caret where its owner stopped when someone else types there', async () => {
+    document.text.insert(0, 'hello');
+    bind('hello');
+    editor.replayRemoteCaret = true;
+    editor.moveCursor(5);
+
+    document.applyState(remoteEdit(document, (text) => text.insert(5, '\nnext')));
+    await Promise.resolve();
+
+    expect(model.getValue()).toBe('hello\nnext');
+    expect(editor.selection).toEqual({ start: 5, end: 5, head: 5 });
+    expect(document.awareness.getLocalState()?.selection).toMatchObject({
+      start: 5,
+      end: 5,
+      head: 5,
+    });
   });
 
   it('does not feed a remote change back into the document', () => {

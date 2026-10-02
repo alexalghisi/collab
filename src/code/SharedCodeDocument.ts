@@ -140,10 +140,19 @@ export class SharedCodeDocument {
     return entries;
   }
 
+  /** This participant's caret, moved only by edits that happened around it. */
+  localSelection(): CodeSelection | null {
+    const state = this.awareness.getLocalState() as { selection?: StoredSelection } | null;
+    return state ? this.readSelection(state) : null;
+  }
+
   setSelection(selection: CodeSelection): void {
     const head = selection.head ?? selection.end;
+    // Stick to the character on the left. An insert at the caret — someone else
+    // typing where you stopped — then stays in front of the caret instead of
+    // dragging it along to the new end of the text.
     const mark = (index: number) =>
-      Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(this.text, index));
+      Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(this.text, index, -1));
     this.awareness.setLocalStateField('selection', {
       start: selection.start,
       end: selection.end,
