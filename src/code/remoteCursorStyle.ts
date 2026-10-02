@@ -22,8 +22,8 @@ export function remoteCursorCss(editors: readonly CodePresence[]): string {
         .monaco-editor .${klass}-caret::after {
           content: '${name}';
           position: absolute;
-          top: 100%;
-          left: -1px;
+          top: 0;
+          left: 2px;
           padding: 0 4px;
           font-size: 11px;
           line-height: 16px;
