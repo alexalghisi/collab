@@ -20,6 +20,8 @@ describe('remoteCursorCss', () => {
     expect(css).toContain('pointer-events: none');
     expect(css).toContain("content: 'Linus'");
     expect(css).toContain('.monaco-editor .collab-cursor-7-caret');
+    expect(css).toContain('top: 0');
+    expect(css).toContain('left: 2px');
   });
 
   it('lets clicks through to the code under a remote caret and its label', () => {
