@@ -20,6 +20,7 @@ import { normalizeBoardFile } from '../../src/whiteboard/boardFiles';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
+  normalizeRoomSettings,
   type BoardFile,
   type ChatMessage,
   type ClientToServerEvents,
@@ -63,7 +64,6 @@ interface RoomState {
   hostPeerId: string;
   strokes: Stroke[];
   boardFiles: BoardFile[];
-  notes: string;
   /** Recent chat, kept so the assistant can read what the room said. */
   messages: ChatMessage[];
   /** Spoken turns so far; a late joiner gets the same log as everyone else. */
@@ -109,7 +109,6 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
       hostPeerId: firstPeerId,
       strokes: [],
       boardFiles: [],
-      notes: '',
       messages: [],
       transcript: [],
       code: new Y.Doc(),
@@ -165,7 +164,6 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     hostPeerId: room.hostPeerId,
     peers,
     strokes: room.strokes,
-    notes: room.notes,
     settings: room.settings,
     code: room.codeEdited ? encodeUpdate(Y.encodeStateAsUpdate(room.code)) : null,
     transcript: room.transcript,
@@ -390,9 +388,10 @@ function registerSocket(
     if (!room || !roomId) {
       return;
     }
-    const closingBreakouts = room.settings.breakoutOpen && !settings.breakoutOpen;
-    room.settings = settings;
-    io.to(roomId).emit('room:settings', settings);
+    const next = normalizeRoomSettings(settings, room.settings);
+    const closingBreakouts = room.settings.breakoutOpen && !next.breakoutOpen;
+    room.settings = next;
+    io.to(roomId).emit('room:settings', next);
     if (closingBreakouts) {
       io.to(breakoutChannel(roomId)).emit('host:command', { action: 'move', roomId });
     }
@@ -636,7 +635,6 @@ function registerSocket(
           text: turn.text,
           startedAt: turn.startedAt,
         })) ?? [],
-      notes: room?.notes ?? '',
       messages:
         room?.messages
           .filter((message) => !message.deletedAt)
@@ -661,14 +659,6 @@ function registerSocket(
       } else {
         target.emit('assistant:error', { requestId, error: event.error });
       }
-    }
-  });
-
-  socket.on('notes:update', (text) => {
-    const room = currentRoom();
-    if (room && socket.data.roomId) {
-      room.notes = text;
-      socket.to(socket.data.roomId).emit('notes:update', text);
     }
   });
 

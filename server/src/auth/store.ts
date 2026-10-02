@@ -56,6 +56,12 @@ export class UserStore {
     return undefined;
   }
 
+  list(): Array<Pick<StoredUser, 'uid' | 'email' | 'displayName'>> {
+    return [...this.users.values()]
+      .map(({ uid, email, displayName }) => ({ uid, email, displayName }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName) || a.email.localeCompare(b.email));
+  }
+
   create(input: {
     email: string;
     displayName: string;
