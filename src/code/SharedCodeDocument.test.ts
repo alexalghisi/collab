@@ -238,7 +238,20 @@ describe('SharedCodeDocument', () => {
 
     ada.document.text.insert(0, 'xxx');
 
-    expect(ada.document.presence()[0]?.selection).toEqual({ start: 9, end: 9 });
+    expect(ada.document.presence()[0]?.selection).toEqual({ start: 9, end: 9, head: 9 });
+  });
+
+  it('moves a remote caret along as its author types', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    ada.document.text.insert(0, 'hello');
+    linus.document.setSelection({ start: 0, end: 0, head: 0 });
+
+    linus.document.text.insert(0, 'X');
+    linus.document.setSelection({ start: 1, end: 1, head: 1 });
+
+    expect(ada.document.text.toString()).toBe('Xhello');
+    expect(ada.document.presence()[0]?.selection).toEqual({ start: 1, end: 1, head: 1 });
   });
 
   it('gives each participant a stable colour derived from their peer id', () => {
