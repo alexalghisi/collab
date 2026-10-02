@@ -16,13 +16,18 @@ export interface CodeIdentity {
 
 /** Offsets into the shared text, so a selection survives being reindexed. */
 export interface CodeSelection {
+  /** Start of the highlighted range (the smaller offset). */
   readonly start: number;
+  /** End of the highlighted range (the larger offset). */
   readonly end: number;
+  /** Where the caret sits. Equals `end` when the caret is at the end of the range. */
+  readonly head?: number;
 }
 
 interface StoredSelection extends CodeSelection {
   readonly startRel?: unknown;
   readonly endRel?: unknown;
+  readonly headRel?: unknown;
 }
 
 /** A remote participant's cursor, as published through Yjs awareness. */
@@ -136,37 +141,46 @@ export class SharedCodeDocument {
   }
 
   setSelection(selection: CodeSelection): void {
+    const head = selection.head ?? selection.end;
+    const mark = (index: number) =>
+      Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(this.text, index));
     this.awareness.setLocalStateField('selection', {
       start: selection.start,
       end: selection.end,
-      startRel: Y.relativePositionToJSON(
-        Y.createRelativePositionFromTypeIndex(this.text, selection.start),
-      ),
-      endRel: Y.relativePositionToJSON(
-        Y.createRelativePositionFromTypeIndex(this.text, selection.end),
-      ),
+      head,
+      startRel: mark(selection.start),
+      endRel: mark(selection.end),
+      headRel: mark(head),
     } satisfies StoredSelection);
+  }
+
+  private readOffset(relative: unknown, fallback: number): number {
+    if (relative == null || typeof fallback !== 'number') {
+      return fallback;
+    }
+    try {
+      const absolute = Y.createAbsolutePositionFromRelativePosition(
+        Y.createRelativePositionFromJSON(relative),
+        this.doc,
+      );
+      return absolute ? absolute.index : fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   private readSelection(state: { selection?: StoredSelection }): CodeSelection | null {
     const stored = state.selection;
-    if (!stored) {
+    if (!stored || typeof stored.start !== 'number' || typeof stored.end !== 'number') {
       return null;
     }
-    if (stored.startRel != null && stored.endRel != null) {
-      const start = Y.createAbsolutePositionFromRelativePosition(
-        Y.createRelativePositionFromJSON(stored.startRel),
-        this.doc,
-      );
-      const end = Y.createAbsolutePositionFromRelativePosition(
-        Y.createRelativePositionFromJSON(stored.endRel),
-        this.doc,
-      );
-      if (start && end) {
-        return { start: start.index, end: end.index };
-      }
-    }
-    return { start: stored.start, end: stored.end };
+    const start = this.readOffset(stored.startRel, stored.start);
+    const end = this.readOffset(stored.endRel, stored.end);
+    const head = this.readOffset(
+      stored.headRel,
+      typeof stored.head === 'number' ? stored.head : end,
+    );
+    return { start, end, head };
   }
 
   /** Fires when a remote cursor moves, joins or goes away. */

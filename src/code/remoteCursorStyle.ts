@@ -10,25 +10,30 @@ export function remoteCursorCss(editors: readonly CodePresence[]): string {
       const klass = cursorClass(editor);
       return `
         .${klass} {
-          background-color: ${editor.color}22;
+          background-color: ${editor.color}33;
         }
-        .${klass}-label {
+        .monaco-editor .${klass}-caret {
           border-left: 2px solid ${editor.color};
+          margin-left: -1px;
+          position: relative;
           pointer-events: none;
+          z-index: 10;
         }
-        .${klass}-label::after {
+        .monaco-editor .${klass}-caret::after {
           content: '${name}';
           position: absolute;
-          transform: translateY(-110%);
-          padding: 0 3px;
-          font-size: 10px;
-          line-height: 14px;
+          top: 100%;
+          left: -1px;
+          padding: 0 4px;
+          font-size: 11px;
+          line-height: 16px;
+          font-weight: 700;
           white-space: nowrap;
           color: ${colors.background};
-          background-color: ${editor.color}99;
-          border-radius: 2px;
+          background-color: ${editor.color};
+          border-radius: 3px;
           pointer-events: none;
-          opacity: 0.7;
+          z-index: 20;
         }`;
     })
     .join('\n');

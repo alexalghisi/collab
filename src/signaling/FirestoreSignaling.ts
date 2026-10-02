@@ -21,11 +21,11 @@ import {
 import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
-import { executeInCloud } from '../code/cloudExecute';
-import { EXECUTION_URL } from '../code/config';
 import { MAX_MESSAGE_CHARS, type ChatDraft } from '../chat/messages';
+import { EXECUTION_URL } from '../code/config';
 import type { ExecutionRequest } from '../code/execution';
 import type { CodeLanguage } from '../code/languages';
+import { executeSharedProgram } from '../code/serverExecute';
 import { mergeEncodedUpdates } from '../code/updates';
 import {
   normalizeWorkspaceFiles,
@@ -577,6 +577,15 @@ class FirestoreChannel implements SignalingChannel {
               boardFiles: [],
               workspaceFiles,
             });
+            for (const participant of snapshot.docs) {
+              if (participant.id === this.peerId) {
+                continue;
+              }
+              const awareness = (participant.data() as ParticipantDoc).codeAwareness;
+              if (awareness) {
+                this.emitter.dispatch('code:awareness', awareness);
+              }
+            }
             resolve();
             return;
           }
@@ -759,7 +768,7 @@ class FirestoreChannel implements SignalingChannel {
     };
     await setDoc(entry, started);
     try {
-      const { result, stdout, stderr } = await executeInCloud(request);
+      const { result, stdout, stderr } = await executeSharedProgram(request);
       await setDoc(
         entry,
         {

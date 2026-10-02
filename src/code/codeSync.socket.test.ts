@@ -118,4 +118,18 @@ describe('shared code over the Socket.IO transport', () => {
     expect(fresh.payload.code).toBeNull();
     expect(fresh.document.text.toString()).toBe('');
   });
+
+  it('keeps a caret on the same character while the other person types in front', async () => {
+    const ada = await join('a', 'Ada');
+    const linus = await join('b', 'Linus');
+    ada.document.text.insert(0, 'hello');
+    ada.document.setSelection({ start: 5, end: 5, head: 5 });
+    await until(() => linus.document.presence()[0]?.selection?.head === 5);
+
+    linus.document.text.insert(0, 'say ');
+    await until(() => ada.document.text.toString() === 'say hello');
+
+    expect(linus.document.presence()[0]?.selection).toEqual({ start: 9, end: 9, head: 9 });
+    expect(ada.document.text.toString()).toBe(linus.document.text.toString());
+  });
 });
