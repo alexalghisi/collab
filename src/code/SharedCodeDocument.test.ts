@@ -241,6 +241,18 @@ describe('SharedCodeDocument', () => {
     expect(ada.document.presence()[0]?.selection).toEqual({ start: 9, end: 9, head: 9 });
   });
 
+  it('does not drag a caret along when someone else types at it', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    ada.document.text.insert(0, 'hello');
+    ada.document.setSelection({ start: 5, end: 5, head: 5 });
+
+    linus.document.text.insert(5, '\nnext');
+
+    expect(linus.document.text.toString()).toBe('hello\nnext');
+    expect(linus.document.presence()[0]?.selection).toEqual({ start: 5, end: 5, head: 5 });
+  });
+
   it('moves a remote caret along as its author types', () => {
     const ada = attach('a', 'Ada');
     const linus = attach('b', 'Linus');
