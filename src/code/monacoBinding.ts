@@ -42,6 +42,8 @@ export interface CursorRange {
 export interface EditorApi {
   getModel(): EditorModel | null;
   onDidChangeCursorSelection(listener: () => void): Disposable;
+  /** The caret, which can sit at either end of a selection. */
+  getPosition(): EditorPosition | null;
   getSelection(): { getStartPosition(): EditorPosition; getEndPosition(): EditorPosition } | null;
   createDecorationsCollection(decorations: Decoration[]): DecorationsCollection;
 }
@@ -49,7 +51,8 @@ export interface EditorApi {
 export interface Decoration {
   readonly range: CursorRange;
   readonly options: {
-    readonly className: string;
+    readonly className?: string;
+    readonly beforeContentClassName?: string;
     readonly hoverMessage: { readonly value: string };
     readonly stickiness: number;
   };
@@ -108,6 +111,7 @@ export class MonacoTextBinding {
       }),
       { dispose: () => this.document.text.unobserve(this.onTextChange) },
     );
+    this.publishSelection(model);
   }
 
   destroy(): void {
@@ -180,6 +184,7 @@ export class MonacoTextBinding {
     } finally {
       this.applyingRemote = false;
     }
+    this.publishSelection(model);
   };
 
   private alignModel(model: EditorModel): void {
@@ -208,13 +213,20 @@ export class MonacoTextBinding {
   }
 
   private publishSelection(model: EditorModel): void {
-    const selection = this.editor.getSelection();
-    if (!selection) {
+    if (this.applyingRemote) {
       return;
     }
+    const selection = this.editor.getSelection();
+    const caret = this.editor.getPosition();
+    if (!selection || !caret) {
+      return;
+    }
+    const start = model.getOffsetAt(selection.getStartPosition());
+    const end = model.getOffsetAt(selection.getEndPosition());
     this.document.setSelection({
-      start: model.getOffsetAt(selection.getStartPosition()),
-      end: model.getOffsetAt(selection.getEndPosition()),
+      start,
+      end,
+      head: model.getOffsetAt(caret),
     });
   }
 }
@@ -236,7 +248,7 @@ export function decorationsFor(
     const hi = clampOffset(Math.max(selection.start, selection.end), length);
     const from = model.getPositionAt(lo);
     const to = model.getPositionAt(hi);
-    const head = model.getPositionAt(clampOffset(selection.end, length));
+    const head = model.getPositionAt(clampOffset(selection.head ?? selection.end, length));
     const hover = { value: presence.displayName };
     if (lo !== hi) {
       items.push({
@@ -247,7 +259,7 @@ export function decorationsFor(
     items.push({
       range: new monaco.Range(head.lineNumber, head.column, head.lineNumber, head.column),
       options: {
-        className: `${classNameOf(presence)}-label`,
+        beforeContentClassName: `${classNameOf(presence)}-caret`,
         hoverMessage: hover,
         stickiness: 1,
       },
