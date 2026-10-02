@@ -84,6 +84,45 @@ describe('auth router', () => {
     }
   });
 
+  it('lists signed-up people once you are signed in', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'collab-auth-'));
+    dirs.push(dir);
+    const { url, close } = await start(dir);
+    try {
+      await fetch(`${url}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'ada@example.com',
+          password: 'password1',
+          displayName: 'Ada Lovelace',
+        }),
+      });
+      const login = await fetch(`${url}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'ada@example.com', password: 'password1' }),
+      });
+      const body = (await login.json()) as { token: string };
+      const denied = await fetch(`${url}/auth/directory`);
+      expect(denied.status).toBe(401);
+
+      const directory = await fetch(`${url}/auth/directory`, {
+        headers: { Authorization: `Bearer ${body.token}` },
+      });
+      expect(directory.status).toBe(200);
+      const listed = (await directory.json()) as {
+        people: Array<{ email: string; displayName: string; passwordHash?: string }>;
+      };
+      expect(listed.people).toEqual([
+        expect.objectContaining({ email: 'ada@example.com', displayName: 'Ada Lovelace' }),
+      ]);
+      expect(listed.people[0].passwordHash).toBeUndefined();
+    } finally {
+      await close();
+    }
+  });
+
   it('signs an existing account in and rejects a bad password', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'collab-auth-'));
     dirs.push(dir);

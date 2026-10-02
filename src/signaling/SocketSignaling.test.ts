@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { settle, startRoomServer, type RoomServer } from '../testing/roomServer';
 import {
+  DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
   type RoomJoinedPayload,
+  type RoomSettings,
   type Stroke,
   type WaitingPeer,
 } from './events';
@@ -118,7 +120,7 @@ describe('SocketSignaling against the signaling server', () => {
 
   it('holds a joiner in the waiting room until the host decides', async () => {
     const host = await server.join('a', 'Ada');
-    host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
+    host.channel.emit('room:settings', { ...DEFAULT_ROOM_SETTINGS, waitingRoom: true });
     const waiting = new Promise<WaitingPeer[]>((resolve) =>
       host.channel.on('waiting:update', resolve),
     );
@@ -139,7 +141,7 @@ describe('SocketSignaling against the signaling server', () => {
 
   it('rejects the join of a denied guest', async () => {
     const host = await server.join('a', 'Ada');
-    host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
+    host.channel.emit('room:settings', { ...DEFAULT_ROOM_SETTINGS, waitingRoom: true });
     const waiting = new Promise<WaitingPeer[]>((resolve) =>
       host.channel.on('waiting:update', resolve),
     );
@@ -155,7 +157,7 @@ describe('SocketSignaling against the signaling server', () => {
 
   it('lets an admitted session back in without queueing again', async () => {
     const host = await server.join('a', 'Ada');
-    host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
+    host.channel.emit('room:settings', { ...DEFAULT_ROOM_SETTINGS, waitingRoom: true });
     const waiting = new Promise<WaitingPeer[]>((resolve) =>
       host.channel.on('waiting:update', resolve),
     );
@@ -176,5 +178,17 @@ describe('SocketSignaling against the signaling server', () => {
     returning.disconnect();
 
     expect(held).toBe(false);
+  });
+
+  it('broadcasts the host stage so everyone opens the same surface', async () => {
+    const host = await server.join('a', 'Ada');
+    const guest = await server.join('b', 'Linus');
+    const seen = new Promise<RoomSettings>((resolve) => guest.channel.on('room:settings', resolve));
+
+    host.channel.emit('room:settings', { ...DEFAULT_ROOM_SETTINGS, stage: 'code' });
+
+    expect(await seen).toMatchObject({ stage: 'code', waitingRoom: false });
+    const late = await server.join('c', 'Grace');
+    expect(late.joined.settings.stage).toBe('code');
   });
 });
