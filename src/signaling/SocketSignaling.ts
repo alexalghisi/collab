@@ -32,6 +32,7 @@ class SocketChannel implements SignalingChannel {
   constructor(
     private readonly url: string,
     private readonly options: SignalingOptions,
+    private readonly handshakeMs: number,
   ) {
     this.socket = io(url, {
       transports: ['polling', 'websocket'],
@@ -62,6 +63,7 @@ class SocketChannel implements SignalingChannel {
         settled = true;
         clearTimeout(timer);
         this.socket.off('connect_error', onError);
+        this.socket.off('disconnect', onDrop);
         if (error) {
           reject(error);
         } else {
@@ -76,10 +78,24 @@ class SocketChannel implements SignalingChannel {
           finish(new SignalingUnavailableError(this.url));
         }
       };
-      const timer = setTimeout(() => finish(new SignalingUnavailableError(this.url)), 15_000);
+      let holdingForHost = false;
+      const onDrop = () => {
+        if (holdingForHost) {
+          finish(new SignalingUnavailableError(this.url));
+        }
+      };
+      const timer = setTimeout(
+        () => finish(new SignalingUnavailableError(this.url)),
+        this.handshakeMs,
+      );
       this.socket.on('connect_error', onError);
+      this.socket.on('disconnect', onDrop);
       this.socket.once('room:joined', () => finish());
       this.socket.once('room:denied', () => finish(new AdmissionDeniedError()));
+      this.socket.once('room:waiting', () => {
+        holdingForHost = true;
+        clearTimeout(timer);
+      });
       this.socket.once('connect', () => {
         const { sessionId, roomId, displayName, state, breakoutOf } = this.options;
         this.socket.emit('room:join', { sessionId, roomId, displayName, state, breakoutOf });
@@ -109,6 +125,6 @@ class SocketChannel implements SignalingChannel {
   }
 }
 
-export function createSocketSignaling(url: string): SignalingFactory {
-  return (options) => new SocketChannel(url, options);
+export function createSocketSignaling(url: string, handshakeMs = 15_000): SignalingFactory {
+  return (options) => new SocketChannel(url, options, handshakeMs);
 }

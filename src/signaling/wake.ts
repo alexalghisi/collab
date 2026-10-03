@@ -2,6 +2,8 @@ import { SignalingUnavailableError } from './SignalingChannel';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
+export const REMOTE_WAKE_MS = 75_000;
+
 export interface WakeOptions {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -30,7 +32,7 @@ export async function waitUntilSignalingReady(
   if (isLoopbackSignalingUrl(url)) {
     return;
   }
-  const timeoutMs = options.timeoutMs ?? 12_000;
+  const timeoutMs = options.timeoutMs ?? REMOTE_WAKE_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new SignalingUnavailableError(url)), timeoutMs);
@@ -46,7 +48,7 @@ export async function waitUntilSignalingReady(
 
 async function pollHealth(url: string, options: WakeOptions): Promise<void> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const timeoutMs = options.timeoutMs ?? 12_000;
+  const timeoutMs = options.timeoutMs ?? REMOTE_WAKE_MS;
   const pauseMs = options.pauseMs ?? 1_000;
   const probeTimeoutMs = options.probeTimeoutMs ?? 4_000;
   const deadline = Date.now() + timeoutMs;
