@@ -108,8 +108,9 @@ export function CodePanel({
       bindingRef.current?.destroy();
       bindingRef.current = new MonacoTextBinding(shared, editor, monaco);
       decorationsRef.current = editor.createDecorationsCollection([]);
+      paintCursors();
     },
-    [shared],
+    [paintCursors, shared],
   );
 
   return (
@@ -120,9 +121,13 @@ export function CodePanel({
         stdin={stdin}
         onStdinChange={setStdin}
         onFormat={() => applyFormattedCode(language, shared, files, openFile, onFilesChange)}
-        onRun={() =>
-          onRun(stdin, files, editorRef.current?.getModel()?.getValue() ?? shared.text.toString())
-        }
+        onRun={() => {
+          const typed = editorRef.current?.getModel()?.getValue();
+          if (typed != null && typed !== shared.text.toString()) {
+            shared.replaceText(typed);
+          }
+          onRun(stdin, files, shared.text.toString());
+        }}
         running={running}
         editors={editors}
       />

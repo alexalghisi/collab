@@ -12,8 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { sharedRoomFiles } from '../../files/roomFiles';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
-import { CAN_RECORD } from '../../meeting/recording';
-import { useRecording } from '../../meeting/useRecording';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
@@ -35,7 +33,6 @@ export interface MeetingScreenProps {
 }
 
 type Panel = 'participants' | 'chat' | 'invite' | 'files' | null;
-/** What fills the meeting body: the tiles, or a shared surface above a tile strip. */
 type Stage = 'grid' | 'whiteboard' | 'code';
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
@@ -58,10 +55,9 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
     session.messages.length > 0 ? 'chat' : 'invite',
   );
   const [reactionsOpen, setReactionsOpen] = useState(false);
-  const [stage, setStage] = useState<Stage>('grid');
   const [readCount, setReadCount] = useState(0);
-  const recording = useRecording(session.localStream, session.participants, roomId);
 
+  const stage: Stage = session.settings.stage;
   const wide = width >= WIDE_LAYOUT_MIN_WIDTH;
   const gridWidth = wide && panel ? width - PANEL_WIDTH : width;
   const tileCount = session.participants.length + 1;
@@ -85,7 +81,10 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   };
 
   const toggleStage = (next: Exclude<Stage, 'grid'>): void => {
-    setStage((current) => (current === next ? 'grid' : next));
+    if (!session.isHost) {
+      return;
+    }
+    session.updateSettings({ stage: stage === next ? 'grid' : next });
   };
 
   const rows: ParticipantRow[] = [
@@ -144,12 +143,6 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
             {session.breakoutOf ? ` · breakout room of ${session.breakoutOf}` : ''}
           </Text>
         </View>
-        {recording.active && (
-          <View style={styles.recordingBadge}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>REC</Text>
-          </View>
-        )}
         {session.breakoutOf && (
           <Button
             label="Return to main room"
@@ -311,14 +304,6 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           active={reactionsOpen}
           onPress={() => setReactionsOpen((open) => !open)}
         />
-        {CAN_RECORD && (
-          <ToolbarButton
-            icon={recording.active ? 'stop-circle' : 'radio-button-on'}
-            label={recording.active ? 'Stop recording' : 'Record'}
-            danger={recording.active}
-            onPress={() => (recording.active ? void recording.stop() : recording.start())}
-          />
-        )}
         <ToolbarButton
           icon="brush"
           label="Whiteboard"
@@ -371,22 +356,6 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-  },
-  recordingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  recordingDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.danger,
-  },
-  recordingText: {
-    color: colors.danger,
-    fontSize: 12,
-    fontWeight: '700',
   },
   roomTitle: {
     color: colors.text,

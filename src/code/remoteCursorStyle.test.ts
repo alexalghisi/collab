@@ -15,11 +15,13 @@ describe('remoteCursorCss', () => {
     const css = remoteCursorCss([linus]);
 
     expect(cursorClass(linus)).toBe('collab-cursor-7');
-    expect(css).toContain('background-color: #60a5fa22');
-    expect(css).toContain('background-color: #60a5fa99');
-    expect(css).toContain('opacity: 0.7');
+    expect(css).toContain('background-color: #60a5fa33');
+    expect(css).toContain('background-color: #60a5fa');
     expect(css).toContain('pointer-events: none');
     expect(css).toContain("content: 'Linus'");
+    expect(css).toContain('.monaco-editor .collab-cursor-7-caret');
+    expect(css).toContain('top: 0');
+    expect(css).toContain('left: 2px');
   });
 
   it('lets clicks through to the code under a remote caret and its label', () => {
@@ -32,8 +34,8 @@ describe('remoteCursorCss', () => {
       { ...linus, clientId: 9, displayName: 'Ada', color: '#f472b6' },
     ]);
 
-    expect(css).toContain('.collab-cursor-7-label');
-    expect(css).toContain('.collab-cursor-9-label');
+    expect(css).toContain('.collab-cursor-7-caret');
+    expect(css).toContain('.collab-cursor-9-caret');
     expect(css).toContain("content: 'Ada'");
   });
 

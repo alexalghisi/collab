@@ -42,14 +42,27 @@ export interface CursorRange {
 export interface EditorApi {
   getModel(): EditorModel | null;
   onDidChangeCursorSelection(listener: () => void): Disposable;
+  /** The caret, which can sit at either end of a selection. */
+  getPosition(): EditorPosition | null;
   getSelection(): { getStartPosition(): EditorPosition; getEndPosition(): EditorPosition } | null;
+  /**
+   * Puts the caret back. `selectionStart*` is the anchor and `position*` is the
+   * caret, so a selection dragged backwards survives.
+   */
+  setSelection(selection: {
+    readonly selectionStartLineNumber: number;
+    readonly selectionStartColumn: number;
+    readonly positionLineNumber: number;
+    readonly positionColumn: number;
+  }): void;
   createDecorationsCollection(decorations: Decoration[]): DecorationsCollection;
 }
 
 export interface Decoration {
   readonly range: CursorRange;
   readonly options: {
-    readonly className: string;
+    readonly className?: string;
+    readonly beforeContentClassName?: string;
     readonly hoverMessage: { readonly value: string };
     readonly stickiness: number;
   };
@@ -79,6 +92,8 @@ const LOCAL = 'local-editor';
 export class MonacoTextBinding {
   private readonly disposables: Disposable[] = [];
   private applyingRemote = false;
+  /** Remote edits move the caret, then tell us about it a turn later. */
+  private selectionLock = 0;
 
   constructor(
     private readonly document: SharedCodeDocument,
@@ -108,6 +123,7 @@ export class MonacoTextBinding {
       }),
       { dispose: () => this.document.text.unobserve(this.onTextChange) },
     );
+    this.publishSelection(model);
   }
 
   destroy(): void {
@@ -145,7 +161,7 @@ export class MonacoTextBinding {
         }
       }
     }, LOCAL);
-    this.publishSelection(model);
+    this.publishSelection(model, true);
   }
 
   private readonly onTextChange = (event: Y.YTextEvent): void => {
@@ -156,6 +172,7 @@ export class MonacoTextBinding {
     if (!model) {
       return;
     }
+    this.selectionLock += 1;
     this.applyingRemote = true;
     try {
       let offset = 0;
@@ -180,7 +197,58 @@ export class MonacoTextBinding {
     } finally {
       this.applyingRemote = false;
     }
+    // Monaco pushes a caret that was sitting on the insertion, sometimes after
+    // this function has returned. Put it back and ignore that late report.
+    this.restoreCaret(model);
+    queueMicrotask(() => {
+      const current = this.editor.getModel();
+      if (current) {
+        this.restoreCaret(current);
+      }
+      const release = () => {
+        this.selectionLock = Math.max(0, this.selectionLock - 1);
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          const later = this.editor.getModel();
+          if (later) {
+            this.restoreCaret(later);
+          }
+          release();
+        });
+      } else {
+        release();
+      }
+    });
   };
+
+  private restoreCaret(model: EditorModel): void {
+    const selection = this.document.localSelection();
+    if (!selection) {
+      return;
+    }
+    const length = model.getValue().length;
+    const headOffset = clampOffset(selection.head ?? selection.end, length);
+    const anchorOffset = clampOffset(
+      headOffset === selection.start && headOffset !== selection.end
+        ? selection.end
+        : selection.start,
+      length,
+    );
+    const anchor = model.getPositionAt(anchorOffset);
+    const head = model.getPositionAt(headOffset);
+    this.applyingRemote = true;
+    try {
+      this.editor.setSelection({
+        selectionStartLineNumber: anchor.lineNumber,
+        selectionStartColumn: anchor.column,
+        positionLineNumber: head.lineNumber,
+        positionColumn: head.column,
+      });
+    } finally {
+      this.applyingRemote = false;
+    }
+  }
 
   private alignModel(model: EditorModel): void {
     const shared = this.document.text.toString();
@@ -207,14 +275,21 @@ export class MonacoTextBinding {
     return new this.monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column);
   }
 
-  private publishSelection(model: EditorModel): void {
-    const selection = this.editor.getSelection();
-    if (!selection) {
+  private publishSelection(model: EditorModel, fromUserEdit = false): void {
+    if (this.applyingRemote || (this.selectionLock > 0 && !fromUserEdit)) {
       return;
     }
+    const selection = this.editor.getSelection();
+    const caret = this.editor.getPosition();
+    if (!selection || !caret) {
+      return;
+    }
+    const start = model.getOffsetAt(selection.getStartPosition());
+    const end = model.getOffsetAt(selection.getEndPosition());
     this.document.setSelection({
-      start: model.getOffsetAt(selection.getStartPosition()),
-      end: model.getOffsetAt(selection.getEndPosition()),
+      start,
+      end,
+      head: model.getOffsetAt(caret),
     });
   }
 }
@@ -236,7 +311,7 @@ export function decorationsFor(
     const hi = clampOffset(Math.max(selection.start, selection.end), length);
     const from = model.getPositionAt(lo);
     const to = model.getPositionAt(hi);
-    const head = model.getPositionAt(clampOffset(selection.end, length));
+    const head = model.getPositionAt(clampOffset(selection.head ?? selection.end, length));
     const hover = { value: presence.displayName };
     if (lo !== hi) {
       items.push({
@@ -247,7 +322,7 @@ export function decorationsFor(
     items.push({
       range: new monaco.Range(head.lineNumber, head.column, head.lineNumber, head.column),
       options: {
-        className: `${classNameOf(presence)}-label`,
+        beforeContentClassName: `${classNameOf(presence)}-caret`,
         hoverMessage: hover,
         stickiness: 1,
       },

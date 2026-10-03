@@ -21,11 +21,11 @@ import {
 import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
-import { executeInCloud } from '../code/cloudExecute';
-import { EXECUTION_URL } from '../code/config';
 import { MAX_MESSAGE_CHARS, type ChatDraft } from '../chat/messages';
+import { EXECUTION_URL } from '../code/config';
 import type { ExecutionRequest } from '../code/execution';
 import type { CodeLanguage } from '../code/languages';
+import { executeSharedProgram } from '../code/serverExecute';
 import { mergeEncodedUpdates } from '../code/updates';
 import {
   normalizeWorkspaceFiles,
@@ -49,6 +49,7 @@ import { sendContactInvite } from '../meeting/sendInvite';
 import { normalizeTranscriptSegment } from '../transcript/segments';
 import {
   DEFAULT_ROOM_SETTINGS,
+  normalizeRoomSettings,
   type BoardFile,
   type ChatMessage,
   type HostCommand,
@@ -100,7 +101,6 @@ interface CodeRunDoc {
 
 interface RoomDoc {
   readonly hostPeerId: string;
-  readonly notes?: string;
   readonly settings?: RoomSettings;
   readonly workspaceFiles?: WorkspaceFile[];
 }
@@ -108,7 +108,6 @@ interface RoomDoc {
 /** Room state as seen by a joiner, with defaults filled in. */
 interface RoomSnapshot {
   readonly hostPeerId: string;
-  readonly notes: string;
   readonly settings: RoomSettings;
   readonly workspaceFiles: WorkspaceFile[];
   readonly code: string | null;
@@ -155,7 +154,9 @@ function toPeerInfo(snapshot: QueryDocumentSnapshot): PeerInfo {
 }
 
 function sameSettings(a: RoomSettings, b: RoomSettings): boolean {
-  return a.waitingRoom === b.waitingRoom && a.breakoutOpen === b.breakoutOpen;
+  return (
+    a.waitingRoom === b.waitingRoom && a.breakoutOpen === b.breakoutOpen && a.stage === b.stage
+  );
 }
 
 class FirestoreChannel implements SignalingChannel {
@@ -182,8 +183,6 @@ class FirestoreChannel implements SignalingChannel {
   private compacting = false;
   private joinedAt = 0;
   private lastSettings = DEFAULT_ROOM_SETTINGS;
-  /** Our own notes writes echo back through the room snapshot; they must not overwrite newer typing. */
-  private lastSentNotes: string | null = null;
   private lastSentWorkspaceFiles: readonly WorkspaceFile[] = [];
   private readonly pageHide = {
     handler: () => this.disconnect(),
@@ -248,10 +247,6 @@ class FirestoreChannel implements SignalingChannel {
       }
       void batch.commit();
     },
-    'notes:update': (notes) => {
-      this.lastSentNotes = notes;
-      void setDoc(this.room, { notes }, { merge: true });
-    },
     'code:update': (update) => {
       const entry: CodeUpdateDoc = { update, createdAt: Date.now() };
       void addDoc(this.codeUpdates, entry);
@@ -278,8 +273,9 @@ class FirestoreChannel implements SignalingChannel {
       }
     },
     'room:settings': (settings) => {
-      this.lastSettings = settings;
-      void setDoc(this.room, { settings }, { merge: true });
+      const next = normalizeRoomSettings(settings, this.lastSettings);
+      this.lastSettings = next;
+      void setDoc(this.room, { settings: next }, { merge: true });
     },
     'host:command': ({ targetPeerId, command }) => {
       if (targetPeerId !== null) {
@@ -473,20 +469,19 @@ class FirestoreChannel implements SignalingChannel {
   private syncRoom(claim: boolean): Promise<RoomSnapshot> {
     return runTransaction(this.room.firestore, async (transaction) => {
       const data = (await transaction.get(this.room)).data() as RoomDoc | undefined;
-      const notes = data?.notes ?? '';
-      const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
+      const settings = normalizeRoomSettings(data?.settings);
       const workspaceFiles = normalizeWorkspaceFiles(data?.workspaceFiles);
       if (data?.hostPeerId) {
         const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
-          return { hostPeerId: data.hostPeerId, notes, settings, workspaceFiles, code: null };
+          return { hostPeerId: data.hostPeerId, settings, workspaceFiles, code: null };
         }
       }
       if (!claim) {
-        return { hostPeerId: '', notes, settings, workspaceFiles, code: null };
+        return { hostPeerId: '', settings, workspaceFiles, code: null };
       }
       transaction.set(this.room, { hostPeerId: this.peerId }, { merge: true });
-      return { hostPeerId: this.peerId, notes, settings, workspaceFiles, code: null };
+      return { hostPeerId: this.peerId, settings, workspaceFiles, code: null };
     });
   }
 
@@ -537,7 +532,6 @@ class FirestoreChannel implements SignalingChannel {
 
   private subscribeParticipants({
     hostPeerId,
-    notes,
     settings,
     workspaceFiles,
     code,
@@ -576,7 +570,6 @@ class FirestoreChannel implements SignalingChannel {
               hostPeerId,
               peers,
               strokes: [],
-              notes,
               settings,
               code,
               transcript: [],
@@ -584,6 +577,15 @@ class FirestoreChannel implements SignalingChannel {
               boardFiles: [],
               workspaceFiles,
             });
+            for (const participant of snapshot.docs) {
+              if (participant.id === this.peerId) {
+                continue;
+              }
+              const awareness = (participant.data() as ParticipantDoc).codeAwareness;
+              if (awareness) {
+                this.emitter.dispatch('code:awareness', awareness);
+              }
+            }
             resolve();
             return;
           }
@@ -618,11 +620,7 @@ class FirestoreChannel implements SignalingChannel {
         this.emitter.dispatch('room:host', data.hostPeerId);
         this.syncWaitingSubscription(this.isHost);
       }
-      const notes = data?.notes ?? '';
-      if (notes !== this.lastSentNotes) {
-        this.emitter.dispatch('notes:update', notes);
-      }
-      const settings = data?.settings ?? DEFAULT_ROOM_SETTINGS;
+      const settings = normalizeRoomSettings(data?.settings);
       if (!sameSettings(settings, this.lastSettings)) {
         this.lastSettings = settings;
         this.emitter.dispatch('room:settings', settings);
@@ -770,7 +768,7 @@ class FirestoreChannel implements SignalingChannel {
     };
     await setDoc(entry, started);
     try {
-      const { result, stdout, stderr } = await executeInCloud(request);
+      const { result, stdout, stderr } = await executeSharedProgram(request);
       await setDoc(
         entry,
         {
@@ -865,10 +863,9 @@ class FirestoreChannel implements SignalingChannel {
     const entry = doc(this.assistantTurns, ask.requestId);
     await setDoc(entry, { question: ask.question, startedAt: Date.now() });
     try {
-      const [turns, chats, roomSnap] = await Promise.all([
+      const [turns, chats] = await Promise.all([
         getDocs(query(this.transcript, orderBy('startedAt'))),
         getDocs(query(this.messages, orderBy('sentAt'))),
-        getDoc(this.room),
       ]);
       const response = await fetch(`${EXECUTION_URL}/assistant`, {
         method: 'POST',
@@ -885,7 +882,6 @@ class FirestoreChannel implements SignalingChannel {
               text: segment.text,
               startedAt: segment.startedAt,
             })),
-          notes: ((roomSnap.data() as RoomDoc | undefined)?.notes ?? '') as string,
           messages: chats.docs
             .map((item) => item.data() as MessageDoc)
             .filter((data) => !data.deletedAt)
