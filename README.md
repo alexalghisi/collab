@@ -232,7 +232,9 @@ Late joiners are served the same way whiteboard strokes are, per transport:
   to a joiner in order; the host squashes the log into a single update once it
   grows past a threshold, which bounds both storage and replay cost. Awareness
   rides on the author's participant document, throttled, since cursor moves are
-  continuous.
+  continuous. A move after a quiet moment is written at once and only a
+  continuous drag is held to one write per tick, so a caret does not trail its
+  owner by a throttle window on the way out.
 
 ### Running code
 
