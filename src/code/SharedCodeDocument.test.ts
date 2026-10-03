@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { removeAwarenessStates } from 'y-protocols/awareness';
 import type { ServerToClientEvents } from '../signaling/events';
 import type {
   OutgoingEvent,
   OutgoingPayload,
   SignalingChannel,
 } from '../signaling/SignalingChannel';
-import { SharedCodeDocument } from './SharedCodeDocument';
+import { EDITING_IDLE_MS, SharedCodeDocument } from './SharedCodeDocument';
 
 type Handlers = {
   [E in keyof ServerToClientEvents]?: Array<ServerToClientEvents[E]>;
@@ -105,6 +106,10 @@ describe('SharedCodeDocument', () => {
       peer.document.destroy();
     }
     bus = new Bus();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('replicates an edit to every other participant', () => {
@@ -264,6 +269,69 @@ describe('SharedCodeDocument', () => {
 
     expect(ada.document.text.toString()).toBe('Xhello');
     expect(ada.document.presence()[0]?.selection).toEqual({ start: 1, end: 1, head: 1 });
+  });
+
+  it('shows the room who is typing, and stops once they do', () => {
+    vi.useFakeTimers();
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+
+    linus.document.noteEditing();
+    expect(ada.document.presence()[0]?.editing).toBe(true);
+
+    vi.advanceTimersByTime(EDITING_IDLE_MS);
+    expect(ada.document.presence()[0]?.editing).toBe(false);
+  });
+
+  it('stays marked as typing across the gaps between keystrokes', () => {
+    vi.useFakeTimers();
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+
+    linus.document.noteEditing();
+    vi.advanceTimersByTime(EDITING_IDLE_MS - 100);
+    linus.document.noteEditing();
+    vi.advanceTimersByTime(EDITING_IDLE_MS - 100);
+
+    expect(ada.document.presence()[0]?.editing).toBe(true);
+  });
+
+  it('announces typing once, not on every keystroke', () => {
+    vi.useFakeTimers();
+    attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    linus.document.noteEditing();
+    const announced = linus.channel.sent.length;
+
+    linus.document.noteEditing();
+
+    expect(linus.channel.sent).toHaveLength(announced);
+  });
+
+  it('stops claiming to be typing after its author leaves', () => {
+    vi.useFakeTimers();
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    linus.document.noteEditing();
+
+    linus.document.destroy();
+    vi.advanceTimersByTime(EDITING_IDLE_MS * 2);
+
+    expect(ada.document.presence()).toEqual([]);
+  });
+
+  it('does not ask the room to drop a cursor it merely stopped hearing from', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    const grace = attach('c', 'Grace');
+    linus.document.setSelection({ start: 1, end: 1 });
+    ada.channel.sent.length = 0;
+
+    // Awareness expires a peer that has gone quiet, on that client alone.
+    removeAwarenessStates(ada.document.awareness, [linus.document.doc.clientID], 'timeout');
+
+    expect(ada.channel.sent).toEqual([]);
+    expect(grace.document.presence().map((entry) => entry.displayName)).toContain('Linus');
   });
 
   it('gives each participant a stable colour derived from their peer id', () => {

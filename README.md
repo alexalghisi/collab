@@ -207,10 +207,21 @@ because both transports are JSON.
 
 Remote carets are drawn over code somebody is reading, so everything except the
 caret stroke itself is see-through: the selection is a 13% tint of the author's
-colour, and the name badge above the caret is their colour at 60% alpha, faded
-further to 70% opacity, instead of a solid sticker over the line above. Neither
-takes the pointer, so a click lands on the code. `src/code/remoteCursorStyle.ts`
-holds those rules.
+colour, and the name badge beside the caret is their colour at 60% alpha, held
+at 45% opacity while that person is only reading and brought to full strength
+while they type, so a glance tells you who is writing right now. Each
+participant publishes that typing flag themselves and takes it back
+`EDITING_IDLE_MS` after their last keystroke; nobody guesses it from the edits
+they receive. Badges are clipped, and two carets on one line stack instead of
+printing one name over the other. The caret stroke is paid for with a negative
+margin on both sides, so a remote cursor costs no width and never nudges the
+characters out from under the reader. Nothing takes the pointer, so a click
+lands on the code. `src/code/remoteCursorStyle.ts` holds those rules.
+
+Awareness is published by the owner of a cursor and nobody else. A client that
+stops hearing from a peer expires that peer locally, the way the protocol says,
+but keeps the conclusion to itself — relaying it would wipe a cursor the rest of
+the room can still see moving.
 
 Late joiners are served the same way whiteboard strokes are, per transport:
 

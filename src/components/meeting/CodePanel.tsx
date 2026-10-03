@@ -11,7 +11,7 @@ import {
   type EditorApi,
   type MonacoApi,
 } from '../../code/monacoBinding';
-import { cursorClass, remoteCursorCss } from '../../code/remoteCursorStyle';
+import { cursorClass, cursorLanes, remoteCursorCss } from '../../code/remoteCursorStyle';
 import type { CodeRun } from '../../hooks/useCollabSession';
 import type { WorkspaceFile } from '../../code/workspaceFiles';
 import { colors } from '../../theme';
@@ -30,13 +30,13 @@ export interface CodePanelProps {
 
 const STYLE_ELEMENT_ID = 'collab-remote-cursors';
 
-function ensureCursorStyles(editors: CodePresence[]): void {
+function ensureCursorStyles(editors: CodePresence[], lanes: Map<number, number>): void {
   const sheet =
     document.getElementById(STYLE_ELEMENT_ID) ??
     document.head.appendChild(
       Object.assign(document.createElement('style'), { id: STYLE_ELEMENT_ID }),
     );
-  sheet.textContent = remoteCursorCss(editors);
+  sheet.textContent = remoteCursorCss(editors, (editor) => lanes.get(editor.clientId) ?? 0);
 }
 
 /** The shared editor: Monaco bound to the room's document, cursors and all. */
@@ -73,10 +73,13 @@ export function CodePanel({
     if (typeof document === 'undefined') {
       return;
     }
-    ensureCursorStyles(next);
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     const model = editor?.getModel();
+    ensureCursorStyles(
+      next,
+      model ? cursorLanes(next, (offset) => model.getPositionAt(offset)) : new Map(),
+    );
     if (editor && monaco && model) {
       decorationsRef.current?.set(decorationsFor(next, model, monaco, cursorClass));
     }
