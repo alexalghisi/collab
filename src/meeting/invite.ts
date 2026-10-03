@@ -7,18 +7,35 @@ export function readRoomFromLink(): string | null {
   return new URLSearchParams(window.location.search).get(ROOM_PARAM);
 }
 
-export function buildInviteLink(roomId: string): string {
+function pageIsPublicApp(): boolean {
+  if (typeof window === 'undefined' || !window.location?.origin) {
+    return false;
+  }
+  const { origin } = window.location;
+  if (origin.includes('localhost') || origin.startsWith('file:')) {
+    return false;
+  }
+  if (origin.includes('github.io')) {
+    return false;
+  }
+  return true;
+}
+
+function configuredAppUrl(): string | null {
   const base = process.env.EXPO_PUBLIC_APP_URL?.trim();
+  if (!base || base.includes('github.io')) {
+    return null;
+  }
+  return base;
+}
+
+export function buildInviteLink(roomId: string): string {
+  const base = configuredAppUrl();
   let url: URL;
   try {
     if (base) {
       url = new URL(base.includes('://') ? base : `https://${base}`);
-    } else if (
-      typeof window !== 'undefined' &&
-      window.location?.origin &&
-      !window.location.origin.includes('localhost') &&
-      !window.location.origin.startsWith('file:')
-    ) {
+    } else if (pageIsPublicApp()) {
       url = new URL(window.location.href);
     } else {
       url = new URL('https://collaborare.ro/');
