@@ -36,9 +36,6 @@ export function ScheduleMeetingScreen({
   const [description, setDescription] = useState(initialMeeting?.description ?? '');
   const [roomId, setRoomId] = useState(() => initialMeeting?.roomId ?? generateRoomId());
   const [attendees, setAttendees] = useState(() => (initialMeeting?.guests ?? []).join(', '));
-  const [reminderMinutes, setReminderMinutes] = useState<15 | 30>(
-    initialMeeting?.reminderMinutes ?? 15,
-  );
 
   const startsAt = parseDateTime(date, time);
   const ready = title.trim().length > 0 && startsAt !== null;
@@ -56,7 +53,7 @@ export function ScheduleMeetingScreen({
       durationMinutes,
       description: description.trim(),
       guests: guests.length > 0 ? guests : undefined,
-      reminderMinutes,
+      reminderMinutes: 15,
     });
   };
 
@@ -164,23 +161,9 @@ export function ScheduleMeetingScreen({
         Invites with direct join links and reminders will be dispatched automatically upon saving.
       </Text>
 
-      <Text style={styles.label}>Send reminder before start</Text>
-      <View style={styles.chips}>
-        {([15, 30] as const).map((mins) => {
-          const selected = mins === reminderMinutes;
-          return (
-            <Pressable
-              key={mins}
-              style={[styles.chip, selected && styles.chipSelected]}
-              onPress={() => setReminderMinutes(mins)}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-            >
-              <Text style={styles.chipText}>{mins} min before</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Text style={styles.helperText}>
+        Guests get reminder emails 15, 10 and 5 minutes before the start.
+      </Text>
 
       <Text style={styles.label}>Meeting ID</Text>
       <View style={styles.inline}>

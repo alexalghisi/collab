@@ -11,7 +11,7 @@ export interface Meeting {
   readonly googleEventId?: string;
   readonly fromGoogle?: boolean;
   readonly guests?: readonly string[];
-  readonly reminderMinutes?: 15 | 30;
+  readonly reminderMinutes?: 5 | 10 | 15;
 }
 
 export type MeetingDraft = Omit<Meeting, 'id' | 'createdAt'>;

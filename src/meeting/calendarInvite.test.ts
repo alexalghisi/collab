@@ -63,7 +63,7 @@ describe('sendMeetingInvite', () => {
       roomId: 'fyc-bcbd-qvt',
       sessionId: '',
       hostName: 'Alex',
-      link: 'https://alexalghisi.github.io/collab/?room=fyc-bcbd-qvt',
+      link: 'https://collaborare.ro/?room=fyc-bcbd-qvt',
     });
 
     expect(contact).toEqual({ kind: 'email', value: 'guest@example.com' });

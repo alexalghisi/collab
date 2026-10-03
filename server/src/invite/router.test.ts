@@ -140,7 +140,13 @@ describe('the invite endpoint', () => {
 
     expect(response.status).toBe(200);
     expect(sendEmail).toHaveBeenCalledTimes(2);
-    expect(reminders.list()).toHaveLength(2);
+    expect(reminders.list()).toHaveLength(6);
+    expect(
+      reminders
+        .list()
+        .map((item) => item.minutes)
+        .sort((a, b) => a - b),
+    ).toEqual([5, 5, 10, 10, 15, 15]);
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -177,7 +183,7 @@ describe('the invite endpoint', () => {
       '+40721123456',
       'Ada invited you to a Collab call. Join: https://collab.example/?room=room-10',
     );
-    expect(reminders.list()).toHaveLength(3);
+    expect(reminders.list()).toHaveLength(9);
     rmSync(dir, { recursive: true, force: true });
   });
 

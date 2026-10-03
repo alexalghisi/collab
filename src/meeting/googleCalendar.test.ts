@@ -21,7 +21,7 @@ const timed: GoogleCalendarEvent = {
   id: 'evt-1',
   summary: 'Standup',
   description: 'Daily',
-  location: 'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
+  location: 'https://collaborare.ro/?room=kqz-wrtm-pfa',
   start: { dateTime: '2026-09-16T09:00:00.000Z' },
   end: { dateTime: '2026-09-16T09:30:00.000Z' },
 };
@@ -192,7 +192,7 @@ describe('pushing a Collab edit back to Google', () => {
     googleEventId: 'evt-1',
     fromGoogle: true,
   };
-  const inviteLink = 'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa';
+  const inviteLink = 'https://collaborare.ro/?room=kqz-wrtm-pfa';
 
   it('PATCHes the linked event with the new time, date and text', async () => {
     const calls: { url: string; init: RequestInit }[] = [];

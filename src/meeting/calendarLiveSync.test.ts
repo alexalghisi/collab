@@ -10,7 +10,7 @@ const timed: GoogleCalendarEvent = {
   status: 'confirmed',
   summary: 'Standup',
   description: 'Daily',
-  location: 'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
+  location: 'https://collaborare.ro/?room=kqz-wrtm-pfa',
   start: { dateTime: '2026-09-16T09:00:00.000Z' },
   end: { dateTime: '2026-09-16T09:30:00.000Z' },
 };

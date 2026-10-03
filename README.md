@@ -1,12 +1,12 @@
 # Collab
 
-[Open the live app](https://alexalghisi.github.io/collab)
+[Open the live app](https://collaborare.ro)
 
 <p align="center">
   <img src="./assets/demo.gif" alt="Collab application runtime demo" width="800" />
 </p>
 
-_Collab runtime: sign in (Continue with Google or email), home dashboard, scheduling with attendee invites, the meeting room with video, chat, files and code, and team chat._
+_Collab runtime: sign in (Continue with Google or email), home dashboard, scheduling with attendee invites and 15/10/5 minute reminder emails, the meeting room with video, chat, files and code, and team chat._
 
 > Cross-platform video conferencing built with React Native, Expo, WebRTC, and a Node.js signaling server. One codebase ships to **macOS, Windows, iOS, and Android**.
 
@@ -24,7 +24,7 @@ Open the hosted app in a browser. No install.
 
 | What                 | URL                                          |
 | -------------------- | -------------------------------------------- |
-| **App**              | https://alexalghisi.github.io/collab         |
+| **App**              | https://collaborare.ro                       |
 | **Signaling server** | https://collab-signaling.onrender.com        |
 | Server health        | https://collab-signaling.onrender.com/health |
 
@@ -34,9 +34,9 @@ The web app already points at that server (`EXPO_PUBLIC_SIGNALING_URL`). You do 
 
 **Call someone (for example a child on another phone or laptop):**
 
-1. You open https://alexalghisi.github.io/collab and sign in (email, or Continue with Google once a Google client ID is set).
+1. You open https://collaborare.ro and sign in (email, or Continue with Google once a Google client ID is set).
 2. Click **New meeting**. Allow the camera and microphone.
-3. Copy the link from the address bar (it looks like `…/collab/?room=abc-defg-hij`) or use **Copy link** in the call.
+3. Copy the link from the address bar (it looks like `https://collaborare.ro/?room=abc-defg-hij`) or use **Copy link** in the call.
 4. Send that link (WhatsApp, SMS, email). The other person opens it, signs in, and joins the same room.
 
 The first join after the server has been idle can take about a minute — Render’s free instance sleeps. A `200` from `/health` means it is awake.
@@ -93,7 +93,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Local recording** (web): captures your video together with the mixed audio of every participant and downloads a `.webm` file when stopped.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
-- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Next to **Start**, **Invite** emails guests and queues a reminder 15 or 30 minutes before. Connect Google Calendar on the calendar screen to pull existing events in (and push Collab meetings back). Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
+- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Saving a meeting with guests mails the invite immediately, then three more emails land 15, 10 and 5 minutes before start. Next to **Start**, **Invite** does the same for extra addresses. Connect Google Calendar on the calendar screen to pull existing events in (and push Collab meetings back). Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
 - Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).

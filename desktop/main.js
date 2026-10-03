@@ -5,7 +5,7 @@ const { app, BrowserWindow, ipcMain, protocol, session } = require('electron');
 const webDir = path.join(__dirname, 'web');
 const DEFAULT_CLIENT_ID =
   '560742571865-eqeojukg2kqm2gmaumm79n2606e75pus.apps.googleusercontent.com';
-const REDIRECT_URI = 'https://alexalghisi.github.io/collab';
+const REDIRECT_URI = 'https://collaborare.ro';
 
 function performGoogleOAuth({
   clientId = DEFAULT_CLIENT_ID,
