@@ -111,7 +111,7 @@ export default function App() {
       });
     });
 
-  const dispatchGuests = (meeting: Meeting, guests: readonly string[], reminderMinutes: 15 | 30) =>
+  const dispatchGuests = (meeting: Meeting, guests: readonly string[]) =>
     deliverMeetingGuests({
       send: () =>
         sendMeetingInvite(EXECUTION_URL, {
@@ -123,13 +123,12 @@ export default function App() {
           token: readSessionToken() ?? undefined,
           title: meeting.title,
           startsAt: meeting.startsAt,
-          reminderMinutes,
+          reminderMinutes: 15,
         }),
       mailThroughCalendar: async () => {
         await googleCalendar.shareGuests({
           ...meeting,
           guests: [...guests],
-          reminderMinutes,
         });
       },
     });
@@ -139,7 +138,7 @@ export default function App() {
       return;
     }
     try {
-      await dispatchGuests(meeting, meeting.guests, meeting.reminderMinutes ?? 15);
+      await dispatchGuests(meeting, meeting.guests);
     } catch (err) {
       console.warn('Could not dispatch automatic meeting invites:', err);
     }
@@ -154,16 +153,16 @@ export default function App() {
     if (!readSessionToken()) {
       throw new InviteError('Sign in again to send invites.');
     }
-    const outcome = await dispatchGuests(meeting, guests, invite.reminderMinutes);
+    const outcome = await dispatchGuests(meeting, guests);
     if (outcome === 'server') {
       await meetings.save({
         ...meeting,
         guests,
-        reminderMinutes: invite.reminderMinutes,
+        reminderMinutes: 15,
       });
     }
     const through = outcome === 'calendar' ? ' through Google Calendar' : '';
-    return `Invites sent to ${guests.join(', ')}${through}. They get a reminder ${invite.reminderMinutes} minutes before.`;
+    return `Invites sent to ${guests.join(', ')}${through}. They get reminders 15, 10 and 5 minutes before.`;
   };
   const deleteMeeting = (meeting: Meeting) => {
     void retractThenRemove(meeting, googleCalendar.retract, meetings.remove);

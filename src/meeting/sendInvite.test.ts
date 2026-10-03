@@ -43,7 +43,7 @@ describe('sendContactInvite', () => {
       token: 'host-token',
       title: 'Standup',
       startsAt: 1_700_000_000_000,
-      reminderMinutes: 30,
+      reminderMinutes: 15,
     });
 
     expect(fetchMock).toHaveBeenCalledWith(

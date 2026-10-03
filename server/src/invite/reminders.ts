@@ -5,8 +5,11 @@ import {
   reminderCopy,
   reminderSubject,
   smsInviteCopy,
+  type ReminderLeadMinutes,
 } from '../../../src/meeting/contact';
 import type { InviteTransport } from './senders';
+
+export const REMINDER_OFFSETS = [15, 10, 5] as const satisfies readonly ReminderLeadMinutes[];
 
 export interface MeetingReminder {
   readonly id: string;
@@ -15,7 +18,7 @@ export interface MeetingReminder {
   readonly hostName: string;
   readonly link: string;
   readonly title: string;
-  readonly minutes: 15 | 30;
+  readonly minutes: ReminderLeadMinutes;
   readonly sendAt: number;
 }
 
@@ -49,13 +52,17 @@ export class ReminderBook {
       return null;
     }
     const existing = this.items.find(
-      (item) => item.to === input.to && item.roomId === input.roomId && item.sendAt === sendAt,
+      (item) =>
+        item.to === input.to &&
+        item.roomId === input.roomId &&
+        item.minutes === input.minutes &&
+        item.sendAt === sendAt,
     );
     if (existing) {
       return existing;
     }
     const reminder: MeetingReminder = {
-      id: `${input.roomId}:${input.to}:${sendAt}`,
+      id: `${input.roomId}:${input.to}:${input.minutes}:${sendAt}`,
       to: input.to,
       roomId: input.roomId,
       hostName: input.hostName,
@@ -67,6 +74,19 @@ export class ReminderBook {
     this.items = [...this.items, reminder];
     this.write();
     return reminder;
+  }
+
+  scheduleSeries(
+    input: Omit<MeetingReminder, 'id' | 'sendAt' | 'minutes'> & { readonly startsAt: number },
+  ): MeetingReminder[] {
+    const queued: MeetingReminder[] = [];
+    for (const minutes of REMINDER_OFFSETS) {
+      const reminder = this.schedule({ ...input, minutes });
+      if (reminder) {
+        queued.push(reminder);
+      }
+    }
+    return queued;
   }
 
   async dispatch(transport: InviteTransport): Promise<number> {

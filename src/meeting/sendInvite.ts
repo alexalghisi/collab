@@ -9,7 +9,7 @@ export interface InviteRequest {
   readonly token?: string;
   readonly title?: string;
   readonly startsAt?: number;
-  readonly reminderMinutes?: 15 | 30;
+  readonly reminderMinutes?: 5 | 10 | 15;
 }
 
 interface InviteResponseBody {

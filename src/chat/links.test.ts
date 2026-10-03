@@ -10,13 +10,13 @@ describe('splitMessageLinks', () => {
 
   it('turns an https URL in the middle of a sentence into a link', () => {
     expect(
-      splitMessageLinks('join https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa now'),
+      splitMessageLinks('join https://collaborare.ro/?room=kqz-wrtm-pfa now'),
     ).toEqual([
       { kind: 'text', value: 'join ' },
       {
         kind: 'link',
-        value: 'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
-        href: 'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
+        value: 'https://collaborare.ro/?room=kqz-wrtm-pfa',
+        href: 'https://collaborare.ro/?room=kqz-wrtm-pfa',
       },
       { kind: 'text', value: ' now' },
     ]);

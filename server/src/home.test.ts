@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_URL, publicAppUrl, sendAppHome } from './home';
 
 describe('publicAppUrl', () => {
-  it('uses the hosted Pages app when nothing is configured', () => {
+  it('uses the hosted app when nothing is configured', () => {
     expect(publicAppUrl({})).toBe(DEFAULT_APP_URL);
   });
 

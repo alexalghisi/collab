@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 
-export const DEFAULT_APP_URL = 'https://alexalghisi.github.io/collab';
+export const DEFAULT_APP_URL = 'https://collaborare.ro';
 
 export function publicAppUrl(env: Record<string, string | undefined> = process.env): string {
   const raw = env.PUBLIC_APP_URL?.trim() || env.EXPO_PUBLIC_APP_URL?.trim() || DEFAULT_APP_URL;

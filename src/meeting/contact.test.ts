@@ -57,11 +57,11 @@ describe('invite copy', () => {
 
   it('falls back to canonical web link and meeting id when link is empty or invalid', () => {
     expect(inviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain(
-      'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
+      'https://collaborare.ro/?room=kqz-wrtm-pfa',
     );
     expect(inviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain('Meeting ID: kqz-wrtm-pfa');
     expect(smsInviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain(
-      'Join: https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
+      'Join: https://collaborare.ro/?room=kqz-wrtm-pfa',
     );
   });
 });
@@ -79,14 +79,15 @@ describe('resolveInviteLink', () => {
 
   it('writes a reminder that names the meeting and the join link', () => {
     expect(reminderSubject('Standup', 15)).toBe('Standup starts in 15 minutes');
+    expect(reminderSubject('Standup', 5)).toBe('Standup starts in 5 minutes');
     expect(
       reminderCopy({
         title: 'Standup',
         hostName: 'Ada',
         link: 'https://collab.example/?room=room-1',
-        minutes: 30,
+        minutes: 10,
       }),
-    ).toBe('Ada is starting Standup in 30 minutes.\n\nJoin: https://collab.example/?room=room-1');
+    ).toBe('Ada is starting Standup in 10 minutes.\n\nJoin: https://collab.example/?room=room-1');
   });
 
   it('keeps a public client link when no override is set', () => {

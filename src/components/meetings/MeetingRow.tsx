@@ -11,7 +11,6 @@ import { IconButton } from '../ui/IconButton';
 
 export interface MeetingInviteRequest {
   readonly emails: string;
-  readonly reminderMinutes: 15 | 30;
 }
 
 export interface MeetingRowProps {
@@ -32,7 +31,6 @@ export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: Mee
   const inviteLink = buildInviteLink(meeting.roomId);
   const [inviting, setInviting] = useState(false);
   const [emails, setEmails] = useState(() => (meeting.guests ?? []).join(', '));
-  const [reminderMinutes, setReminderMinutes] = useState<15 | 30>(meeting.reminderMinutes ?? 15);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +40,7 @@ export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: Mee
     setError(null);
     setStatus(null);
     try {
-      setStatus(await onInvite(meeting, { emails, reminderMinutes }));
+      setStatus(await onInvite(meeting, { emails }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The invite could not be sent.');
     } finally {
@@ -130,16 +128,10 @@ export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: Mee
             autoCorrect={false}
             editable={!busy}
           />
+          <Text style={styles.inviteHint}>
+            They get reminder emails 15, 10 and 5 minutes before.
+          </Text>
           <View style={styles.reminders}>
-            {([15, 30] as const).map((minutes) => (
-              <Button
-                key={minutes}
-                label={`${minutes} min before`}
-                compact
-                variant={reminderMinutes === minutes ? 'primary' : 'secondary'}
-                onPress={() => setReminderMinutes(minutes)}
-              />
-            ))}
             <Button
               label={busy ? 'Sending…' : 'Send invite'}
               icon="send"
@@ -190,6 +182,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
+  },
+  inviteHint: {
+    color: colors.textMuted,
+    fontSize: 13,
   },
   inviteStatus: {
     color: colors.success,

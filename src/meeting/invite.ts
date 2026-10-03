@@ -21,10 +21,10 @@ export function buildInviteLink(roomId: string): string {
     ) {
       url = new URL(window.location.href);
     } else {
-      url = new URL('https://alexalghisi.github.io/collab/');
+      url = new URL('https://collaborare.ro/');
     }
   } catch {
-    url = new URL('https://alexalghisi.github.io/collab/');
+    url = new URL('https://collaborare.ro/');
   }
   url.search = new URLSearchParams({ [ROOM_PARAM]: roomId }).toString();
   return url.toString();

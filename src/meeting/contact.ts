@@ -89,7 +89,7 @@ export function resolveInviteLink(roomId: string, clientLink: string, publicBase
   if (/^https?:\/\//i.test(clientLink) && !LOCAL_HOST.test(clientLink)) {
     return clientLink;
   }
-  return `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(roomId)}`;
+  return `https://collaborare.ro/?room=${encodeURIComponent(roomId)}`;
 }
 
 export function inviteCopy(roomId: string, hostName: string, link: string): string {
@@ -97,7 +97,7 @@ export function inviteCopy(roomId: string, hostName: string, link: string): stri
   const joinUrl =
     /^https?:\/\//i.test(link) && !LOCAL_HOST.test(link)
       ? link
-      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(roomId)}`;
+      : `https://collaborare.ro/?room=${encodeURIComponent(roomId)}`;
   return `${host} invited you to a Collab meeting.\n\nJoin: ${joinUrl}\nMeeting ID: ${roomId}`;
 }
 
@@ -106,7 +106,7 @@ export function smsInviteCopy(roomId: string, hostName: string, link: string): s
   const joinUrl =
     /^https?:\/\//i.test(link) && !LOCAL_HOST.test(link)
       ? link
-      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(roomId)}`;
+      : `https://collaborare.ro/?room=${encodeURIComponent(roomId)}`;
   return `${host} invited you to a Collab call. Join: ${joinUrl}`;
 }
 
@@ -114,7 +114,9 @@ export function inviteSubject(roomId: string): string {
   return `Join my Collab meeting (${roomId})`;
 }
 
-export function reminderSubject(title: string, minutes: 15 | 30): string {
+export type ReminderLeadMinutes = 5 | 10 | 15 | 30;
+
+export function reminderSubject(title: string, minutes: ReminderLeadMinutes): string {
   const name = title.trim() || 'Your Collab meeting';
   return `${name} starts in ${minutes} minutes`;
 }
@@ -123,7 +125,7 @@ export function reminderCopy(input: {
   readonly title: string;
   readonly hostName: string;
   readonly link: string;
-  readonly minutes: 15 | 30;
+  readonly minutes: ReminderLeadMinutes;
 }): string {
   const host = input.hostName.trim() || 'Someone';
   const name = input.title.trim() || 'a Collab meeting';

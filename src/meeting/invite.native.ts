@@ -7,13 +7,13 @@ export function readRoomFromLink(): string | null {
 }
 
 export function buildInviteLink(roomId: string): string {
-  const base = process.env.EXPO_PUBLIC_APP_URL?.trim() || 'https://alexalghisi.github.io/collab';
+  const base = process.env.EXPO_PUBLIC_APP_URL?.trim() || 'https://collaborare.ro';
   try {
     const url = new URL(base.includes('://') ? base : `https://${base}`);
     url.search = new URLSearchParams({ room: roomId }).toString();
     return url.toString();
   } catch {
-    return `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(roomId)}`;
+    return `https://collaborare.ro/?room=${encodeURIComponent(roomId)}`;
   }
 }
 

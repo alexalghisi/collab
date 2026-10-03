@@ -40,11 +40,6 @@ function bearerToken(request: Request): string {
   return field(request, 'token');
 }
 
-function reminderMinutes(request: Request): 15 | 30 {
-  const value = Number((request.body as Record<string, unknown> | undefined)?.reminderMinutes);
-  return value === 30 ? 30 : 15;
-}
-
 function startsAt(request: Request): number | null {
   const value = (request.body as Record<string, unknown> | undefined)?.startsAt;
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -86,7 +81,6 @@ export function inviteRouter({
     }
 
     const link = resolveInviteLink(roomId, clientLink, publicAppUrl);
-    const minutes = reminderMinutes(request);
     const when = startsAt(request);
     try {
       const emailRecipients: string[] = [];
@@ -105,13 +99,12 @@ export function inviteRouter({
           emailRecipients.push(item.value);
         }
         if (reminders && when !== null) {
-          reminders.schedule({
+          reminders.scheduleSeries({
             to: item.value,
             roomId,
             hostName,
             link,
             title,
-            minutes,
             startsAt: when,
           });
         }

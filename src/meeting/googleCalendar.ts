@@ -175,7 +175,7 @@ export async function insertGoogleEvent(
   const joinUrl =
     /^https?:\/\//i.test(inviteLink) && !inviteLink.includes('localhost')
       ? inviteLink
-      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(meeting.roomId)}`;
+      : `https://collaborare.ro/?room=${encodeURIComponent(meeting.roomId)}`;
   const description = [
     meeting.description,
     `Join Collab meeting: ${joinUrl}\nMeeting ID: ${meeting.roomId}`,
@@ -227,7 +227,7 @@ export async function updateGoogleEvent(
   const joinUrl =
     /^https?:\/\//i.test(inviteLink) && !inviteLink.includes('localhost')
       ? inviteLink
-      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(meeting.roomId)}`;
+      : `https://collaborare.ro/?room=${encodeURIComponent(meeting.roomId)}`;
   const description = [
     meeting.description,
     `Join Collab meeting: ${joinUrl}\nMeeting ID: ${meeting.roomId}`,
