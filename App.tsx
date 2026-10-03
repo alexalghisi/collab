@@ -6,6 +6,7 @@ import { useAuth } from './src/auth/useAuth';
 import { useTeamChat } from './src/chat/useTeamChat';
 import { createSignaling } from './src/signaling';
 import { nextHalfHour } from './src/meeting/calendar';
+import { normalizeRoomId } from './src/meeting/roomId';
 import { readSessionToken } from './src/auth/session';
 import { EXECUTION_URL } from './src/code/config';
 import { InviteError, parseContactList } from './src/meeting/contact';
@@ -76,15 +77,16 @@ export default function App() {
   }, [inMeeting, session.roomId]);
 
   const joinRoom = async (nextRoomId: string, video: boolean) => {
-    setRoomId(nextRoomId);
+    const room = normalizeRoomId(nextRoomId);
+    setRoomId(room);
     setView('home');
     const joined = await session.join({
-      roomId: nextRoomId,
+      roomId: room,
       displayName: displayName.trim(),
       video,
     });
     if (joined) {
-      await meetings.recordInstant(nextRoomId);
+      await meetings.recordInstant(room);
     }
   };
 

@@ -1,3 +1,4 @@
+import { roomSlugFromText } from './roomId';
 import { meetingEndsAt, type Meeting, type MeetingDraft } from './types';
 
 const EVENTS_URL = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
@@ -83,7 +84,7 @@ export function meetingFromGoogleEvent(
   const title = (event.summary ?? '').trim();
   return {
     title: title === '' ? 'Busy' : title,
-    roomId: roomIdFromEvent(event) ?? fallbackRoomId,
+    roomId: roomIdFromEvent(event) ?? roomSlugFromText(title) ?? fallbackRoomId,
     startsAt,
     durationMinutes: eventDurationMinutes(event, startsAt),
     description: (event.description ?? '').trim(),
