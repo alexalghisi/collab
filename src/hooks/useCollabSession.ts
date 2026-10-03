@@ -3,7 +3,12 @@ import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
 import { mergeChatHistory } from '../chat/history';
 import { type ChatDraft, withDeletedChatMessage, withEditedChatMessage } from '../chat/messages';
-import { REJECTION_MESSAGES, validateExecutionRequest } from '../code/execution';
+import {
+  REJECTION_MESSAGES,
+  validateExecutionRequest,
+  type ExecutionRequest,
+} from '../code/execution';
+import { runOnHostedCompiler, serverHasNoSandbox } from '../code/hostedRun';
 import { programSource } from '../code/programSource';
 import { mergeWorkspaceFiles, type WorkspaceFile } from '../code/workspaceFiles';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
@@ -228,6 +233,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const speechRef = useRef(createSpeechCapture());
   const selfPeerIdRef = useRef<string | null>(null);
   const joinGenerationRef = useRef(0);
+  const pendingSubmissions = useRef<ExecutionRequest[]>([]);
+  const submissionByRun = useRef(new Map<string, ExecutionRequest>());
 
   const updateSelf = useCallback((patch: Partial<PeerState>) => {
     const next = { ...selfRef.current, ...patch };
@@ -524,6 +531,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         );
       });
       signaling.on('code:run:started', (run) => {
+        if (run.byPeerId === selfPeerIdRef.current) {
+          const request = pendingSubmissions.current.shift();
+          if (request) {
+            submissionByRun.current.set(run.runId, request);
+          }
+        }
         setRuns((current) => [
           ...current,
           {
@@ -547,6 +560,23 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         );
       });
       signaling.on('code:run:finished', ({ runId, exitCode, timedOut, error, files }) => {
+        const submitted = submissionByRun.current.get(runId);
+        submissionByRun.current.delete(runId);
+        if (submitted && serverHasNoSandbox(error)) {
+          setRuns((current) =>
+            current.map((run) =>
+              run.runId === runId ? { ...run, error: null, running: true } : run,
+            ),
+          );
+          void runOnHostedCompiler(submitted).then((outcome) => {
+            setRuns((current) =>
+              current.map((run) =>
+                run.runId === runId ? { ...run, ...outcome, running: false } : run,
+              ),
+            );
+          });
+          return;
+        }
         const generated = files ?? [];
         setRuns((current) =>
           current.map((run) =>
@@ -905,7 +935,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         ]);
         return;
       }
-      signalingRef.current?.emit('code:run', checked.request);
+      const signaling = signalingRef.current;
+      if (!signaling) {
+        return;
+      }
+      pendingSubmissions.current.push(checked.request);
+      signaling.emit('code:run', checked.request);
     },
     [],
   );
