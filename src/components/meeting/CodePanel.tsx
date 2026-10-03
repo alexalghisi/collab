@@ -24,7 +24,7 @@ export interface CodePanelProps {
   runs: CodeRun[];
   files: WorkspaceFile[];
   selfPeerId: string | null;
-  onRun: (stdin: string, files: WorkspaceFile[], source?: string) => void;
+  onRun: (stdin: string, files: WorkspaceFile[], source?: string, language?: CodeLanguage) => void;
   onFilesChange: (files: WorkspaceFile[]) => void;
 }
 
@@ -116,12 +116,20 @@ export function CodePanel({
     <View style={styles.panel}>
       <CodeControls
         language={language}
-        onLanguageChange={(next) => shared.setLanguage(next)}
+        onLanguageChange={(next) => {
+          setLanguage(next);
+          shared.setLanguage(next);
+        }}
         stdin={stdin}
         onStdinChange={setStdin}
         onFormat={() => applyFormattedCode(language, shared, files, openFile, onFilesChange)}
         onRun={() =>
-          onRun(stdin, files, editorRef.current?.getModel()?.getValue() ?? shared.text.toString())
+          onRun(
+            stdin,
+            files,
+            editorRef.current?.getModel()?.getValue() ?? shared.text.toString(),
+            language,
+          )
         }
         running={running}
         editors={editors}

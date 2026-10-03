@@ -12,7 +12,7 @@ import { runOnHostedCompiler, serverHasNoSandbox } from '../code/hostedRun';
 import { programSource } from '../code/programSource';
 import { mergeWorkspaceFiles, type WorkspaceFile } from '../code/workspaceFiles';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
-import type { CodeLanguage } from '../code/languages';
+import { resolveRunLanguage, type CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
 import { AttachmentError, type UploadableFile, type UploadProgress } from '../files/upload';
 import { InviteError, type ParsedContact } from '../meeting/contact';
@@ -156,7 +156,12 @@ export interface CollabSession {
   toggleCaptions: () => void;
   askAssistant: (question: string) => void;
   /** Runs the shared document in the sandbox; output reaches the whole room. */
-  runCode: (stdin: string, files?: readonly WorkspaceFile[], source?: string) => void;
+  runCode: (
+    stdin: string,
+    files?: readonly WorkspaceFile[],
+    source?: string,
+    language?: CodeLanguage,
+  ) => void;
   updateWorkspaceFiles: (files: WorkspaceFile[]) => void;
   // Host only.
   updateSettings: (patch: Partial<RoomSettings>) => void;
@@ -903,14 +908,20 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   }, [captionsOn, beginCaptions]);
 
   const runCode = useCallback(
-    (stdin: string, files: readonly WorkspaceFile[] = [], source?: string) => {
+    (
+      stdin: string,
+      files: readonly WorkspaceFile[] = [],
+      source?: string,
+      language?: CodeLanguage,
+    ) => {
       const document = codeRef.current;
       if (!document) {
         return;
       }
+      const code = programSource(source, document.text.toString());
       const payload = {
-        language: document.language,
-        code: programSource(source, document.text.toString()),
+        language: resolveRunLanguage(language ?? document.language, code),
+        code,
         stdin,
         files: [...files],
       };
