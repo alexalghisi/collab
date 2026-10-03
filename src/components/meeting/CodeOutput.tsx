@@ -1,5 +1,5 @@
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { consoleText } from '../../code/consoleText';
+import { consoleStreams } from '../../code/consoleText';
 import type { CodeRun } from '../../hooks/useCollabSession';
 import { LANGUAGE_LABELS } from '../../code/languages';
 import { colors } from '../../theme';
@@ -46,12 +46,12 @@ export function CodeOutput({ runs }: CodeOutputProps) {
               {run.running && <ActivityIndicator size="small" color={colors.textMuted} />}
               <Text style={[styles.status, { color: status.color }]}>{status.text}</Text>
             </View>
-            <Text style={styles.streamLabel}>stdin</Text>
-            <Text style={styles.stdout}>{consoleText(run.stdin)}</Text>
-            <Text style={styles.streamLabel}>stdout</Text>
-            <Text style={styles.stdout}>{consoleText(run.stdout)}</Text>
-            <Text style={styles.streamLabel}>stderr</Text>
-            <Text style={styles.stderr}>{consoleText(run.stderr)}</Text>
+            {consoleStreams(run).map((stream) => (
+              <View key={stream.label}>
+                <Text style={styles.streamLabel}>{stream.label}</Text>
+                <Text style={stream.error ? styles.stderr : styles.stdout}>{stream.text}</Text>
+              </View>
+            ))}
             {run.files?.length > 0 && (
               <Text style={styles.files}>
                 wrote {run.files.map((file) => file.name).join(', ')}
@@ -76,7 +76,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   console: {
-    maxHeight: 200,
+    // The web scroll view grows to fill leftover space. Without this it expands
+    // over the editor the moment a run exists.
+    flexGrow: 0,
+    flexShrink: 0,
+    maxHeight: 140,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
