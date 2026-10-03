@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SignalingUnavailableError } from './SignalingChannel';
-import { waitUntilSignalingReady } from './wake';
+import { REMOTE_WAKE_MS, waitUntilSignalingReady } from './wake';
 
 function ok(): Promise<Response> {
   return Promise.resolve(new Response('{"status":"ok"}', { status: 200 }));
@@ -87,6 +87,33 @@ describe('waitUntilSignalingReady', () => {
     }).catch((error: unknown) => error);
 
     expect(cause).toBeInstanceOf(SignalingUnavailableError);
+  });
+
+  it('gives a sleeping remote host a minute to boot', async () => {
+    const scheduled: number[] = [];
+    const real = globalThis.setTimeout;
+    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      handler: TimerHandler,
+      timeout?: number,
+      ...args: unknown[]
+    ) => {
+      if (typeof timeout === 'number') {
+        scheduled.push(timeout);
+      }
+      return real(handler, timeout as number, ...args);
+    }) as typeof setTimeout);
+
+    try {
+      await waitUntilSignalingReady('https://signal.example', {
+        fetchImpl: async () => ok(),
+        pauseMs: 1,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(REMOTE_WAKE_MS).toBeGreaterThanOrEqual(60_000);
+    expect(scheduled).toContain(REMOTE_WAKE_MS);
   });
 
   it('names the URL when health never comes up', async () => {
