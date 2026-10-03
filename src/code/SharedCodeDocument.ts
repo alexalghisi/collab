@@ -37,6 +37,8 @@ export interface CodePresence {
   readonly displayName: string;
   readonly color: string;
   readonly selection: CodeSelection | null;
+  /** True between this participant's keystrokes, so their caret reads as live. */
+  readonly editing: boolean;
 }
 
 interface AwarenessUser {
@@ -58,6 +60,13 @@ const COLORS = [
 ] as const;
 
 const REMOTE = 'remote';
+
+/**
+ * How long after a keystroke a participant still counts as editing. Long enough
+ * to span the gaps inside a burst of typing, short enough that the caret stops
+ * claiming to be live once its owner stops.
+ */
+export const EDITING_IDLE_MS = 1200;
 
 export function colorFor(peerId: string): string {
   let hash = 0;
@@ -84,6 +93,8 @@ export class SharedCodeDocument {
   private readonly meta = this.doc.getMap<string>('meta');
   private readonly listeners = new Set<() => void>();
   private live = true;
+  private editing = false;
+  private editingTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly channel: SignalingChannel,
@@ -135,6 +146,7 @@ export class SharedCodeDocument {
         displayName: user.name,
         color: user.color,
         selection: this.readSelection(state as { selection?: StoredSelection }),
+        editing: (state as { editing?: boolean }).editing === true,
       });
     }
     return entries;
@@ -161,6 +173,31 @@ export class SharedCodeDocument {
       endRel: mark(selection.end),
       headRel: mark(head),
     } satisfies StoredSelection);
+  }
+
+  /**
+   * Says this participant is typing right now, and takes it back once they
+   * stop. The owner of a caret is the only one who can tell the difference
+   * between a pause and a cursor left behind, so they publish it themselves
+   * instead of every viewer guessing from the edits they receive.
+   */
+  noteEditing(): void {
+    this.setEditing(true);
+    if (this.editingTimer) {
+      clearTimeout(this.editingTimer);
+    }
+    this.editingTimer = setTimeout(() => {
+      this.editingTimer = null;
+      this.setEditing(false);
+    }, EDITING_IDLE_MS);
+  }
+
+  private setEditing(editing: boolean): void {
+    if (!this.live || this.editing === editing) {
+      return;
+    }
+    this.editing = editing;
+    this.awareness.setLocalStateField('editing', editing);
   }
 
   private readOffset(relative: unknown, fallback: number): number {
@@ -242,6 +279,10 @@ export class SharedCodeDocument {
     if (!this.live) {
       return;
     }
+    if (this.editingTimer) {
+      clearTimeout(this.editingTimer);
+      this.editingTimer = null;
+    }
     removeAwarenessStates(this.awareness, [this.doc.clientID], 'local');
     this.live = false;
     this.doc.off('update', this.onDocUpdate);
@@ -267,9 +308,15 @@ export class SharedCodeDocument {
       return;
     }
     const clients = [...changes.added, ...changes.updated, ...changes.removed];
+    if (!clients.includes(this.doc.clientID)) {
+      // Awareness also expires peers this client stopped hearing from. That is
+      // a local conclusion, not news: passing it on would drop a cursor the
+      // rest of the room is still watching move.
+      return;
+    }
     this.channel.emit(
       'code:awareness',
-      encodeUpdate(encodeAwarenessUpdate(this.awareness, clients)),
+      encodeUpdate(encodeAwarenessUpdate(this.awareness, [this.doc.clientID])),
     );
   };
 

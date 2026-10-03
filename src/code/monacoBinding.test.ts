@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SignalingChannel } from '../signaling/SignalingChannel';
 import { SharedCodeDocument, type CodePresence } from './SharedCodeDocument';
 import {
@@ -246,6 +246,11 @@ describe('MonacoTextBinding', () => {
     document = new SharedCodeDocument(new SilentChannel(), { peerId: 'a', displayName: 'Ada' });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   it('sends what the participant types to the shared text', () => {
     bind();
 
@@ -370,6 +375,36 @@ describe('MonacoTextBinding', () => {
     });
   });
 
+  it('says the participant is typing while they type', () => {
+    bind();
+
+    model.type(0, 'c');
+
+    expect(document.awareness.getLocalState()?.editing).toBe(true);
+  });
+
+  it('publishes cursor moves again even if the frame it waited for never comes', async () => {
+    vi.useFakeTimers();
+    const frames: Array<() => void> = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: () => void) => frames.push(callback));
+    document.text.insert(0, 'hello');
+    bind('hello');
+    editor.moveCursor(5);
+
+    document.applyState(remoteEdit(document, (text) => text.insert(0, 'X')));
+    await Promise.resolve();
+    // A hidden tab is never painted, so the frame this asked for never arrives.
+    expect(frames).toHaveLength(1);
+    vi.advanceTimersByTime(100);
+    editor.moveCursor(2);
+
+    expect(document.awareness.getLocalState()?.selection).toMatchObject({
+      start: 2,
+      end: 2,
+      head: 2,
+    });
+  });
+
   it('stops translating once destroyed', () => {
     bind();
     binding.destroy();
@@ -400,6 +435,7 @@ describe('decorationsFor', () => {
     displayName: 'Linus',
     color: '#60a5fa',
     selection,
+    editing: false,
   });
 
   it('places a remote selection on the right lines and columns', () => {

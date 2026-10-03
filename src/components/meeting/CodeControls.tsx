@@ -69,7 +69,14 @@ export function CodeControls({
           {editors.map((editor) => (
             <View
               key={editor.clientId}
-              style={[styles.editorDot, { backgroundColor: editor.color }]}
+              style={[
+                styles.editorDot,
+                { backgroundColor: editor.color },
+                editor.editing && styles.editorDotTyping,
+              ]}
+              accessibilityLabel={
+                editor.editing ? `${editor.displayName} is typing` : editor.displayName
+              }
             >
               <Text style={styles.editorInitial}>
                 {editor.displayName.slice(0, 1).toUpperCase()}
@@ -154,6 +161,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  editorDotTyping: {
+    borderWidth: 2,
+    borderColor: colors.text,
   },
   editorInitial: {
     color: colors.background,

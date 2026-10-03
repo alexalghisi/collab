@@ -85,6 +85,12 @@ export interface MonacoApi {
 const LOCAL = 'local-editor';
 
 /**
+ * How long to wait for Monaco's late report of a caret it shoved, when no frame
+ * is painted to wait for instead.
+ */
+const CARET_SETTLE_MS = 50;
+
+/**
  * Applies a Monaco model's edits to the shared text and the shared text's
  * changes back to the model, without either side echoing the other. The CRDT
  * still does the merging; this only translates between offsets and ranges.
@@ -162,6 +168,7 @@ export class MonacoTextBinding {
       }
     }, LOCAL);
     this.publishSelection(model, true);
+    this.document.noteEditing();
   }
 
   private readonly onTextChange = (event: Y.YTextEvent): void => {
@@ -205,22 +212,34 @@ export class MonacoTextBinding {
       if (current) {
         this.restoreCaret(current);
       }
-      const release = () => {
-        this.selectionLock = Math.max(0, this.selectionLock - 1);
-      };
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => {
-          const later = this.editor.getModel();
-          if (later) {
-            this.restoreCaret(later);
-          }
-          release();
-        });
-      } else {
-        release();
-      }
+      this.settleCaret();
     });
   };
+
+  /**
+   * Puts the caret back once Monaco has stopped moving it, then publishes
+   * cursor moves again. A painted frame is the natural moment to do that, but a
+   * tab in the background is never painted and would hold the lock for good, so
+   * a timer races the frame and whichever arrives first settles it.
+   */
+  private settleCaret(): void {
+    let settled = false;
+    const settle = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const model = this.editor.getModel();
+      if (model) {
+        this.restoreCaret(model);
+      }
+      this.selectionLock = Math.max(0, this.selectionLock - 1);
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(settle);
+    }
+    setTimeout(settle, CARET_SETTLE_MS);
+  }
 
   private restoreCaret(model: EditorModel): void {
     const selection = this.document.localSelection();
