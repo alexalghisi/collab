@@ -6,6 +6,7 @@ import { useAuth } from './src/auth/useAuth';
 import { useTeamChat } from './src/chat/useTeamChat';
 import { createSignaling } from './src/signaling';
 import { nextHalfHour } from './src/meeting/calendar';
+import { fetchAccountDirectory } from './src/auth/serverAccount';
 import { readSessionToken } from './src/auth/session';
 import { EXECUTION_URL } from './src/code/config';
 import { InviteError, parseContactList } from './src/meeting/contact';
@@ -16,7 +17,8 @@ import {
   sendMeetingInvite,
 } from './src/meeting/calendarInvite';
 import { clearLiveMeeting, readLiveMeeting } from './src/meeting/resume';
-import type { Meeting, MeetingDraft } from './src/meeting/types';
+import type { DirectoryPerson } from './src/auth/types';
+import { meetingInviteContacts, type Meeting, type MeetingDraft } from './src/meeting/types';
 import { deleteMeeting as retractThenRemove } from './src/meeting/deleteMeeting';
 import { useMeetings } from './src/meeting/useMeetings';
 import { useGoogleCalendar } from './src/meeting/useGoogleCalendar';
@@ -49,6 +51,7 @@ export default function App() {
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [roomId, setRoomId] = useState(() => readRoomFromLink() ?? '');
   const [displayName, setDisplayName] = useState('');
+  const [directory, setDirectory] = useState<DirectoryPerson[]>([]);
   const resumeAttempted = useRef(false);
   const wasInMeeting = useRef(false);
 
@@ -57,6 +60,29 @@ export default function App() {
     if (name) {
       setDisplayName(name);
     }
+  }, [auth.user]);
+
+  useEffect(() => {
+    const token = readSessionToken();
+    if (!auth.user || !token) {
+      setDirectory([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchAccountDirectory(token)
+      .then((people) => {
+        if (!cancelled) {
+          setDirectory(people);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDirectory([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [auth.user]);
 
   // Stays true while moving between a room and its breakout rooms.
@@ -135,11 +161,12 @@ export default function App() {
     });
 
   const sendMeetingInvites = async (meeting: Meeting) => {
-    if (!meeting.guests || meeting.guests.length === 0) {
+    const guests = meetingInviteContacts(meeting);
+    if (guests.length === 0) {
       return;
     }
     try {
-      await dispatchGuests(meeting, meeting.guests, meeting.reminderMinutes ?? 15);
+      await dispatchGuests(meeting, guests, meeting.reminderMinutes ?? 15);
     } catch (err) {
       console.warn('Could not dispatch automatic meeting invites:', err);
     }
@@ -147,7 +174,7 @@ export default function App() {
 
   const inviteMeeting = async (meeting: Meeting, invite: MeetingInviteRequest): Promise<string> => {
     const typed = parseContactList(invite.emails).map((c) => c.value);
-    const guests = typed.length > 0 ? typed : [...(meeting.guests ?? [])];
+    const guests = typed.length > 0 ? typed : meetingInviteContacts(meeting);
     if (guests.length === 0) {
       throw new InviteError('Enter an email address or a phone number.');
     }
@@ -218,14 +245,14 @@ export default function App() {
       const updated: Meeting = { ...editingMeeting, ...draft };
       void meetings.save(updated).then(() => {
         void googleCalendar.update(updated);
-        if (draft.guests && draft.guests.length > 0) {
+        if (meetingInviteContacts(draft).length > 0) {
           void sendMeetingInvites(updated);
         }
       });
     } else {
       void meetings.schedule(draft).then((meeting) => {
         void googleCalendar.publish(meeting);
-        if (draft.guests && draft.guests.length > 0) {
+        if (meetingInviteContacts(draft).length > 0) {
           void sendMeetingInvites(meeting);
         }
       });
@@ -331,6 +358,8 @@ export default function App() {
           <ScheduleMeetingScreen
             initialStart={scheduleStart}
             initialMeeting={editingMeeting}
+            directory={directory}
+            selfUid={auth.user.uid}
             onSave={saveMeeting}
             onCancel={() => {
               setEditingMeeting(null);

@@ -34,6 +34,7 @@ import { normalizeBoardFile } from '../whiteboard/boardFiles';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
+  normalizeRoomSettings,
   type BoardFile,
   type ChatMessage,
   type HostCommand,
@@ -105,7 +106,6 @@ export interface CollabSession {
   readonly messages: ChatMessage[];
   readonly strokes: Stroke[];
   readonly boardFiles: BoardFile[];
-  readonly notes: string;
   /** Spoken turns in this room, oldest first. */
   readonly transcript: TranscriptSegment[];
   /** True while this participant's recognizer is running. */
@@ -151,7 +151,6 @@ export interface CollabSession {
   addBoardFile: (item: Omit<BoardFile, 'id' | 'peerId'>) => void;
   removeStrokes: (strokeIds: string[]) => void;
   removeBoardFiles: (ids: string[]) => void;
-  updateNotes: (text: string) => void;
   /** Starts or stops live captions for this participant. */
   toggleCaptions: () => void;
   askAssistant: (question: string) => void;
@@ -171,7 +170,6 @@ export interface CollabSession {
 }
 
 const REACTION_VISIBLE_MS = 4000;
-const NOTES_SYNC_DELAY_MS = 400;
 const MEDIA_ERROR = 'Camera or microphone access was denied.';
 const SIGNALING_ERROR = 'Unable to reach the signaling service.';
 const DENIED_ERROR = 'The host did not let you in.';
@@ -197,7 +195,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [boardFiles, setBoardFiles] = useState<BoardFile[]>([]);
-  const [notes, setNotes] = useState('');
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [captionsOn, setCaptionsOn] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
@@ -229,7 +226,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const parkedCameraRef = useRef<MediaStreamTrack | null>(null);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechRef = useRef(createSpeechCapture());
   const selfPeerIdRef = useRef<string | null>(null);
   const joinGenerationRef = useRef(0);
@@ -282,17 +278,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.disconnect();
     signalingRef.current = null;
 
-    if (notesTimerRef.current) {
-      clearTimeout(notesTimerRef.current);
-      notesTimerRef.current = null;
-    }
-
     settingsRef.current = DEFAULT_ROOM_SETTINGS;
     setParticipants([]);
     setMessages([]);
     setStrokes([]);
     setBoardFiles([]);
-    setNotes('');
     setTranscript([]);
     setCaptionError(null);
     setAssistantTurns([]);
@@ -398,7 +388,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       const snapshot = loadRoomSnapshot(nextRoomId);
       setMessages(snapshot.messages);
       setStrokes(snapshot.strokes);
-      setNotes(snapshot.notes);
       setTranscript(snapshot.transcript);
 
       const sharedCode = new SharedCodeDocument(signaling, {
@@ -410,7 +399,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
       signaling.on('room:waiting', () => setStatus('waiting'));
       signaling.on('room:joined', (room) => {
-        settingsRef.current = room.settings;
+        const joinedSettings = normalizeRoomSettings(room.settings);
+        settingsRef.current = joinedSettings;
         selfPeerIdRef.current = room.selfPeerId;
         setSelfPeerId(room.selfPeerId);
         setHostPeerId(room.hostPeerId);
@@ -422,11 +412,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         });
         setBoardFiles(room.boardFiles ?? []);
         setWorkspaceFiles(room.workspaceFiles ?? []);
-        setNotes((current) => {
-          const next = room.notes && room.notes.length > 0 ? room.notes : current;
-          saveRoomSnapshot(nextRoomId, { notes: next });
-          return next;
-        });
         setTranscript((current) => {
           const next = mergeTranscript(current, room.transcript);
           saveRoomSnapshot(nextRoomId, { transcript: next });
@@ -440,14 +425,15 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         if (room.code) {
           sharedCode.applyState(room.code);
         }
-        setSettings(room.settings);
+        setSettings(joinedSettings);
         setRoomId(nextRoomId);
         setBreakoutOf(mainRoomId ?? null);
       });
       signaling.on('room:host', setHostPeerId);
       signaling.on('room:settings', (next) => {
-        settingsRef.current = next;
-        setSettings(next);
+        const settings = normalizeRoomSettings(next, settingsRef.current);
+        settingsRef.current = settings;
+        setSettings(settings);
       });
       signaling.on('waiting:update', setWaiting);
       signaling.on('host:command', (command) => commandRef.current(command));
@@ -494,10 +480,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           return next;
         });
         setBoardFiles((current) => current.filter((item) => !ids.includes(item.id)));
-      });
-      signaling.on('notes:update', (text) => {
-        setNotes(text);
-        saveRoomSnapshot(nextRoomId, { notes: text });
       });
       signaling.on('transcript:segment', (segment) => {
         setTranscript((current) => {
@@ -864,22 +846,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.emit('board:remove', ids);
   }, []);
 
-  /** Shows the change at once and sends it after a short pause in typing. */
-  const updateNotes = useCallback((text: string) => {
-    setNotes(text);
-    const id = roomIdRef.current;
-    if (id) {
-      saveRoomSnapshot(id, { notes: text });
-    }
-    if (notesTimerRef.current) {
-      clearTimeout(notesTimerRef.current);
-    }
-    notesTimerRef.current = setTimeout(() => {
-      notesTimerRef.current = null;
-      signalingRef.current?.emit('notes:update', text);
-    }, NOTES_SYNC_DELAY_MS);
-  }, []);
-
   const askAssistant = useCallback((question: string) => {
     const text = question.trim();
     if (!text) {
@@ -951,7 +917,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   }, []);
 
   const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
-    const next = { ...settingsRef.current, ...patch };
+    const next = normalizeRoomSettings({ ...settingsRef.current, ...patch });
     settingsRef.current = next;
     setSettings(next);
     signalingRef.current?.emit('room:settings', next);
@@ -1030,7 +996,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     messages,
     strokes,
     boardFiles,
-    notes,
     transcript,
     captionsOn,
     captionError,
@@ -1064,7 +1029,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     addBoardFile,
     removeStrokes: removeFromBoard,
     removeBoardFiles: removeFromBoard,
-    updateNotes,
     toggleCaptions,
     askAssistant,
     runCode,

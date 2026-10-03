@@ -1,6 +1,6 @@
 import { SIGNALING_URL } from '../signaling/config';
 import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
-import type { AuthUser, GoogleCredential } from './types';
+import type { AuthUser, DirectoryPerson, GoogleCredential } from './types';
 
 const UNREACHABLE = 'Could not reach the account service. Try again in a moment.';
 
@@ -134,4 +134,49 @@ export async function restoreAccount(token: string): Promise<AuthUser> {
     throw new Error('Could not restore your session.');
   }
   return user;
+}
+
+interface DirectoryResponseBody {
+  readonly people?: unknown;
+  readonly error?: unknown;
+}
+
+function toDirectoryPerson(value: unknown): DirectoryPerson | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const person = value as { uid?: unknown; email?: unknown; displayName?: unknown };
+  if (
+    typeof person.uid !== 'string' ||
+    typeof person.email !== 'string' ||
+    typeof person.displayName !== 'string'
+  ) {
+    return null;
+  }
+  return { uid: person.uid, email: person.email, displayName: person.displayName };
+}
+
+export async function fetchAccountDirectory(token: string): Promise<DirectoryPerson[]> {
+  await wakeAccountService();
+  let response: Response;
+  try {
+    response = await fetch(`${SIGNALING_URL}/auth/directory`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw new Error(UNREACHABLE);
+  }
+  const body = (await response.json().catch(() => ({}))) as DirectoryResponseBody;
+  if (!response.ok) {
+    throw new Error(
+      typeof body.error === 'string' ? body.error : 'Could not load the account directory.',
+    );
+  }
+  if (!Array.isArray(body.people)) {
+    return [];
+  }
+  return body.people
+    .map(toDirectoryPerson)
+    .filter((person): person is DirectoryPerson => person !== null);
 }

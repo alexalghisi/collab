@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitUntilSignalingReady } from '../signaling/wake';
-import { loginWithGoogle } from './serverAccount';
+import { fetchAccountDirectory, loginWithGoogle } from './serverAccount';
 
 vi.mock('../signaling/config', () => ({
   SIGNALING_URL: 'https://collab-signaling.onrender.com',
@@ -95,5 +95,28 @@ describe('loginWithGoogle', () => {
       'Google could not verify that sign-in.',
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('fetchAccountDirectory', () => {
+  it('loads signed-up people with the session token', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          people: [{ uid: 'u1', displayName: 'Ada', email: 'ada@example.com' }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    await expect(fetchAccountDirectory('session-token')).resolves.toEqual([
+      { uid: 'u1', displayName: 'Ada', email: 'ada@example.com' },
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://collab-signaling.onrender.com/auth/directory',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer session-token' },
+      }),
+    );
   });
 });

@@ -11,7 +11,6 @@ const context: AssistantContext = {
   transcript: [
     { displayName: 'Ada', text: 'Ship the billing queue on Thursday.', startedAt: Date.now() },
   ],
-  notes: 'Decision: Thursday.',
   messages: [],
 };
 

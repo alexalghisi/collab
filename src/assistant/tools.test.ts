@@ -17,7 +17,7 @@ describe('turnsInLastMinutes', () => {
 });
 
 describe('gatherContext', () => {
-  it('includes the recent window, the notes and a retrieved passage', async () => {
+  it('includes the recent window and a retrieved passage', async () => {
     const store = new MemoryVectorStore();
     const embedder = createHashEmbedder(32);
     await indexMeeting(store, embedder, {
@@ -33,7 +33,6 @@ describe('gatherContext', () => {
           endedAt: 2_000,
         },
       ],
-      notes: 'Decision: Thursday.',
       messages: [],
     });
     const context = await gatherContext(
@@ -42,7 +41,6 @@ describe('gatherContext', () => {
         roomId: 'room',
         question: 'When do we ship billing?',
         transcript,
-        notes: 'Decision: Thursday.',
         messages: [],
       },
       store,
@@ -51,7 +49,6 @@ describe('gatherContext', () => {
     );
 
     expect(context).toContain('Linus: I will send the invite.');
-    expect(context).toContain('Decision: Thursday.');
     expect(context.toLowerCase()).toContain('billing');
     expect(context).toContain('Matching passages:');
   });

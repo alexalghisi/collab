@@ -238,7 +238,32 @@ describe('SharedCodeDocument', () => {
 
     ada.document.text.insert(0, 'xxx');
 
-    expect(ada.document.presence()[0]?.selection).toEqual({ start: 9, end: 9 });
+    expect(ada.document.presence()[0]?.selection).toEqual({ start: 9, end: 9, head: 9 });
+  });
+
+  it('does not drag a caret along when someone else types at it', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    ada.document.text.insert(0, 'hello');
+    ada.document.setSelection({ start: 5, end: 5, head: 5 });
+
+    linus.document.text.insert(5, '\nnext');
+
+    expect(linus.document.text.toString()).toBe('hello\nnext');
+    expect(linus.document.presence()[0]?.selection).toEqual({ start: 5, end: 5, head: 5 });
+  });
+
+  it('moves a remote caret along as its author types', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    ada.document.text.insert(0, 'hello');
+    linus.document.setSelection({ start: 0, end: 0, head: 0 });
+
+    linus.document.text.insert(0, 'X');
+    linus.document.setSelection({ start: 1, end: 1, head: 1 });
+
+    expect(ada.document.text.toString()).toBe('Xhello');
+    expect(ada.document.presence()[0]?.selection).toEqual({ start: 1, end: 1, head: 1 });
   });
 
   it('gives each participant a stable colour derived from their peer id', () => {

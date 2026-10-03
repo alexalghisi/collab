@@ -1,20 +1,41 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { parseDateTime, toDateInput, toTimeInput } from '../../meeting/calendar';
 import { parseContactList } from '../../meeting/contact';
 import { generateRoomId } from '../../meeting/roomId';
-import type { Meeting, MeetingDraft } from '../../meeting/types';
+import {
+  meetingInviteContacts,
+  type Meeting,
+  type MeetingDraft,
+  type MeetingInvitee,
+} from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
+
+function extraGuestText(meeting: Meeting | null | undefined): string {
+  if (!meeting) {
+    return '';
+  }
+  const named = new Set(
+    (meeting.invitees ?? []).map((person) => person.email.trim().toLowerCase()),
+  );
+  return (meeting.guests ?? [])
+    .filter((guest) => !named.has(guest.trim().toLowerCase()))
+    .join(', ');
+}
 
 export interface ScheduleMeetingScreenProps {
   /** Pre-selected start (e.g. the day picked in the calendar). Used when creating. */
   initialStart: Date;
   /** When set, the form edits this meeting instead of creating a new one. */
   initialMeeting?: Meeting | null;
+  /** Signed-up people, so the host can pick attendees by name. */
+  directory?: readonly MeetingInvitee[];
+  /** Hide the current user from the picker; they already own the meeting. */
+  selfUid?: string;
   onSave: (draft: MeetingDraft) => void;
   onCancel: () => void;
 }
@@ -22,6 +43,8 @@ export interface ScheduleMeetingScreenProps {
 export function ScheduleMeetingScreen({
   initialStart,
   initialMeeting,
+  directory = [],
+  selfUid,
   onSave,
   onCancel,
 }: ScheduleMeetingScreenProps) {
@@ -35,7 +58,10 @@ export function ScheduleMeetingScreen({
   );
   const [description, setDescription] = useState(initialMeeting?.description ?? '');
   const [roomId, setRoomId] = useState(() => initialMeeting?.roomId ?? generateRoomId());
-  const [attendees, setAttendees] = useState(() => (initialMeeting?.guests ?? []).join(', '));
+  const [invitees, setInvitees] = useState<MeetingInvitee[]>(() => [
+    ...(initialMeeting?.invitees ?? []),
+  ]);
+  const [attendees, setAttendees] = useState(() => extraGuestText(initialMeeting));
   const [reminderMinutes, setReminderMinutes] = useState<15 | 30>(
     initialMeeting?.reminderMinutes ?? 15,
   );
@@ -43,12 +69,52 @@ export function ScheduleMeetingScreen({
   const startsAt = parseDateTime(date, time);
   const ready = title.trim().length > 0 && startsAt !== null;
   const parsedContacts = parseContactList(attendees);
+  const people = directory.filter((person) => person.uid !== selfUid);
+  const selectedIds = new Set(invitees.map((person) => person.uid));
+
+  useEffect(() => {
+    if (directory.length === 0) {
+      return;
+    }
+    const byEmail = new Map(directory.map((person) => [person.email.toLowerCase(), person]));
+    const promoted: MeetingInvitee[] = [];
+    for (const guest of initialMeeting?.guests ?? []) {
+      const person = byEmail.get(guest.trim().toLowerCase());
+      if (!person || person.uid === selfUid) {
+        continue;
+      }
+      promoted.push(person);
+    }
+    if (promoted.length === 0) {
+      return;
+    }
+    setInvitees((current) => {
+      const have = new Set(current.map((person) => person.uid));
+      return [...current, ...promoted.filter((person) => !have.has(person.uid))];
+    });
+    const promotedEmails = new Set(promoted.map((person) => person.email.toLowerCase()));
+    setAttendees((current) =>
+      parseContactList(current)
+        .filter((contact) => !promotedEmails.has(contact.value.toLowerCase()))
+        .map((contact) => contact.value)
+        .join(', '),
+    );
+  }, [directory, initialMeeting, selfUid]);
+
+  const toggleInvitee = (person: MeetingInvitee) => {
+    setInvitees((current) =>
+      current.some((entry) => entry.uid === person.uid)
+        ? current.filter((entry) => entry.uid !== person.uid)
+        : [...current, person],
+    );
+  };
 
   const save = () => {
     if (startsAt === null) {
       return;
     }
-    const guests = parsedContacts.map((c) => c.value);
+    const extra = parsedContacts.map((contact) => contact.value);
+    const guests = meetingInviteContacts({ invitees, guests: extra });
     onSave({
       title: title.trim(),
       roomId,
@@ -56,6 +122,7 @@ export function ScheduleMeetingScreen({
       durationMinutes,
       description: description.trim(),
       guests: guests.length > 0 ? guests : undefined,
+      invitees: invitees.length > 0 ? invitees : undefined,
       reminderMinutes,
     });
   };
@@ -131,17 +198,50 @@ export function ScheduleMeetingScreen({
       />
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.label}>Attendees (emails or phone numbers)</Text>
+        <Text style={styles.label}>People</Text>
         <View style={styles.autoInviteBadge}>
           <Ionicons name="sparkles" size={12} color={colors.primary} />
           <Text style={styles.autoInviteBadgeText}>Auto-invites enabled</Text>
         </View>
       </View>
+      {people.length > 0 ? (
+        <View style={styles.peopleList}>
+          {people.map((person) => {
+            const selected = selectedIds.has(person.uid);
+            return (
+              <Pressable
+                key={person.uid}
+                style={[styles.personChip, selected && styles.personChipSelected]}
+                onPress={() => toggleInvitee(person)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${person.displayName}, ${person.email}`}
+              >
+                <Ionicons
+                  name={selected ? 'checkmark-circle' : 'person-outline'}
+                  size={16}
+                  color={selected ? colors.text : colors.primary}
+                />
+                <View style={styles.personCopy}>
+                  <Text style={styles.personName}>{person.displayName}</Text>
+                  <Text style={styles.personEmail}>{person.email}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <Text style={styles.helperText}>
+          Accounts that sign in here will show up by name. You can still add emails below.
+        </Text>
+      )}
+
+      <Text style={styles.label}>Other emails or phone numbers</Text>
       <TextInput
         style={styles.input}
         value={attendees}
         onChangeText={setAttendees}
-        placeholder="alex@example.com, +1 555 123 4567, linus@kernel.org"
+        placeholder="alex@example.com, +1 555 123 4567"
         placeholderTextColor={colors.textSubtle}
         autoCapitalize="none"
         autoCorrect={false}
@@ -287,6 +387,37 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
     lineHeight: 16,
+  },
+  peopleList: {
+    gap: 8,
+  },
+  personChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  personChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  personCopy: {
+    flex: 1,
+    gap: 1,
+  },
+  personName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  personEmail: {
+    color: colors.textMuted,
+    fontSize: 12,
   },
   multiline: {
     minHeight: 96,

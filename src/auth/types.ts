@@ -12,6 +12,12 @@ export interface GoogleCredential {
   readonly accessToken?: string;
 }
 
+export interface DirectoryPerson {
+  readonly uid: string;
+  readonly email: string;
+  readonly displayName: string;
+}
+
 export interface AuthState {
   readonly initializing: boolean;
   readonly user: AuthUser | null;
