@@ -99,10 +99,51 @@ class FakeModel implements EditorModel {
 }
 
 class FakeEditor implements EditorApi {
-  selection: { start: number; end: number } | null = { start: 0, end: 0 };
+  selection: { start: number; end: number; head?: number } | null = { start: 0, end: 0, head: 0 };
+  /** Monaco reports the shoved caret on a later turn, after the edit returns. */
+  replayRemoteCaret = false;
   private cursorListeners: Array<() => void> = [];
 
-  constructor(readonly model: FakeModel) {}
+  constructor(readonly model: FakeModel) {
+    const apply = model.applyEdits.bind(model);
+    // Monaco moves a caret that sits on an insertion to the end of that insertion.
+    model.applyEdits = (edits) => {
+      let head = this.selection?.head;
+      if (head != null) {
+        for (const edit of edits) {
+          const range = edit.range as Range;
+          const start = model.getOffsetAt({
+            lineNumber: range.startLineNumber,
+            column: range.startColumn,
+          });
+          const end = model.getOffsetAt({
+            lineNumber: range.endLineNumber,
+            column: range.endColumn,
+          });
+          const inserted = edit.text.length;
+          const removed = Math.max(0, end - start);
+          if (head > end) {
+            head += inserted - removed;
+          } else if (head > start || (head === start && removed === 0)) {
+            head = start + inserted;
+          }
+        }
+      }
+      apply(edits);
+      if (this.selection && head != null) {
+        const shoved = head;
+        this.selection = { start: shoved, end: shoved, head: shoved };
+        if (this.replayRemoteCaret) {
+          queueMicrotask(() => {
+            this.selection = { start: shoved, end: shoved, head: shoved };
+            for (const listener of this.cursorListeners) {
+              listener();
+            }
+          });
+        }
+      }
+    };
+  }
 
   getModel(): EditorModel {
     return this.model;
@@ -124,6 +165,13 @@ class FakeEditor implements EditorApi {
     };
   }
 
+  getPosition() {
+    if (!this.selection) {
+      return null;
+    }
+    return this.model.getPositionAt(this.selection.head ?? this.selection.end);
+  }
+
   createDecorationsCollection(decorations: Decoration[]) {
     let current = decorations;
     return {
@@ -137,8 +185,28 @@ class FakeEditor implements EditorApi {
     };
   }
 
-  moveCursor(start: number, end = start): void {
-    this.selection = { start, end };
+  moveCursor(start: number, end = start, head = end): void {
+    this.selection = { start, end, head };
+    for (const listener of this.cursorListeners) {
+      listener();
+    }
+  }
+
+  setSelection(selection: {
+    selectionStartLineNumber: number;
+    selectionStartColumn: number;
+    positionLineNumber: number;
+    positionColumn: number;
+  }): void {
+    const anchor = this.model.getOffsetAt({
+      lineNumber: selection.selectionStartLineNumber,
+      column: selection.selectionStartColumn,
+    });
+    const head = this.model.getOffsetAt({
+      lineNumber: selection.positionLineNumber,
+      column: selection.positionColumn,
+    });
+    this.selection = { start: Math.min(anchor, head), end: Math.max(anchor, head), head };
     for (const listener of this.cursorListeners) {
       listener();
     }
@@ -233,6 +301,24 @@ describe('MonacoTextBinding', () => {
     expect(model.getValue()).toBe('keep\n');
   });
 
+  it('leaves the caret where its owner stopped when someone else types there', async () => {
+    document.text.insert(0, 'hello');
+    bind('hello');
+    editor.replayRemoteCaret = true;
+    editor.moveCursor(5);
+
+    document.applyState(remoteEdit(document, (text) => text.insert(5, '\nnext')));
+    await Promise.resolve();
+
+    expect(model.getValue()).toBe('hello\nnext');
+    expect(editor.selection).toEqual({ start: 5, end: 5, head: 5 });
+    expect(document.awareness.getLocalState()?.selection).toMatchObject({
+      start: 5,
+      end: 5,
+      head: 5,
+    });
+  });
+
   it('does not feed a remote change back into the document', () => {
     document.text.insert(0, 'start');
     bind('start');
@@ -264,7 +350,24 @@ describe('MonacoTextBinding', () => {
 
     editor.moveCursor(0, 6);
 
-    expect(document.awareness.getLocalState()?.selection).toMatchObject({ start: 0, end: 6 });
+    expect(document.awareness.getLocalState()?.selection).toMatchObject({
+      start: 0,
+      end: 6,
+      head: 6,
+    });
+  });
+
+  it('pins the caret to the active end when the selection was dragged backwards', () => {
+    document.text.insert(0, 'select me');
+    bind('select me');
+
+    editor.moveCursor(0, 6, 0);
+
+    expect(document.awareness.getLocalState()?.selection).toMatchObject({
+      start: 0,
+      end: 6,
+      head: 0,
+    });
   });
 
   it('stops translating once destroyed', () => {
@@ -289,7 +392,9 @@ function remoteEdit(local: SharedCodeDocument, edit: (text: SharedCodeDocument['
 
 describe('decorationsFor', () => {
   const model = new FakeModel('const answer = 42;\nreturn answer;\n');
-  const presence = (selection: { start: number; end: number } | null): CodePresence => ({
+  const presence = (
+    selection: { start: number; end: number; head?: number } | null,
+  ): CodePresence => ({
     clientId: 7,
     peerId: 'b',
     displayName: 'Linus',
@@ -319,7 +424,7 @@ describe('decorationsFor', () => {
 
     expect(marks).toHaveLength(2);
     expect(marks[0].options.className).toBe('x');
-    expect(marks[1].options.className).toBe('x-label');
+    expect(marks[1].options.beforeContentClassName).toBe('x-caret');
     expect(marks[1].range).toMatchObject({
       startLineNumber: 2,
       startColumn: 7,
@@ -329,11 +434,28 @@ describe('decorationsFor', () => {
     expect(marks[1].options.hoverMessage.value).toBe('Linus');
   });
 
+  it('puts the name on the caret when the selection runs backwards', () => {
+    const marks = decorationsFor(
+      [presence({ start: 0, end: 25, head: 0 })],
+      model,
+      monaco,
+      () => 'x',
+    );
+
+    expect(marks[1].options.beforeContentClassName).toBe('x-caret');
+    expect(marks[1].range).toMatchObject({
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: 1,
+    });
+  });
+
   it('labels a collapsed caret without a highlight', () => {
     const marks = decorationsFor([presence({ start: 0, end: 0 })], model, monaco, () => 'x');
 
     expect(marks).toHaveLength(1);
-    expect(marks[0].options.className).toBe('x-label');
+    expect(marks[0].options.beforeContentClassName).toBe('x-caret');
     expect(marks[0].options.hoverMessage.value).toBe('Linus');
   });
 

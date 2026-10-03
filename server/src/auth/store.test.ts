@@ -89,6 +89,18 @@ describe('UserStore', () => {
     expect(JSON.parse(readFileSync(path, 'utf8')).users[0].email).toBe('linus@example.com');
   });
 
+  it('lists accounts by name without password hashes', () => {
+    const path = join(tempDir(), 'users.json');
+    const store = new UserStore(path);
+    store.create({ email: 'linus@example.com', displayName: 'Linus', passwordHash: 'secret' });
+    store.create({ email: 'ada@example.com', displayName: 'Ada', passwordHash: 'secret' });
+
+    expect(store.list()).toEqual([
+      { uid: expect.any(String), email: 'ada@example.com', displayName: 'Ada' },
+      { uid: expect.any(String), email: 'linus@example.com', displayName: 'Linus' },
+    ]);
+  });
+
   it('pushes a new account to the cloud store', async () => {
     const path = join(tempDir(), 'users.json');
     const pushed: unknown[] = [];

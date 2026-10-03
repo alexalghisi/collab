@@ -135,5 +135,16 @@ export function authRouter(options: AuthRouterOptions = {}): Router {
     });
   });
 
+  router.get('/auth/directory', (req, res) => {
+    const session = verifyToken(bearer(req.header('authorization')));
+    if (!session) {
+      res.status(401).json({ error: 'Sign in to continue.' });
+      return;
+    }
+    res.json({
+      people: store.list(),
+    });
+  });
+
   return router;
 }

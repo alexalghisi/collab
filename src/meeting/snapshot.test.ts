@@ -52,38 +52,35 @@ afterEach(() => {
 });
 
 describe('room snapshot', () => {
-  it('restores chat, notes, board, and captions for the same room after a reload', () => {
+  it('restores chat, board, and captions for the same room after a reload', () => {
     const thread = [message('a', 1, 'hello')];
     const board = [stroke('s1')];
     const captions = [turn('t1', 10)];
 
     saveRoomSnapshot('room-1', {
       messages: thread,
-      notes: 'agenda',
       strokes: board,
       transcript: captions,
     });
 
     expect(loadRoomSnapshot('room-1')).toEqual({
       messages: thread,
-      notes: 'agenda',
       strokes: board,
       transcript: captions,
     });
     expect(loadChatHistory('room-1')).toEqual(thread);
     expect(loadRoomSnapshot('room-2')).toEqual({
       messages: [],
-      notes: '',
       strokes: [],
       transcript: [],
     });
   });
 
-  it('keeps existing notes when only the chat is updated', () => {
-    saveRoomSnapshot('room-1', { notes: 'agenda', messages: [message('a', 1)] });
+  it('keeps existing strokes when only the chat is updated', () => {
+    saveRoomSnapshot('room-1', { strokes: [stroke('s1')], messages: [message('a', 1)] });
     saveRoomSnapshot('room-1', { messages: [message('a', 1), message('b', 2)] });
 
-    expect(loadRoomSnapshot('room-1').notes).toBe('agenda');
+    expect(loadRoomSnapshot('room-1').strokes).toEqual([stroke('s1')]);
     expect(loadRoomSnapshot('room-1').messages.map((entry) => entry.id)).toEqual(['a', 'b']);
   });
 

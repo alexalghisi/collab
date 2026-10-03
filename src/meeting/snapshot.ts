@@ -10,13 +10,11 @@ import { storage } from './storage';
 
 export const MAX_STROKES = 800;
 export const MAX_TRANSCRIPT = 200;
-export const MAX_NOTES_CHARS = 80_000;
 
 const snapshotKey = (roomId: string) => `collab.room.${roomId}`;
 
 export interface RoomSnapshot {
   readonly messages: ChatMessage[];
-  readonly notes: string;
   readonly strokes: Stroke[];
   readonly transcript: TranscriptSegment[];
 }
@@ -85,10 +83,6 @@ export function mergeTranscript(
     .slice(-MAX_TRANSCRIPT);
 }
 
-function parseNotes(value: unknown): string {
-  return typeof value === 'string' ? value.slice(0, MAX_NOTES_CHARS) : '';
-}
-
 export function loadRoomSnapshot(roomId: string): RoomSnapshot {
   try {
     const raw = storage.read(snapshotKey(roomId));
@@ -98,7 +92,6 @@ export function loadRoomSnapshot(roomId: string): RoomSnapshot {
         const record = parsed as Partial<RoomSnapshot>;
         return {
           messages: mergeChatHistory(chatMessagesOf(record.messages), loadChatHistory(roomId)),
-          notes: parseNotes(record.notes),
           strokes: parseStrokes(record.strokes),
           transcript: mergeTranscript(record.transcript),
         };
@@ -107,14 +100,12 @@ export function loadRoomSnapshot(roomId: string): RoomSnapshot {
   } catch {
     return {
       messages: loadChatHistory(roomId),
-      notes: '',
       strokes: [],
       transcript: [],
     };
   }
   return {
     messages: loadChatHistory(roomId),
-    notes: '',
     strokes: [],
     transcript: [],
   };
@@ -125,7 +116,6 @@ export function saveRoomSnapshot(roomId: string, patch: Partial<RoomSnapshot>): 
     const current = loadRoomSnapshot(roomId);
     const next: RoomSnapshot = {
       messages: patch.messages !== undefined ? mergeChatHistory(patch.messages) : current.messages,
-      notes: patch.notes !== undefined ? parseNotes(patch.notes) : current.notes,
       strokes: patch.strokes !== undefined ? mergeStrokes(patch.strokes) : current.strokes,
       transcript:
         patch.transcript !== undefined ? mergeTranscript(patch.transcript) : current.transcript,

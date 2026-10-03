@@ -87,13 +87,12 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - **Call quality above a phone messenger**: 720p/30 fps capture, up to 2.5 Mbit/s of video (4 Mbit/s for a shared screen), and 64 kbit/s fullband Opus with echo cancellation, noise suppression, voice isolation and packet-loss recovery — see [Call quality](#call-quality).
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
-- Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared files** (images, PDFs and documents in the Files panel, visible to everyone in the room), **shared notes** that every participant can edit, and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in).
+- Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared files** (images, PDFs and documents in the Files panel, visible to everyone in the room), and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in). The host opening the whiteboard or the code editor opens that surface for everyone in the room.
 - **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that sends the room's code — JavaScript, TypeScript, Python, Go or C++ — to a hosted compiler (Wandbox) from the browser, so GitHub Pages does not depend on the signaling sandbox. Stdin, stdout and stderr from that run appear for every participant.
-- **Meeting assistant**: an in-call panel that answers questions from the live transcript, notes and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
+- **Meeting assistant**: an in-call panel that answers questions from the live transcript and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
-- **Local recording** (web): captures your video together with the mixed audio of every participant and downloads a `.webm` file when stopped.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
-- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Next to **Start**, **Invite** emails guests and queues a reminder 15 or 30 minutes before. Connect Google Calendar on the calendar screen to pull existing events in (and push Collab meetings back). Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
+- Home dashboard with one-click **New meeting**, **Join** and **Schedule**; scheduled meetings show up in a monthly **calendar** and an upcoming/past list, and can be added to **Google Calendar** or downloaded as **.ics**. Pick people by name from the local account directory when scheduling, so the calendar shows who and when. Next to **Start**, **Invite** emails guests and queues a reminder 15 or 30 minutes before. Connect Google Calendar on the calendar screen to pull existing events in (and push Collab meetings back). Meetings are stored per user in Firestore (or locally in the browser when Firebase is not configured).
 - Optional Google / Facebook sign-in on every platform (Firebase on web, Expo AuthSession on mobile), with a guest-lobby fallback when unconfigured.
 - Pluggable signaling behind one typed contract: **Firestore** on web (serverless, no backend to host) or the bundled **Socket.IO** server.
 - Single TypeScript codebase for mobile (iOS/Android), web, and desktop (macOS/Windows via Electron).
@@ -108,8 +107,8 @@ Collab uses a **mesh topology**: each participant holds a direct `RTCPeerConnect
 
 Signaling is a small interface (`SignalingChannel`) with two transports:
 
-- **Firestore** (web, when Firebase is configured) — rooms, participants, per-peer signal inboxes, chat, whiteboard strokes, notes, captions, room settings and the waiting list live in Firestore, so the deployed web app needs no server at all. Host commands (mute / remove / move) travel through the same per-peer inboxes as SDP and ICE.
-- **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`, which also keeps each room's whiteboard, notes, captions, settings and waiting list in memory while the room is occupied, and only honours host commands coming from the current host.
+- **Firestore** (web, when Firebase is configured) — rooms, participants, per-peer signal inboxes, chat, whiteboard strokes, captions, room settings and the waiting list live in Firestore, so the deployed web app needs no server at all. Host commands (mute / remove / move) travel through the same per-peer inboxes as SDP and ICE.
+- **Socket.IO** (mobile, desktop, and web without Firebase) — the bundled Node.js server in `server/`, which also keeps each room's whiteboard, captions, settings and waiting list in memory while the room is occupied, and only honours host commands coming from the current host.
 
 ### Call quality
 
@@ -168,7 +167,7 @@ a documented one.
 
 ### Meeting search index
 
-Transcripts, shared notes and chat are chunked and embedded behind one
+Transcripts and chat are chunked and embedded behind one
 `VectorStore` interface with three backends, chosen by `VECTOR_STORE` the
 same way signaling is chosen:
 
@@ -348,13 +347,13 @@ Collab/
 │   │   ├── home/               # Dashboard (new / join / schedule, up next)
 │   │   ├── meetings/           # Upcoming & past lists, schedule form
 │   │   ├── calendar/           # Monthly calendar
-│   │   ├── meeting/            # In-call screen: toolbar, participants + host tools, chat, whiteboard, notes, waiting room
+│   │   ├── meeting/            # In-call screen: toolbar, participants + host tools, chat, whiteboard, waiting room
 │   │   ├── chat/               # Team channels screen and the shared message thread
 │   │   └── ui/                 # Shared buttons and icon types
 │   ├── chat/                   # Team chat channels (Firestore) and its hook
 │   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
-│   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links / email / SMS, recording
+│   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links / email / SMS
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
 │   ├── search/                 # VectorStore (memory / pgvector / Pinecone) and meeting chunking
