@@ -174,6 +174,8 @@ export function CodePanel({
 const styles = StyleSheet.create({
   panel: {
     flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
     backgroundColor: colors.background,
   },
   body: {
