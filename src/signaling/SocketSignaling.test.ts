@@ -116,6 +116,43 @@ describe('SocketSignaling against the signaling server', () => {
     expect(late.joined.messages.map((entry) => entry.text)).toEqual(['stay after refresh']);
   });
 
+  it('keeps a guest in the waiting room after the dial timer would have fired', async () => {
+    const host = await server.join('a', 'Ada');
+    host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
+    const waiting = new Promise<WaitingPeer[]>((resolve) =>
+      host.channel.on('waiting:update', resolve),
+    );
+
+    const guest = createSocketSignaling(
+      server.url,
+      200,
+    )({
+      sessionId: 'b',
+      roomId: 'room',
+      displayName: 'Linus',
+      state: INITIAL_PEER_STATE,
+    });
+    const held = new Promise<void>((resolve) => guest.on('room:waiting', resolve));
+    let settled = false;
+    const connecting = guest.connect().then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await held;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(settled).toBe(false);
+    const [pending] = await waiting;
+    host.channel.emit('waiting:decide', { peerId: pending.peerId, admit: true });
+    await connecting;
+    expect(settled).toBe(true);
+    guest.disconnect();
+  });
+
   it('holds a joiner in the waiting room until the host decides', async () => {
     const host = await server.join('a', 'Ada');
     host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
