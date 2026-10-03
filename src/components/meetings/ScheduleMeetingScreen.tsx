@@ -3,7 +3,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import { parseDateTime, toDateInput, toTimeInput } from '../../meeting/calendar';
 import { parseContactList } from '../../meeting/contact';
-import { generateRoomId } from '../../meeting/roomId';
+import { generateRoomId, roomIdFromGuests } from '../../meeting/roomId';
 import type { Meeting, MeetingDraft } from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
@@ -43,6 +43,12 @@ export function ScheduleMeetingScreen({
   const startsAt = parseDateTime(date, time);
   const ready = title.trim().length > 0 && startsAt !== null;
   const parsedContacts = parseContactList(attendees);
+  const suggestedRoomId = editing
+    ? roomId
+    : roomIdFromGuests(
+        parsedContacts.map((c) => c.value),
+        title.trim(),
+      );
 
   const save = () => {
     if (startsAt === null) {
@@ -51,7 +57,7 @@ export function ScheduleMeetingScreen({
     const guests = parsedContacts.map((c) => c.value);
     onSave({
       title: title.trim(),
-      roomId,
+      roomId: suggestedRoomId,
       startsAt,
       durationMinutes,
       description: description.trim(),
@@ -184,7 +190,7 @@ export function ScheduleMeetingScreen({
 
       <Text style={styles.label}>Meeting ID</Text>
       <View style={styles.inline}>
-        <Text style={[styles.input, styles.roomId]}>{roomId}</Text>
+        <Text style={[styles.input, styles.roomId]}>{suggestedRoomId}</Text>
         <Pressable
           style={styles.regenerate}
           onPress={() => setRoomId(generateRoomId())}

@@ -57,6 +57,19 @@ describe('google calendar mapping', () => {
     expect(draft?.roomId).toBe('new-room');
   });
 
+  it('names the room after the guest in the Google title', () => {
+    const draft = meetingFromGoogleEvent(
+      {
+        id: 'evt-matej',
+        summary: 'Meeting with Matej Keveresan',
+        start: { dateTime: '2026-09-16T10:00:00.000Z' },
+        end: { dateTime: '2026-09-16T11:00:00.000Z' },
+      },
+      'new-room',
+    );
+    expect(draft?.roomId).toBe('matej-keveresan');
+  });
+
   it('reads all-day bounds and a room id buried in the description', () => {
     const event: GoogleCalendarEvent = {
       id: 'all-day',

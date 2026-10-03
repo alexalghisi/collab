@@ -36,7 +36,7 @@ The web app already points at that server (`EXPO_PUBLIC_SIGNALING_URL`). You do 
 
 1. You open https://alexalghisi.github.io/collab and sign in (email, or Continue with Google once a Google client ID is set).
 2. Click **New meeting**. Allow the camera and microphone.
-3. Copy the link from the address bar (it looks like `…/collab/?room=abc-defg-hij`) or use **Copy link** in the call.
+3. Copy the link from the address bar (a scheduled meeting with `alexcoman711@gmail.com` uses `?room=alexcoman`; a call with Matej Keveresan uses `?room=matej-keveresan`) or use **Copy link** in the call.
 4. Send that link (WhatsApp, SMS, email). The other person opens it, signs in, and joins the same room.
 
 The first join after the server has been idle can take about a minute — Render’s free instance sleeps. A `200` from `/health` means it is awake.
