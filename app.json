@@ -15,7 +15,8 @@
       "bundleIdentifier": "com.alexalghisi.collab",
       "infoPlist": {
         "NSCameraUsageDescription": "Collab uses the camera for video calls.",
-        "NSMicrophoneUsageDescription": "Collab uses the microphone for audio calls."
+        "NSMicrophoneUsageDescription": "Collab uses the microphone for audio calls.",
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {

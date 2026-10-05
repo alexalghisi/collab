@@ -26,7 +26,9 @@ import {
 } from '../meeting/snapshot';
 import { SIGNALING_URL } from '../signaling/config';
 import { createSpeechCapture } from '../transcript/speech';
-import { unlockAudioPlayback } from '../webrtc/attachMedia';
+import { resumePlayback, unlockAudioPlayback } from '../webrtc/attachMedia';
+import { onAppResumed } from '../webrtc/appFocus';
+import { watchCapture } from '../webrtc/captureWatch';
 import { loadIceServers } from '../webrtc/loadIceServers';
 import { joinRemotePeer, rememberRemoteStream, syncRoomPeers } from '../webrtc/participants';
 import type { TranscriptSegment } from '../transcript/segments';
@@ -726,6 +728,54 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     await swapLocalVideo(track);
     updateSelf({ screenSharing: true });
   }, [stopScreenShare, swapLocalVideo, updateSelf]);
+
+  /**
+   * Leaving the app is not leaving the call. A phone takes the camera and the
+   * microphone from whatever is not on screen, and another app that wants the
+   * microphone — a call in a messenger — takes it even from the app in front.
+   * Neither hands anything back, so without this the room hears silence from
+   * someone who only went to read a message. Only hanging up ends capture.
+   */
+  useEffect(() => {
+    if (!localStream) {
+      return;
+    }
+    const stopResuming = onAppResumed(resumePlayback);
+    const stopWatching = watchCapture({
+      stream: localStream,
+      microphone: {
+        wanted: () => streamRef.current !== null,
+        open: acquireMicrophoneTrack,
+        adopt: async (track) => {
+          const stream = streamRef.current;
+          if (!stream) {
+            track.stop();
+            return;
+          }
+          for (const previous of stream.getAudioTracks()) {
+            previous.stop();
+            stream.removeTrack(previous);
+          }
+          stream.addTrack(track);
+          await managerRef.current?.replaceAudioTrack(track);
+        },
+        enabled: () => !selfRef.current.audioMuted,
+      },
+      camera: {
+        wanted: () =>
+          streamRef.current !== null && !selfRef.current.videoOff && !selfRef.current.screenSharing,
+        open: acquireCameraTrack,
+        adopt: swapLocalVideo,
+        enabled: () => true,
+      },
+      onRestored: () => setError((current) => (current === MEDIA_ERROR ? null : current)),
+      onFailed: () => setError(MEDIA_ERROR),
+    });
+    return () => {
+      stopResuming();
+      stopWatching();
+    };
+  }, [localStream, swapLocalVideo]);
 
   const toggleHand = useCallback(() => {
     updateSelf({ handRaised: !selfRef.current.handRaised });
