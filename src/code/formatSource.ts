@@ -130,9 +130,16 @@ export function formatSource(language: CodeLanguage, source: string): string {
   return formatClike(source, language);
 }
 
+/**
+ * Python indentation is the syntax, not decoration, so this normalises the
+ * widths the author used instead of deciding the nesting itself. Each distinct
+ * width becomes one level of four spaces; a narrower line closes however many
+ * blocks it needs to. Re-deriving nesting from colons would push a top-level
+ * call that follows a `def` — `main()` under `def main():` — inside it.
+ */
 function formatPython(source: string): string {
   const lines = source.replace(/\t/g, PYTHON_INDENT).replace(/\r\n/g, '\n').split('\n');
-  let indent = 0;
+  const widths = [0];
   const out: string[] = [];
   for (const raw of lines) {
     const line = raw.trim();
@@ -143,15 +150,14 @@ function formatPython(source: string): string {
       out.push('');
       continue;
     }
-    if (/^(def |class |async def |import |from |@)/.test(line)) {
-      indent = 0;
-    } else if (/^(elif |else:|except|finally:|except )/.test(line)) {
-      indent = Math.max(0, indent - 1);
+    const width = raw.length - raw.trimStart().length;
+    while (widths.length > 1 && width < widths[widths.length - 1]) {
+      widths.pop();
     }
-    out.push(PYTHON_INDENT.repeat(indent) + line);
-    if (line.endsWith(':') && !line.startsWith('#')) {
-      indent += 1;
+    if (width > widths[widths.length - 1]) {
+      widths.push(width);
     }
+    out.push(PYTHON_INDENT.repeat(widths.length - 1) + line);
   }
   while (out.length > 0 && out[out.length - 1] === '') {
     out.pop();

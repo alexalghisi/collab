@@ -157,8 +157,9 @@ export interface CollabSession {
   /** Runs the shared document in the sandbox; output reaches the whole room. */
   runCode: (stdin: string, files?: readonly WorkspaceFile[], source?: string) => void;
   updateWorkspaceFiles: (files: WorkspaceFile[]) => void;
-  // Host only.
+  /** Host only, except for `stage`, which anybody may put in front of the room. */
   updateSettings: (patch: Partial<RoomSettings>) => void;
+  // Host only.
   admit: (peerId: string) => void;
   deny: (peerId: string) => void;
   /** null mutes everyone but the host. */

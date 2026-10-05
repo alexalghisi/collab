@@ -8,6 +8,7 @@ import {
 import type { SignalingChannel } from '../signaling/SignalingChannel';
 import { decodeUpdate, encodeUpdate } from './updates';
 import { DEFAULT_CODE_LANGUAGE, isCodeLanguage, type CodeLanguage } from './languages';
+import { isStarterCode, starterCode } from './starterCode';
 
 export interface CodeIdentity {
   readonly peerId: string;
@@ -43,6 +44,14 @@ interface AwarenessUser {
   readonly peerId: string;
   readonly name: string;
   readonly color: string;
+}
+
+/** The part of `room:joined` that says whether this room is new and ours. */
+interface RoomArrival {
+  readonly code: string | null;
+  readonly selfPeerId: string;
+  readonly hostPeerId: string;
+  readonly peers: readonly unknown[];
 }
 
 /** Distinguishable at a glance on the dark editor background. */
@@ -112,8 +121,19 @@ export class SharedCodeDocument {
     return isCodeLanguage(stored) ? stored : DEFAULT_CODE_LANGUAGE;
   }
 
+  /**
+   * Switches the language for the whole room, and with it the starter program
+   * — but only while the editor holds a starter nobody has touched. One
+   * transaction, so the two travel together and every peer sees the same
+   * buffer under the same label.
+   */
   setLanguage(language: CodeLanguage): void {
-    this.meta.set('language', language);
+    this.doc.transact(() => {
+      if (isStarterCode(this.text.toString())) {
+        this.replaceText(starterCode(language));
+      }
+      this.meta.set('language', language);
+    });
   }
 
   /** Fires after any change, local or remote, to the text or the language. */
@@ -281,9 +301,14 @@ export class SharedCodeDocument {
     applyAwarenessUpdate(this.awareness, decodeUpdate(update), REMOTE);
   };
 
-  private readonly onRoomJoined = (room: { readonly code: string | null }): void => {
+  private readonly onRoomJoined = (room: RoomArrival): void => {
     if (room.code) {
       this.applyState(room.code);
+    }
+    // Only the first person in a brand new room writes the starter. Anyone
+    // else would add a second copy of it next to whatever is already there.
+    if (this.text.length === 0 && room.peers.length === 0 && room.hostPeerId === room.selfPeerId) {
+      this.replaceText(starterCode(this.language));
     }
     if (room.code || this.text.length > 0) {
       this.publishState();

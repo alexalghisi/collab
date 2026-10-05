@@ -383,12 +383,15 @@ function registerSocket(
   });
 
   socket.on('room:settings', (settings) => {
-    const room = hostedRoom();
+    const room = currentRoom();
     const roomId = socket.data.roomId;
     if (!room || !roomId) {
       return;
     }
-    const next = normalizeRoomSettings(settings, room.settings);
+    // Putting the whiteboard or the editor in front of the room is the one
+    // setting anybody may change; the rest stay with the host.
+    const asked = room.hostPeerId === socket.id ? settings : { stage: settings?.stage };
+    const next = normalizeRoomSettings(asked, room.settings);
     const closingBreakouts = room.settings.breakoutOpen && !next.breakoutOpen;
     room.settings = next;
     io.to(roomId).emit('room:settings', next);

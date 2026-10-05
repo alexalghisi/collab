@@ -6,6 +6,7 @@ import type {
   SignalingChannel,
 } from '../signaling/SignalingChannel';
 import { SharedCodeDocument } from './SharedCodeDocument';
+import { STARTER_CODE } from './starterCode';
 
 type Handlers = {
   [E in keyof ServerToClientEvents]?: Array<ServerToClientEvents[E]>;
@@ -86,6 +87,11 @@ class TestChannel implements SignalingChannel {
 interface Peer {
   readonly channel: TestChannel;
   readonly document: SharedCodeDocument;
+}
+
+/** A `room:joined` payload; by default the first arrival in an empty room. */
+function arrival(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { code: null, selfPeerId: 'a', hostPeerId: 'a', peers: [], ...overrides };
 }
 
 describe('SharedCodeDocument', () => {
@@ -186,11 +192,22 @@ describe('SharedCodeDocument', () => {
     expect(late.document.language).toBe('go');
   });
 
-  it('does not publish an empty document when the room has no code yet', () => {
+  it('opens a brand new room with the starter program', () => {
+    const ada = attach('a', 'Ada');
+    ada.channel.deliver('room:joined', arrival());
+
+    expect(ada.document.text.toString()).toBe(STARTER_CODE.javascript);
+  });
+
+  it('does not write a second starter into a room that already has people', () => {
     const ada = attach('a', 'Ada');
     ada.channel.sent.length = 0;
-    ada.channel.deliver('room:joined', { code: null });
+    ada.channel.deliver(
+      'room:joined',
+      arrival({ selfPeerId: 'b', hostPeerId: 'a', peers: [{ peerId: 'a' }] }),
+    );
 
+    expect(ada.document.text.toString()).toBe('');
     expect(ada.channel.sent.filter((entry) => entry.event === 'code:update')).toEqual([]);
   });
 
@@ -201,7 +218,10 @@ describe('SharedCodeDocument', () => {
     ada.channel.sent.length = 0;
 
     const late = attach('c', 'Grace');
-    late.channel.deliver('room:joined', { code: snapshot });
+    late.channel.deliver(
+      'room:joined',
+      arrival({ code: snapshot, selfPeerId: 'c', hostPeerId: 'a', peers: [{ peerId: 'a' }] }),
+    );
 
     expect(late.document.text.toString()).toBe('function main() {}');
     expect(ada.document.text.toString()).toBe('function main() {}');
@@ -217,6 +237,39 @@ describe('SharedCodeDocument', () => {
 
     expect(linus.document.language).toBe('python');
     expect(seen).toContain('python');
+  });
+
+  it('carries the starter of the new language to everyone who switched with you', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    ada.channel.deliver('room:joined', arrival());
+
+    ada.document.setLanguage('cpp');
+
+    expect(ada.document.text.toString()).toBe(STARTER_CODE.cpp);
+    expect(linus.document.text.toString()).toBe(STARTER_CODE.cpp);
+    expect(linus.document.language).toBe('cpp');
+  });
+
+  it('keeps written code when the language changes under it', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+    ada.document.text.insert(0, 'print("mine")');
+
+    linus.document.setLanguage('go');
+
+    expect(ada.document.text.toString()).toBe('print("mine")');
+    expect(ada.document.language).toBe('go');
+  });
+
+  it('treats a starter the author has edited as code worth keeping', () => {
+    const ada = attach('a', 'Ada');
+    ada.channel.deliver('room:joined', arrival());
+    ada.document.text.insert(ada.document.text.length, '\n// mine');
+
+    ada.document.setLanguage('python');
+
+    expect(ada.document.text.toString()).toBe(`${STARTER_CODE.javascript}\n// mine`);
   });
 
   it('publishes presence and drops it when the peer goes away', () => {

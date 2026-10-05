@@ -43,14 +43,18 @@ export interface JoinRoomPayload {
   readonly breakoutOf?: string;
 }
 
-/** What fills the meeting body for everyone in the room. Only the host may change this. */
+/**
+ * What fills the meeting body for everyone in the room. Unlike the rest of the
+ * settings this is not the host's to keep: a shared editor nobody but the host
+ * can put on screen is not shared.
+ */
 export type RoomStage = 'grid' | 'whiteboard' | 'code';
 
 export function isRoomStage(value: unknown): value is RoomStage {
   return value === 'grid' || value === 'whiteboard' || value === 'code';
 }
 
-/** Room-wide options only the host may change. */
+/** Room-wide options. Only the host may change them, `stage` excepted. */
 export interface RoomSettings {
   readonly waitingRoom: boolean;
   readonly breakoutOpen: boolean;

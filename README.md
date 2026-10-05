@@ -87,8 +87,8 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - **Call quality above a phone messenger**: 720p/30 fps capture, up to 2.5 Mbit/s of video (4 Mbit/s for a shared screen), and 64 kbit/s fullband Opus with echo cancellation, noise suppression, voice isolation and packet-loss recovery — see [Call quality](#call-quality).
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
 - Shareable invite links (`?room=…`) with human-friendly meeting IDs. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
-- Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared files** (images, PDFs and documents in the Files panel, visible to everyone in the room), and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in). The host opening the whiteboard or the code editor opens that surface for everyone in the room.
-- **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that sends the room's code — JavaScript, TypeScript, Python, Go or C++ — to a hosted compiler (Wandbox) from the browser, so GitHub Pages does not depend on the signaling sandbox. Stdin, stdout and stderr from that run appear for every participant.
+- Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared files** (images, PDFs and documents in the Files panel, visible to everyone in the room), and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in). Anybody in the room can put the whiteboard or the code editor in front of everyone — a shared surface only the host can open is not shared.
+- **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, a starter program in each of the five languages so the first person in never faces a blank buffer, and a **Run** button that sends the room's code — JavaScript, TypeScript, Python, Go or C++ — to a hosted compiler (Wandbox) from the browser, so GitHub Pages does not depend on the signaling sandbox. Stdin, stdout and stderr from that run appear for every participant.
 - **Meeting assistant**: an in-call panel that answers questions from the live transcript and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
 - **Host tools**: a **waiting room** (admit or deny each newcomer), mute one participant or everyone, remove a participant, and **breakout rooms** — the host spreads participants over N side rooms and brings everyone back with one click.
 - **Team chat channels** outside of meetings (Firestore-backed; shared by everyone signed in to the same deployment).
@@ -211,6 +211,20 @@ colour, and the name badge above the caret is their colour at 60% alpha, faded
 further to 70% opacity, instead of a solid sticker over the line above. Neither
 takes the pointer, so a click lands on the code. `src/code/remoteCursorStyle.ts`
 holds those rules.
+
+The buffer is never blank. The first person into a new room writes the starter
+program for the current language — `src/code/starterCode.ts`, the smallest
+thing that compiles, runs and prints in each of the five, so C++ and Go come
+with their includes, their `package main` and the signature of `main` already
+there. Only that first arrival writes it; anybody else would add a second copy
+beside what is already in the room.
+
+Picking a language is a room-wide edit, not a personal one: the label and the
+starter change together in one transaction, so both sides end up looking at the
+same buffer. Switching swaps the starter only while nobody has written
+anything — a blank buffer, or a starter still character-for-character what it
+was. One edit of your own is enough to keep it; the language changes under your
+code and leaves it alone.
 
 Late joiners are served the same way whiteboard strokes are, per transport:
 

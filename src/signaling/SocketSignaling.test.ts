@@ -118,6 +118,34 @@ describe('SocketSignaling against the signaling server', () => {
     expect(late.joined.messages.map((entry) => entry.text)).toEqual(['stay after refresh']);
   });
 
+  it('lets a guest put the shared editor in front of the room', async () => {
+    const host = await server.join('a', 'Ada');
+    const guest = await server.join('b', 'Linus');
+    const seen: RoomSettings[] = [];
+    host.channel.on('room:settings', (settings) => seen.push(settings));
+
+    guest.channel.emit('room:settings', { ...DEFAULT_ROOM_SETTINGS, stage: 'code' });
+    await settle();
+
+    expect(seen.map((settings) => settings.stage)).toEqual(['code']);
+  });
+
+  it('ignores the rest of the settings when they do not come from the host', async () => {
+    const host = await server.join('a', 'Ada');
+    const guest = await server.join('b', 'Linus');
+    const seen: RoomSettings[] = [];
+    host.channel.on('room:settings', (settings) => seen.push(settings));
+
+    guest.channel.emit('room:settings', {
+      ...DEFAULT_ROOM_SETTINGS,
+      waitingRoom: true,
+      stage: 'whiteboard',
+    });
+    await settle();
+
+    expect(seen.at(-1)).toEqual({ ...DEFAULT_ROOM_SETTINGS, stage: 'whiteboard' });
+  });
+
   it('keeps a guest in the waiting room after the dial timer would have fired', async () => {
     const host = await server.join('a', 'Ada');
     host.channel.emit('room:settings', { ...DEFAULT_ROOM_SETTINGS, waitingRoom: true });

@@ -49,6 +49,18 @@ describe('formatSource', () => {
     );
   });
 
+  it('leaves a python call that follows a def at the top level', () => {
+    expect(formatSource('python', 'def main():\n    print("hi")\n\nmain()')).toBe(
+      ['def main():', '    print("hi")', '', 'main()'].join('\n'),
+    );
+  });
+
+  it('normalises the python indent unit without moving anything', () => {
+    expect(formatSource('python', 'if a:\n\tif b:\n\t\tc()\n\td()\ne()')).toBe(
+      ['if a:', '    if b:', '        c()', '    d()', 'e()'].join('\n'),
+    );
+  });
+
   it('formats a compact go function', () => {
     expect(formatSource('go', 'func main(){fmt.Println("hi")}')).toBe(
       ['func main() {', '  fmt.Println("hi")', '}'].join('\n'),
