@@ -25,6 +25,27 @@ function sharedPlaybackContext(): AudioContext | null {
   return holder[PLAYBACK_KEY];
 }
 
+/** Everything currently bound to a stream, so playback can be started again. */
+const bound = new Set<HTMLMediaElement>();
+
+/**
+ * Starts the sound again after a trip to another app. A phone pauses every
+ * media element when something else takes the audio session, and hands it back
+ * without resuming anything, so the room stays silent until each element is
+ * played again.
+ */
+export function resumePlayback(): void {
+  const context = sharedPlaybackContext();
+  if (context && context.state !== 'running') {
+    void context.resume();
+  }
+  for (const element of bound) {
+    if (element.paused !== false) {
+      void element.play().catch(() => undefined);
+    }
+  }
+}
+
 export function unlockAudioPlayback(): void {
   const context = sharedPlaybackContext();
   if (!context) {
@@ -93,11 +114,13 @@ export function attachMediaStream(
     };
   }
 
+  bound.add(element);
   const onChange = (): void => bind(true);
   stream.addEventListener('addtrack', onChange);
   stream.addEventListener('removetrack', onChange);
   return () => {
     stopResume();
+    bound.delete(element);
     stream.removeEventListener('addtrack', onChange);
     stream.removeEventListener('removetrack', onChange);
     element.srcObject = null;
