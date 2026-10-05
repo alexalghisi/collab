@@ -100,7 +100,7 @@ export function HomeScreen({
           title="New meeting"
           subtitle="Start now and invite others"
           color={colors.warning}
-          onPress={() => onJoin(generateRoomId(), true)}
+          onPress={() => onJoin(generateRoomId(displayName), true)}
           disabled={!hasName || connecting}
         />
         <ActionCard

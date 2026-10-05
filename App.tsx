@@ -358,6 +358,7 @@ export default function App() {
           <ScheduleMeetingScreen
             initialStart={scheduleStart}
             initialMeeting={editingMeeting}
+            hostName={displayName.trim() || (auth.user.displayName ?? '')}
             directory={directory}
             selfUid={auth.user.uid}
             onSave={saveMeeting}

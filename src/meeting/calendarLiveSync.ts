@@ -18,7 +18,7 @@ export interface CalendarLiveSyncCycle {
   readonly syncToken: string | null;
   readonly meetings: readonly Meeting[];
   readonly window: CalendarWindow;
-  readonly fallbackRoomId: () => string;
+  readonly fallbackRoomId: (title: string) => string;
   listEvents: (token: string, query: CalendarQuery) => Promise<CalendarPage>;
   applyGoogle: (drafts: MeetingDraft[]) => Promise<void>;
   removeMeeting: (id: string) => Promise<void>;

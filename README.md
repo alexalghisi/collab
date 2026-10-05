@@ -36,7 +36,7 @@ The web app already points at that server (`EXPO_PUBLIC_SIGNALING_URL`). You do 
 
 1. You open https://alexalghisi.github.io/collab and sign in (email, or Continue with Google once a Google client ID is set).
 2. Click **New meeting**. Allow the camera and microphone.
-3. Copy the link from the address bar (it looks like `…/collab/?room=abc-defg-hij`) or use **Copy link** in the call.
+3. Copy the link from the address bar (it looks like `…/collab/?room=alghisi-raluca-481937`) or use **Copy link** in the call.
 4. Send that link (WhatsApp, SMS, email). The other person opens it, signs in, and joins the same room.
 
 The first join after the server has been idle can take about a minute — Render’s free instance sleeps. A `200` from `/health` means it is awake.
@@ -86,7 +86,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - Multi-party video and voice calls over a mesh of WebRTC peer connections. Meetings start with the camera and microphone; turn the camera off from the call toolbar when you want audio only, without renegotiation.
 - **Call quality above a phone messenger**: 720p/30 fps capture, up to 2.5 Mbit/s of video (4 Mbit/s for a shared screen), and 64 kbit/s fullband Opus with echo cancellation, noise suppression, voice isolation and packet-loss recovery — see [Call quality](#call-quality).
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
-- Shareable invite links (`?room=…`) with human-friendly meeting IDs. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
+- Shareable invite links (`?room=…`) with meeting IDs you can read out loud: the host's name, or the meeting's title, and six digits — `alghisi-raluca-481937`. A scheduled meeting takes its id from its title, so an invite says what it is for. Names in a script the id cannot carry fall back to `kqz-wrtm-pfa`. From a live meeting you can **send an email or SMS** with the join link; the signaling server delivers it through Twilio (SMS) or Resend (email).
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared files** (images, PDFs and documents in the Files panel, visible to everyone in the room), and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in). The host opening the whiteboard or the code editor opens that surface for everyone in the room.
 - **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones) with every participant's cursor and selection in their own colour, and a **Run** button that sends the room's code — JavaScript, TypeScript, Python, Go or C++ — to a hosted compiler (Wandbox) from the browser, so GitHub Pages does not depend on the signaling sandbox. Stdin, stdout and stderr from that run appear for every participant.
 - **Meeting assistant**: an in-call panel that answers questions from the live transcript and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
