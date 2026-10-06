@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { attachMediaStream, attachRemoteAudio, unlockAudioPlayback } from './attachMedia';
+import {
+  attachMediaStream,
+  attachRemoteAudio,
+  resumePlayback,
+  unlockAudioPlayback,
+} from './attachMedia';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -258,6 +263,39 @@ describe('attachMediaStream', () => {
     expect(createMediaStreamSource).toHaveBeenCalledWith(stream);
     expect(connect).toHaveBeenCalledWith({ id: 'speakers' });
     expect(audio.muted).toBe(true);
+  });
+
+  it('plays a voice the phone paused while the app was away', () => {
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return { id: 'voice' };
+      }),
+    );
+    const element = {
+      tagName: 'AUDIO',
+      srcObject: null as unknown,
+      paused: false,
+      muted: true,
+      volume: 0,
+      getAttribute: () => null,
+      play: vi.fn(async () => undefined),
+    };
+    const stream = {
+      getAudioTracks: () => [{ id: 'mic' }],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStream;
+    const detach = attachMediaStream(element as unknown as HTMLMediaElement, stream);
+    element.play.mockClear();
+
+    element.paused = true;
+    resumePlayback();
+    expect(element.play).toHaveBeenCalledTimes(1);
+
+    detach();
+    resumePlayback();
+    expect(element.play).toHaveBeenCalledTimes(1);
   });
 
   it('opens the audio context on the join click so a later remote track can play', () => {
