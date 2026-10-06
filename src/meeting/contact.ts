@@ -101,6 +101,16 @@ export function inviteCopy(roomId: string, hostName: string, link: string): stri
   return `${host} invited you to a Collab meeting.\n\nJoin: ${joinUrl}\nMeeting ID: ${roomId}`;
 }
 
+export function meetingInviteCopy(input: {
+  readonly title: string;
+  readonly when: string;
+  readonly roomId: string;
+  readonly link: string;
+}): string {
+  const name = input.title.trim() || 'A Collab meeting';
+  return `${name}\n${input.when}\n\nJoin: ${input.link}\nMeeting ID: ${input.roomId}`;
+}
+
 export function smsInviteCopy(roomId: string, hostName: string, link: string): string {
   const host = hostName.trim() || 'Someone';
   const joinUrl =
