@@ -177,6 +177,7 @@ class FirestoreChannel implements SignalingChannel {
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private awarenessTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingAwareness: string | null = null;
+  private lastAwarenessAt = 0;
   private isHost = false;
   /** Output already dispatched per run, so a growing document yields deltas. */
   private readonly runOutput = new Map<string, { stdout: number; stderr: number }>();
@@ -843,20 +844,30 @@ class FirestoreChannel implements SignalingChannel {
     this.runOutput.set(runId, seen);
   }
 
-  /** Keeps the newest cursor position and writes at most one document per tick. */
   private sendAwareness(update: string): void {
     this.pendingAwareness = update;
     if (this.awarenessTimer) {
       return;
     }
+    const since = Date.now() - this.lastAwarenessAt;
+    if (since >= AWARENESS_THROTTLE_MS) {
+      this.flushAwareness();
+      return;
+    }
     this.awarenessTimer = setTimeout(() => {
       this.awarenessTimer = null;
-      const pending = this.pendingAwareness;
-      this.pendingAwareness = null;
-      if (pending) {
-        void updateDoc(this.selfRef(), { codeAwareness: pending });
-      }
-    }, AWARENESS_THROTTLE_MS);
+      this.flushAwareness();
+    }, AWARENESS_THROTTLE_MS - since);
+  }
+
+  private flushAwareness(): void {
+    const pending = this.pendingAwareness;
+    this.pendingAwareness = null;
+    if (!pending) {
+      return;
+    }
+    this.lastAwarenessAt = Date.now();
+    void updateDoc(this.selfRef(), { codeAwareness: pending });
   }
 
   private async askAssistant(ask: { requestId: string; question: string }): Promise<void> {
