@@ -231,6 +231,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
             {panel === 'invite' && (
               <InvitePanel
                 roomId={roomId}
+                hostName={displayName}
                 onSend={onInvite ?? session.sendInvite}
                 onClose={() => setPanel(null)}
               />
