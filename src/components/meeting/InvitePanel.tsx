@@ -1,33 +1,58 @@
 import { createElement, useState } from 'react';
-import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
-import { InviteError, type ParsedContact } from '../../meeting/contact';
+import { Linking, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { InviteError, inviteCopy, parseContact, type ParsedContact } from '../../meeting/contact';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
+import {
+  WHATSAPP_NEEDS_COUNTRY_CODE,
+  whatsappInviteUrl,
+  whatsappNumber,
+} from '../../meeting/whatsapp';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { SidePanel } from './SidePanel';
 
 export interface InvitePanelProps {
   roomId: string;
+  hostName?: string;
   onSend: (input: string) => Promise<ParsedContact>;
   onClose: () => void;
 }
 
-export function InvitePanel({ roomId, onSend, onClose }: InvitePanelProps) {
+export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePanelProps) {
   const [contact, setContact] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const send = async (): Promise<void> => {
+  const typed = parseContact(contact);
+  const message = (): string => inviteCopy(roomId, hostName, buildInviteLink(roomId));
+
+  const openWhatsApp = (phone?: string): void => {
+    setError(null);
+    setStatus(null);
+    if (phone && whatsappNumber(phone) === null) {
+      setError(WHATSAPP_NEEDS_COUNTRY_CODE);
+      return;
+    }
+    void Linking.openURL(whatsappInviteUrl(message(), phone));
+    setStatus(
+      phone
+        ? `WhatsApp is open with the invite for ${phone.trim()}. Press send there.`
+        : 'WhatsApp is open with the invite. Pick who it goes to and press send.',
+    );
+    if (phone) {
+      setContact('');
+    }
+  };
+
+  const sendEmail = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     setStatus(null);
     try {
       const sent = await onSend(contact);
-      setStatus(
-        sent.kind === 'email' ? `Email sent to ${sent.value}.` : `SMS sent to ${sent.value}.`,
-      );
+      setStatus(`Email sent to ${sent.value}.`);
       setContact('');
     } catch (cause) {
       setError(cause instanceof InviteError ? cause.message : 'The invite could not be sent.');
@@ -51,14 +76,16 @@ export function InvitePanel({ roomId, onSend, onClose }: InvitePanelProps) {
     <SidePanel title="Invite" onClose={onClose}>
       <View style={styles.body}>
         <Text style={styles.lede}>
-          Send the join link by email or SMS. The other person gets a message they can open to join
-          this call.
+          Send the join link on WhatsApp or by email. The other person gets a message they can open
+          to join this call.
         </Text>
         <TextInput
           style={styles.input}
           value={contact}
           onChangeText={setContact}
-          onSubmitEditing={() => void send()}
+          onSubmitEditing={() =>
+            typed?.kind === 'phone' ? openWhatsApp(contact) : void sendEmail()
+          }
           placeholder="name@email.com or +40 721 123 456"
           placeholderTextColor={colors.textSubtle}
           autoCapitalize="none"
@@ -66,11 +93,25 @@ export function InvitePanel({ roomId, onSend, onClose }: InvitePanelProps) {
           keyboardType="default"
           editable={!busy}
         />
+        {typed?.kind === 'phone' ? (
+          <Button
+            label="Send on WhatsApp"
+            icon="logo-whatsapp"
+            onPress={() => openWhatsApp(contact)}
+          />
+        ) : (
+          <Button
+            label={busy ? 'Sending…' : 'Send invite'}
+            icon="send"
+            onPress={() => void sendEmail()}
+            disabled={busy || contact.trim() === ''}
+          />
+        )}
         <Button
-          label={busy ? 'Sending…' : 'Send invite'}
-          icon="send"
-          onPress={() => void send()}
-          disabled={busy || contact.trim() === ''}
+          label="Pick someone in WhatsApp"
+          icon="logo-whatsapp"
+          variant="secondary"
+          onPress={() => openWhatsApp()}
         />
         {status && <Text style={styles.status}>{status}</Text>}
         {error && <Text style={styles.error}>{error}</Text>}
