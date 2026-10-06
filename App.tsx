@@ -331,6 +331,7 @@ export default function App() {
           <ScheduleMeetingScreen
             initialStart={scheduleStart}
             initialMeeting={editingMeeting}
+            hostName={displayName.trim() || (auth.user?.displayName ?? '')}
             onSave={saveMeeting}
             onCancel={() => {
               setEditingMeeting(null);

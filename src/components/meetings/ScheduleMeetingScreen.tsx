@@ -15,6 +15,7 @@ export interface ScheduleMeetingScreenProps {
   initialStart: Date;
   /** When set, the form edits this meeting instead of creating a new one. */
   initialMeeting?: Meeting | null;
+  hostName?: string;
   onSave: (draft: MeetingDraft) => void;
   onCancel: () => void;
 }
@@ -22,6 +23,7 @@ export interface ScheduleMeetingScreenProps {
 export function ScheduleMeetingScreen({
   initialStart,
   initialMeeting,
+  hostName = '',
   onSave,
   onCancel,
 }: ScheduleMeetingScreenProps) {
@@ -34,7 +36,7 @@ export function ScheduleMeetingScreen({
     initialMeeting && initialMeeting.durationMinutes > 0 ? initialMeeting.durationMinutes : 30,
   );
   const [description, setDescription] = useState(initialMeeting?.description ?? '');
-  const [roomId, setRoomId] = useState(() => initialMeeting?.roomId ?? generateRoomId());
+  const [roomId, setRoomId] = useState(() => initialMeeting?.roomId ?? generateRoomId(hostName));
   const [attendees, setAttendees] = useState(() => (initialMeeting?.guests ?? []).join(', '));
   const [reminderMinutes, setReminderMinutes] = useState<15 | 30>(
     initialMeeting?.reminderMinutes ?? 15,
@@ -187,7 +189,7 @@ export function ScheduleMeetingScreen({
         <Text style={[styles.input, styles.roomId]}>{roomId}</Text>
         <Pressable
           style={styles.regenerate}
-          onPress={() => setRoomId(generateRoomId())}
+          onPress={() => setRoomId(generateRoomId(title.trim() || hostName))}
           accessibilityRole="button"
           accessibilityLabel="Generate a new meeting ID"
         >
