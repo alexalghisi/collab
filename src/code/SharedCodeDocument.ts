@@ -8,6 +8,7 @@ import {
 import type { SignalingChannel } from '../signaling/SignalingChannel';
 import { decodeUpdate, encodeUpdate } from './updates';
 import { DEFAULT_CODE_LANGUAGE, isCodeLanguage, type CodeLanguage } from './languages';
+import { isStarterCode, starterCode } from './starterCode';
 
 export interface CodeIdentity {
   readonly peerId: string;
@@ -108,7 +109,12 @@ export class SharedCodeDocument {
   }
 
   setLanguage(language: CodeLanguage): void {
-    this.meta.set('language', language);
+    this.doc.transact(() => {
+      if (isStarterCode(this.text.toString())) {
+        this.replaceText(starterCode(language));
+      }
+      this.meta.set('language', language);
+    });
   }
 
   /** Fires after any change, local or remote, to the text or the language. */
@@ -258,9 +264,22 @@ export class SharedCodeDocument {
     applyAwarenessUpdate(this.awareness, decodeUpdate(update), REMOTE);
   };
 
-  private readonly onRoomJoined = (room: { readonly code: string | null }): void => {
+  private readonly onRoomJoined = (room: {
+    readonly code: string | null;
+    readonly selfPeerId?: string;
+    readonly hostPeerId?: string;
+    readonly peers?: readonly unknown[];
+  }): void => {
     if (room.code) {
       this.applyState(room.code);
+    }
+    const alone =
+      Array.isArray(room.peers) &&
+      room.peers.length === 0 &&
+      room.hostPeerId !== undefined &&
+      room.hostPeerId === room.selfPeerId;
+    if (this.text.length === 0 && alone) {
+      this.replaceText(starterCode(this.language));
     }
     if (room.code || this.text.length > 0) {
       this.publishState();
