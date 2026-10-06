@@ -15,6 +15,7 @@ export function remoteCursorCss(editors: readonly CodePresence[]): string {
         .monaco-editor .${klass}-caret {
           border-left: 2px solid ${editor.color};
           margin-left: -1px;
+          margin-right: -1px;
           position: relative;
           pointer-events: none;
           z-index: 10;
