@@ -3,7 +3,9 @@ import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { buildIcs, googleCalendarUrl } from '../../meeting/calendarExport';
 import { formatDay, formatTime } from '../../meeting/calendar';
 import { downloadTextFile } from '../../meeting/download';
+import { meetingInviteCopy } from '../../meeting/contact';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
+import { whatsappInviteUrl } from '../../meeting/whatsapp';
 import { meetingEndsAt, type Meeting } from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
@@ -77,6 +79,22 @@ export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: Mee
               onPress={() => setInviting((open) => !open)}
             />
           ) : null}
+          <IconButton
+            icon="logo-whatsapp"
+            label="Invite on WhatsApp"
+            onPress={() =>
+              void Linking.openURL(
+                whatsappInviteUrl(
+                  meetingInviteCopy({
+                    title: meeting.title,
+                    when: describeWhen(meeting),
+                    roomId: meeting.roomId,
+                    link: inviteLink,
+                  }),
+                ),
+              )
+            }
+          />
           <IconButton
             icon="link"
             label="Copy invite link"

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   inviteCopy,
+  meetingInviteCopy,
   parseContact,
   parseContactList,
   parseEmailList,
@@ -53,6 +54,26 @@ describe('invite copy', () => {
     expect(smsInviteCopy('kqz-wrtm-pfa', 'Ada', link)).toBe(
       'Ada invited you to a Collab call. Join: https://collab.example/?room=kqz-wrtm-pfa',
     );
+  });
+
+  it('leads a scheduled invite with what and when', () => {
+    const copy = meetingInviteCopy({
+      title: 'Weekly sync',
+      when: 'Mon 5 Oct · 09:00 – 09:30',
+      roomId: 'alghisi-raluca-481937',
+      link: 'https://collab.example/?room=alghisi-raluca-481937',
+    });
+
+    expect(copy.split('\n')[0]).toBe('Weekly sync');
+    expect(copy).toContain('Mon 5 Oct · 09:00 – 09:30');
+    expect(copy).toContain('Join: https://collab.example/?room=alghisi-raluca-481937');
+    expect(copy).toContain('Meeting ID: alghisi-raluca-481937');
+  });
+
+  it('names an untitled meeting rather than opening with a blank line', () => {
+    const copy = meetingInviteCopy({ title: '   ', when: 'now', roomId: 'r', link: 'l' });
+
+    expect(copy.split('\n')[0]).toBe('A Collab meeting');
   });
 
   it('falls back to canonical web link and meeting id when link is empty or invalid', () => {
