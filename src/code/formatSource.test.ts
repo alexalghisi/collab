@@ -43,6 +43,12 @@ describe('formatSource', () => {
     );
   });
 
+  it('keeps a top-level call after a function at the left margin', () => {
+    expect(formatSource('python', 'def main():\n    print("hi")\n\nmain()')).toBe(
+      ['def main():', '    print("hi")', '', 'main()'].join('\n'),
+    );
+  });
+
   it('indents python after a colon and dedents else', () => {
     expect(formatSource('python', 'def f(x):\n  if x:\n    return x\n  else:\n    return 0')).toBe(
       ['def f(x):', '    if x:', '        return x', '    else:', '        return 0'].join('\n'),
