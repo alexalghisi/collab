@@ -186,6 +186,53 @@ describe('SharedCodeDocument', () => {
     expect(late.document.language).toBe('go');
   });
 
+  it('writes a starter when the host is first into an empty room', () => {
+    const ada = attach('a', 'Ada');
+    ada.channel.sent.length = 0;
+    ada.channel.deliver('room:joined', {
+      code: null,
+      selfPeerId: 'a',
+      hostPeerId: 'a',
+      peers: [],
+    });
+
+    expect(ada.document.text.toString()).toContain("console.log('Hello from Collab')");
+    expect(ada.channel.sent.some((entry) => entry.event === 'code:update')).toBe(true);
+  });
+
+  it('does not plant a second starter for someone who is not alone', () => {
+    const linus = attach('b', 'Linus');
+    linus.channel.deliver('room:joined', {
+      code: null,
+      selfPeerId: 'b',
+      hostPeerId: 'a',
+      peers: [{}],
+    });
+
+    expect(linus.document.text.toString()).toBe('');
+  });
+
+  it('moves the starter with the language and leaves a written program alone', () => {
+    const ada = attach('a', 'Ada');
+    ada.channel.deliver('room:joined', {
+      code: null,
+      selfPeerId: 'a',
+      hostPeerId: 'a',
+      peers: [],
+    });
+
+    ada.document.setLanguage('python');
+    expect(ada.document.language).toBe('python');
+    expect(ada.document.text.toString()).toContain('print("Hello from Collab")');
+
+    ada.document.text.insert(0, '# mine\n');
+    const written = ada.document.text.toString();
+    ada.document.setLanguage('go');
+
+    expect(ada.document.language).toBe('go');
+    expect(ada.document.text.toString()).toBe(written);
+  });
+
   it('does not publish an empty document when the room has no code yet', () => {
     const ada = attach('a', 'Ada');
     ada.channel.sent.length = 0;
