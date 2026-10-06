@@ -148,6 +148,41 @@ it is created, and again whenever the outgoing video is swapped:
 A shared screen is displayed with `object-fit: contain` rather than `cover`, so
 no part of it is cropped away.
 
+### Leaving the app is not leaving the call
+
+Reading a message in another app used to end the call for everyone else: a
+phone takes the camera and the microphone from whatever is not on screen, and
+another app that wants the microphone takes it even from the app in front.
+Neither hands anything back — the track ends, or goes silent for good — so the
+room heard nothing from that person until they rejoined. Only hanging up should
+stop capture.
+
+- **iOS** declares the `audio` background mode, so the call keeps running while
+  the app is off screen instead of being suspended at the door.
+- **Returning** goes through `src/webrtc/captureWatch.ts`. It watches the local
+  tracks for `ended` and `mute`, and re-checks them whenever the app comes back
+  (`src/webrtc/appFocus.ts`: `AppState` on a phone, `visibilitychange` on the
+  web). A track that ended is reopened at once; one that only went quiet is
+  given `MUTE_GRACE_MS` to recover on its own first, since a notification chime
+  borrowing the microphone does give it back. The fresh track is handed to
+  every peer connection with `replaceTrack`, so there is no renegotiation and
+  nobody else sees a blip.
+- **It restores, it does not decide.** A device is only reopened when its track
+  is already in the local stream, so somebody who joined without a microphone
+  is never asked for one behind their back, a participant who muted themselves
+  gets their microphone back still muted, and a camera that its owner turned
+  off stays off. Nothing is reopened while the screen is being shared, and
+  reopening is not retried more often than `REOPEN_INTERVAL_MS`, so a messenger
+  still holding the microphone is not fought in a loop.
+- **The other voices** are started again too (`resumePlayback`). A phone pauses
+  every media element when something else takes the audio session and hands it
+  back without resuming anything, which is why the room went quiet in both
+  directions.
+
+Android keeps capture for an app in the background only behind a foreground
+service, which this app does not run: there, the microphone comes back on
+return rather than never stopping.
+
 ### Live captions
 
 Spoken turns travel over the same `SignalingChannel` as chat (`transcript:segment`).
