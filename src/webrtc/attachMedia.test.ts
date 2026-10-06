@@ -35,9 +35,10 @@ describe('attachMediaStream', () => {
     expect(element.play).toHaveBeenCalledTimes(1);
   });
 
-  it('rebinds and plays when a late video track lands on an already playing tile', () => {
+  it('plays a late video track without rebuilding the element for the same camera', () => {
     const listeners = new Map<string, () => void>();
     const playback = { id: 'preview' };
+    const camera = { id: 'cam' };
     vi.stubGlobal(
       'MediaStream',
       vi.fn(function MediaStream() {
@@ -51,7 +52,7 @@ describe('attachMediaStream', () => {
       play: vi.fn(async () => undefined),
     };
     const stream = {
-      getVideoTracks: () => [{ id: 'cam' }],
+      getVideoTracks: () => [camera],
       addEventListener: (event: string, handler: () => void) => listeners.set(event, handler),
       removeEventListener: (event: string) => listeners.delete(event),
     } as unknown as MediaStream;
@@ -60,8 +61,39 @@ describe('attachMediaStream', () => {
     element.play.mockClear();
     listeners.get('addtrack')?.();
 
+    expect(MediaStream).toHaveBeenCalledTimes(1);
     expect(element.srcObject).toBe(playback);
     expect(element.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('points the tile at a camera that arrives after the element was empty', () => {
+    const listeners = new Map<string, () => void>();
+    const camera = { id: 'cam' };
+    let listed: unknown[] = [];
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream(tracks: unknown[]) {
+        return { id: 'preview', tracks };
+      }),
+    );
+    const element = {
+      tagName: 'VIDEO',
+      srcObject: null as unknown,
+      paused: false,
+      play: vi.fn(async () => undefined),
+    };
+    const stream = {
+      getVideoTracks: () => listed,
+      addEventListener: (event: string, handler: () => void) => listeners.set(event, handler),
+      removeEventListener: (event: string) => listeners.delete(event),
+    } as unknown as MediaStream;
+
+    attachMediaStream(element as unknown as HTMLMediaElement, stream);
+    listed = [camera];
+    listeners.get('addtrack')?.();
+
+    expect(MediaStream).toHaveBeenLastCalledWith([camera]);
+    expect(element.srcObject).toEqual({ id: 'preview', tracks: [camera] });
   });
 
   it('retries play on the next click when the browser blocks autoplay', async () => {
