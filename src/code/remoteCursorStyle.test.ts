@@ -22,6 +22,13 @@ describe('remoteCursorCss', () => {
     expect(css).toContain("content: 'Linus'");
   });
 
+  it('pays for the caret stroke on both sides so the code does not shift', () => {
+    const css = remoteCursorCss([linus]);
+
+    expect(css).toContain('margin-left: -1px');
+    expect(css).toContain('margin-right: -1px');
+  });
+
   it('lets clicks through to the code under a remote caret and its label', () => {
     expect(remoteCursorCss([linus]).match(/pointer-events: none/g)).toHaveLength(2);
   });

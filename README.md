@@ -245,8 +245,9 @@ Remote carets are drawn over code somebody is reading, so everything except the
 caret stroke itself is see-through: the selection is a 13% tint of the author's
 colour, and the name badge above the caret is their colour at 60% alpha, faded
 further to 70% opacity, instead of a solid sticker over the line above. Neither
-takes the pointer, so a click lands on the code. `src/code/remoteCursorStyle.ts`
-holds those rules.
+takes the pointer, so a click lands on the code. The caret stroke is paid for
+with a negative margin on both sides, so it does not shift the characters under
+it. `src/code/remoteCursorStyle.ts` holds those rules.
 
 Late joiners are served the same way whiteboard strokes are, per transport:
 
@@ -256,8 +257,8 @@ Late joiners are served the same way whiteboard strokes are, per transport:
 - **Firestore** — updates are appended to `rooms/{id}/codeUpdates` and replayed
   to a joiner in order; the host squashes the log into a single update once it
   grows past a threshold, which bounds both storage and replay cost. Awareness
-  rides on the author's participant document, throttled, since cursor moves are
-  continuous.
+  rides on the author's participant document. A move after a pause goes out at
+  once; a continuous drag is held to one write per tick.
 
 ### Running code
 

@@ -14,6 +14,8 @@ export function remoteCursorCss(editors: readonly CodePresence[]): string {
         }
         .${klass}-label {
           border-left: 2px solid ${editor.color};
+          margin-left: -1px;
+          margin-right: -1px;
           pointer-events: none;
         }
         .${klass}-label::after {
