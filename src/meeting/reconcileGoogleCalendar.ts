@@ -11,7 +11,7 @@ export function reconcileGoogleCalendar(
   events: readonly GoogleCalendarEvent[],
   options: {
     readonly fullWindow: boolean;
-    readonly fallbackRoomId: () => string;
+    readonly fallbackRoomId: (title: string) => string;
   },
 ): GoogleCalendarReconcile {
   const upserts: MeetingDraft[] = [];
@@ -38,7 +38,7 @@ export function reconcileGoogleCalendar(
       continue;
     }
     activeIds.add(event.id);
-    const draft = meetingFromGoogleEvent(event, options.fallbackRoomId());
+    const draft = meetingFromGoogleEvent(event, options.fallbackRoomId(event.summary ?? ''));
     if (draft) {
       upserts.push(draft);
     }
