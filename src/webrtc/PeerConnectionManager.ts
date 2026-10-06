@@ -24,6 +24,8 @@ interface PeerEntry {
   /** Candidates that arrived before the remote description was applied. */
   readonly pendingCandidates: RTCIceCandidateInit[];
   offerer: boolean;
+  polite: boolean;
+  offerAgain: boolean;
   restarted: boolean;
 }
 
@@ -44,6 +46,7 @@ export class PeerConnectionManager {
   private readonly onPeerClosed: (peerId: string) => void;
   private readonly peers = new Map<string, PeerEntry>();
   private readonly earlyIce = new Map<string, RTCIceCandidateInit[]>();
+  private readonly offerQueue = new Map<string, Promise<void>>();
   private selfPeerId = '';
   private selfJoinedAt = 0;
 
@@ -73,14 +76,18 @@ export class PeerConnectionManager {
     });
 
     this.signaling.on('signal:offer', ({ fromPeerId, description }) => {
-      void this.answerPeer(fromPeerId, description);
+      void this.enqueue(fromPeerId, () => this.answerPeer(fromPeerId, description));
     });
 
     this.signaling.on('signal:answer', ({ fromPeerId, description }) => {
-      const entry = this.peers.get(fromPeerId);
-      if (entry) {
-        void this.applyRemoteDescription(entry, description);
-      }
+      void this.enqueue(fromPeerId, async () => {
+        const entry = this.peers.get(fromPeerId);
+        if (!entry) {
+          return;
+        }
+        await this.applyRemoteDescription(entry, description);
+        await this.flushOffer(entry, fromPeerId);
+      });
     });
 
     this.signaling.on('signal:ice', ({ fromPeerId, candidate }) => {
@@ -110,25 +117,20 @@ export class PeerConnectionManager {
     stopAllPeerAudio();
   }
 
-  /** Swaps the outgoing microphone on every connection without renegotiating. */
   async replaceAudioTrack(track: MediaStreamTrack | null): Promise<void> {
     await Promise.all(
-      [...this.peers.values()].map(async (entry) => {
-        await entry.senders.audio.replaceTrack(track);
-        await tuneAudioSender(entry.senders.audio);
-      }),
+      [...this.peers.entries()].map(([peerId, entry]) =>
+        this.enqueue(peerId, () => this.publishTrack(entry, peerId, 'audio', track)),
+      ),
     );
   }
 
   /** Swaps the outgoing video (camera, screen, or nothing) on every connection. */
   async replaceVideoTrack(track: MediaStreamTrack | null): Promise<void> {
-    const content = videoContentOf(track);
     await Promise.all(
-      [...this.peers.values()].map(async (entry) => {
-        await entry.senders.video.replaceTrack(track);
-        // A screen needs a different bitrate split than a face does.
-        await tuneVideoSender(entry.senders.video, content);
-      }),
+      [...this.peers.entries()].map(([peerId, entry]) =>
+        this.enqueue(peerId, () => this.publishTrack(entry, peerId, 'video', track)),
+      ),
     );
   }
 
@@ -157,12 +159,6 @@ export class PeerConnectionManager {
         return [kind, sender];
       }),
     ) as Record<MediaKind, RTCRtpSender>;
-
-    void tuneAudioSender(senders.audio);
-    void tuneVideoSender(
-      senders.video,
-      videoContentOf(this.localStream.getTracks().find((track) => track.kind === 'video') ?? null),
-    );
 
     connection.addEventListener('icecandidate', (event) => {
       if (event.candidate) {
@@ -200,6 +196,8 @@ export class PeerConnectionManager {
       remoteStream,
       pendingCandidates: [],
       offerer: false,
+      polite: true,
+      offerAgain: false,
       restarted: false,
     };
     const queued = this.earlyIce.get(peerId);
@@ -248,7 +246,76 @@ export class PeerConnectionManager {
       published = description;
       await entry.connection.setLocalDescription(description);
     }
+    await this.tuneSenders(entry);
     this.signaling.emit(event, { targetPeerId: peerId, description: published });
+  }
+
+  private tuneSenders(entry: PeerEntry): Promise<void> {
+    const videoTrack =
+      this.localStream.getTracks().find((track) => track.kind === 'video') ??
+      entry.senders.video.track;
+    return Promise.all([
+      tuneAudioSender(entry.senders.audio),
+      tuneVideoSender(entry.senders.video, videoContentOf(videoTrack)),
+    ]).then(() => undefined);
+  }
+
+  private enqueue(peerId: string, task: () => Promise<void>): Promise<void> {
+    const previous = this.offerQueue.get(peerId) ?? Promise.resolve();
+    const run = previous.then(task, task);
+    this.offerQueue.set(
+      peerId,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return run;
+  }
+
+  private async publishTrack(
+    entry: PeerEntry,
+    peerId: string,
+    kind: MediaKind,
+    track: MediaStreamTrack | null,
+  ): Promise<void> {
+    const sender = entry.senders[kind];
+    const hadTrack = sender.track != null;
+    await sender.replaceTrack(track);
+    if (kind === 'audio') {
+      await tuneAudioSender(sender);
+    } else {
+      await tuneVideoSender(sender, videoContentOf(track));
+    }
+    if (hadTrack !== (track != null)) {
+      await this.offerNow(entry, peerId);
+    }
+  }
+
+  private async offerNow(entry: PeerEntry, peerId: string): Promise<void> {
+    if (!this.peers.has(peerId)) {
+      return;
+    }
+    const state = entry.connection.signalingState;
+    if (state && state !== 'stable') {
+      entry.offerAgain = true;
+      return;
+    }
+    entry.offerer = true;
+    try {
+      const offer = await entry.connection.createOffer();
+      await this.publishLocalDescription(entry, peerId, 'signal:offer', offer);
+    } catch {
+      return;
+    }
+  }
+
+  private async flushOffer(entry: PeerEntry, peerId: string): Promise<void> {
+    if (!entry.offerAgain) {
+      return;
+    }
+    entry.offerAgain = false;
+    await this.offerNow(entry, peerId);
   }
 
   private async recover(peerId: string): Promise<void> {
@@ -271,15 +338,26 @@ export class PeerConnectionManager {
     }
     const entry = this.createEntry(peerId);
     entry.offerer = true;
-    const offer = await entry.connection.createOffer();
-    await this.publishLocalDescription(entry, peerId, 'signal:offer', offer);
+    entry.polite = false;
+    await this.enqueue(peerId, async () => {
+      const offer = await entry.connection.createOffer();
+      await this.publishLocalDescription(entry, peerId, 'signal:offer', offer);
+    });
   }
 
   private async answerPeer(peerId: string, description: RTCSessionDescriptionInit): Promise<void> {
     const entry = this.peers.get(peerId) ?? this.createEntry(peerId);
+    if (entry.connection.signalingState === 'have-local-offer') {
+      if (!entry.polite) {
+        entry.offerAgain = true;
+        return;
+      }
+      await entry.connection.setLocalDescription({ type: 'rollback' });
+    }
     await this.applyRemoteDescription(entry, description);
     const answer = await entry.connection.createAnswer();
     await this.publishLocalDescription(entry, peerId, 'signal:answer', answer);
+    await this.flushOffer(entry, peerId);
   }
 
   private closePeer(peerId: string): void {
@@ -290,6 +368,7 @@ export class PeerConnectionManager {
     entry.connection.close();
     this.peers.delete(peerId);
     this.earlyIce.delete(peerId);
+    this.offerQueue.delete(peerId);
     stopPeerAudio(peerId);
     this.onPeerClosed(peerId);
   }
