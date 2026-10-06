@@ -109,6 +109,16 @@ describe('reconcileGoogleCalendar', () => {
     expect(result.removeIds).toEqual([]);
   });
 
+  it('names the fallback room after the event when Google has no Collab link', () => {
+    const result = reconcileGoogleCalendar(
+      [],
+      [{ ...timed, location: 'Room 4', summary: 'Design review' }],
+      { fullWindow: false, fallbackRoomId: (title) => `room-for-${title}` },
+    );
+
+    expect(result.upserts[0]?.roomId).toBe('room-for-Design review');
+  });
+
   it('removes a linked meeting missing from a full window and keeps an unlinked one', () => {
     const result = reconcileGoogleCalendar([linked, pushed, unlinked], [], {
       fullWindow: true,
