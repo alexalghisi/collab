@@ -21,7 +21,10 @@ class FakeStream {
 
 class FakeSender {
   parameters: RTCRtpSendParameters = { encodings: [{}] } as RTCRtpSendParameters;
-  readonly replaceTrack = vi.fn(async () => undefined);
+  track: MediaStreamTrack | null = null;
+  readonly replaceTrack = vi.fn(async (next: MediaStreamTrack | null) => {
+    this.track = next;
+  });
   getParameters() {
     return this.parameters;
   }
@@ -278,5 +281,108 @@ describe('PeerConnectionManager', () => {
         sdpMid: '0',
       });
     });
+  });
+
+  it('offers again when the answerer attaches a microphone', async () => {
+    const connection = new FakePeerConnection();
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return new FakeStream();
+      }),
+    );
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      vi.fn(function RTCPeerConnection() {
+        return connection;
+      }),
+    );
+
+    const handlers = new Map<string, (payload: never) => void>();
+    const signaling = {
+      on: (event: string, handler: (payload: never) => void) => {
+        handlers.set(event, handler);
+      },
+      emit: vi.fn(),
+    };
+    const manager = new PeerConnectionManager({
+      signaling: signaling as never,
+      localStream: new FakeStream() as unknown as MediaStream,
+      onRemoteStream: vi.fn(),
+      onPeerClosed: vi.fn(),
+    });
+    manager.start();
+
+    handlers.get('signal:offer')?.({
+      fromPeerId: 'peer-b',
+      description: { type: 'offer', sdp: 'offer' },
+    } as never);
+    await vi.waitFor(() => {
+      expect(signaling.emit).toHaveBeenCalledWith(
+        'signal:answer',
+        expect.objectContaining({ targetPeerId: 'peer-b' }),
+      );
+    });
+    signaling.emit.mockClear();
+
+    const mic = { id: 'mic', kind: 'audio' } as MediaStreamTrack;
+    await manager.replaceAudioTrack(mic);
+
+    expect(connection.senders[0].replaceTrack).toHaveBeenCalledWith(mic);
+    expect(signaling.emit).toHaveBeenCalledWith(
+      'signal:offer',
+      expect.objectContaining({ targetPeerId: 'peer-b' }),
+    );
+  });
+
+  it('does not renegotiate when one live video track replaces another', async () => {
+    const connection = new FakePeerConnection();
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return new FakeStream();
+      }),
+    );
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      vi.fn(function RTCPeerConnection() {
+        return connection;
+      }),
+    );
+
+    const handlers = new Map<string, (payload: never) => void>();
+    const signaling = {
+      on: (event: string, handler: (payload: never) => void) => {
+        handlers.set(event, handler);
+      },
+      emit: vi.fn(),
+    };
+    const manager = new PeerConnectionManager({
+      signaling: signaling as never,
+      localStream: new FakeStream() as unknown as MediaStream,
+      onRemoteStream: vi.fn(),
+      onPeerClosed: vi.fn(),
+    });
+    manager.start();
+
+    handlers.get('signal:offer')?.({
+      fromPeerId: 'peer-b',
+      description: { type: 'offer', sdp: 'offer' },
+    } as never);
+    await vi.waitFor(() => {
+      expect(signaling.emit).toHaveBeenCalledWith(
+        'signal:answer',
+        expect.objectContaining({ targetPeerId: 'peer-b' }),
+      );
+    });
+
+    const camera = { id: 'cam', kind: 'video' } as MediaStreamTrack;
+    const screen = { id: 'screen', kind: 'video', contentHint: 'detail' } as MediaStreamTrack;
+    await manager.replaceVideoTrack(camera);
+    signaling.emit.mockClear();
+    await manager.replaceVideoTrack(screen);
+
+    expect(connection.senders[1].replaceTrack).toHaveBeenLastCalledWith(screen);
+    expect(signaling.emit).not.toHaveBeenCalled();
   });
 });
