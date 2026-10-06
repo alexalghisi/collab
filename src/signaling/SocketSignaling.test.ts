@@ -217,6 +217,22 @@ describe('SocketSignaling against the signaling server', () => {
     expect(held).toBe(false);
   });
 
+  it('lets a guest open the editor and leaves the waiting room with the host', async () => {
+    const host = await server.join('a', 'Ada');
+    const guest = await server.join('b', 'Linus');
+    host.channel.emit('room:settings', { ...DEFAULT_ROOM_SETTINGS, waitingRoom: true });
+    await settle();
+    const seen = new Promise<RoomSettings>((resolve) => host.channel.on('room:settings', resolve));
+
+    guest.channel.emit('room:settings', {
+      ...DEFAULT_ROOM_SETTINGS,
+      waitingRoom: false,
+      stage: 'code',
+    });
+
+    expect(await seen).toMatchObject({ stage: 'code', waitingRoom: true });
+  });
+
   it('broadcasts the host stage so everyone opens the same surface', async () => {
     const host = await server.join('a', 'Ada');
     const guest = await server.join('b', 'Linus');
