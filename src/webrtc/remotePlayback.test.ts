@@ -39,8 +39,10 @@ describe('playPeerAudio', () => {
     } as unknown as MediaStream;
 
     playPeerAudio('peer-b', stream);
+    playPeerAudio('peer-b', stream);
     stopPeerAudio('peer-b');
 
+    expect(body.appendChild).toHaveBeenCalledTimes(1);
     expect(body.appendChild).toHaveBeenCalledWith(audio);
     expect(audio.remove).toHaveBeenCalledTimes(1);
   });
