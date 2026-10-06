@@ -120,7 +120,7 @@ describe('SocketSignaling against the signaling server', () => {
 
   it('keeps a guest in the waiting room after the dial timer would have fired', async () => {
     const host = await server.join('a', 'Ada');
-    host.channel.emit('room:settings', { waitingRoom: true, breakoutOpen: false });
+    host.channel.emit('room:settings', { ...DEFAULT_ROOM_SETTINGS, waitingRoom: true });
     const waiting = new Promise<WaitingPeer[]>((resolve) =>
       host.channel.on('waiting:update', resolve),
     );
