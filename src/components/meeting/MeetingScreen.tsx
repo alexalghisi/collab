@@ -81,9 +81,6 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   };
 
   const toggleStage = (next: Exclude<Stage, 'grid'>): void => {
-    if (!session.isHost) {
-      return;
-    }
     session.updateSettings({ stage: stage === next ? 'grid' : next });
   };
 
