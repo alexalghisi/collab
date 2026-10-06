@@ -1,5 +1,26 @@
 const UNLOCK_EVENTS = ['pointerdown', 'click', 'keydown', 'touchstart'] as const;
 const PLAYBACK_KEY = '__collabPlayback';
+const BOUND_TRACKS = '__collabBoundTracks';
+
+function boundTracks(element: HTMLMediaElement): readonly MediaStreamTrack[] | undefined {
+  return (element as HTMLMediaElement & { [BOUND_TRACKS]?: readonly MediaStreamTrack[] })[
+    BOUND_TRACKS
+  ];
+}
+
+function rememberTracks(element: HTMLMediaElement, tracks: readonly MediaStreamTrack[]): void {
+  (element as HTMLMediaElement & { [BOUND_TRACKS]?: readonly MediaStreamTrack[] })[BOUND_TRACKS] =
+    tracks;
+}
+
+function sameTracks(element: HTMLMediaElement, tracks: readonly MediaStreamTrack[]): boolean {
+  const current = boundTracks(element);
+  return (
+    current !== undefined &&
+    current.length === tracks.length &&
+    current.every((track, index) => track === tracks[index])
+  );
+}
 
 function audioContextConstructor(): typeof AudioContext | null {
   if (typeof window === 'undefined') {
@@ -72,20 +93,23 @@ export function attachMediaStream(
     });
   };
 
-  const bind = (force: boolean): void => {
+  const bind = (): void => {
     if (!stream) {
       element.srcObject = null;
+      rememberTracks(element, []);
       return;
     }
     const tracks = element.tagName === 'AUDIO' ? stream.getAudioTracks() : stream.getVideoTracks();
-    const source = new MediaStream(tracks);
-    if (force || element.srcObject !== source) {
-      element.srcObject = source;
+    if (!sameTracks(element, tracks)) {
+      element.srcObject = new MediaStream(tracks);
+      rememberTracks(element, tracks);
     }
-    play();
+    if (tracks.length > 0) {
+      play();
+    }
   };
 
-  bind(false);
+  bind();
   if (!stream) {
     return () => {
       stopResume();
@@ -93,7 +117,7 @@ export function attachMediaStream(
     };
   }
 
-  const onChange = (): void => bind(true);
+  const onChange = (): void => bind();
   stream.addEventListener('addtrack', onChange);
   stream.addEventListener('removetrack', onChange);
   return () => {

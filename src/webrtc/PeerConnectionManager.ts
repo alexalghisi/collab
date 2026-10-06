@@ -171,14 +171,21 @@ export class PeerConnectionManager {
 
     connection.addEventListener('track', (event) => {
       event.track.enabled = true;
-      const inbound = event.streams[0] ?? remoteStream;
-      if (!inbound.getTracks().some((track) => track.id === event.track.id)) {
-        inbound.addTrack(event.track);
+      for (const existing of [...remoteStream.getTracks()]) {
+        if (existing === event.track) {
+          continue;
+        }
+        if (existing.readyState === 'ended' || existing.id === event.track.id) {
+          remoteStream.removeTrack(existing);
+        }
+      }
+      if (!remoteStream.getTracks().some((track) => track.id === event.track.id)) {
+        remoteStream.addTrack(event.track);
       }
       if (event.track.kind === 'audio') {
-        playPeerAudio(peerId, inbound);
+        playPeerAudio(peerId, remoteStream);
       }
-      this.onRemoteStream(peerId, inbound);
+      this.onRemoteStream(peerId, remoteStream);
     });
 
     connection.addEventListener('connectionstatechange', () => {
