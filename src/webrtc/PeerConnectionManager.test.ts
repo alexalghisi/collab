@@ -17,6 +17,12 @@ class FakeStream {
   addTrack(track: { id: string; kind: string }) {
     this.tracks.push(track);
   }
+  removeTrack(track: { id: string; kind: string }) {
+    const index = this.tracks.indexOf(track);
+    if (index >= 0) {
+      this.tracks.splice(index, 1);
+    }
+  }
 }
 
 class FakeSender {
@@ -384,5 +390,58 @@ describe('PeerConnectionManager', () => {
 
     expect(connection.senders[1].replaceTrack).toHaveBeenLastCalledWith(screen);
     expect(signaling.emit).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same remote stream when the browser emits a new one', () => {
+    const connection = new FakePeerConnection();
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return new FakeStream();
+      }),
+    );
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      vi.fn(function RTCPeerConnection() {
+        return connection;
+      }),
+    );
+
+    const handlers = new Map<string, (payload: never) => void>();
+    const seen: unknown[] = [];
+    const manager = new PeerConnectionManager({
+      signaling: {
+        on: (event: string, handler: (payload: never) => void) => {
+          handlers.set(event, handler);
+        },
+        emit: vi.fn(),
+      } as never,
+      localStream: new FakeStream() as unknown as MediaStream,
+      onRemoteStream: (_peerId, stream) => {
+        seen.push(stream);
+      },
+      onPeerClosed: vi.fn(),
+    });
+    manager.start();
+    handlers.get('room:joined')?.({
+      selfPeerId: 'self',
+      selfJoinedAt: 2,
+      peers: [
+        {
+          peerId: 'peer-b',
+          displayName: 'Bea',
+          joinedAt: 1,
+          state: INITIAL_PEER_STATE,
+        },
+      ],
+    } as never);
+
+    const track = { id: 'cam', kind: 'video', enabled: false };
+    connection.listeners.get('track')?.({ track, streams: [new FakeStream()] });
+    connection.listeners.get('track')?.({ track, streams: [new FakeStream()] });
+
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toBe(seen[1]);
+    expect(track.enabled).toBe(true);
   });
 });
