@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import type { SocialProvider } from '../../auth/types';
@@ -6,8 +6,15 @@ import { colors } from '../../theme';
 
 type Mode = 'sign-in' | 'create';
 
+/**
+ * How long a sign-in may take before the screen admits it is still working.
+ * A sleeping free-tier signaling server takes the best part of a minute to
+ * answer, which looks exactly like a frozen button unless the screen says so.
+ */
+const SLOW_SIGN_IN_MS = 4_000;
+
 interface AuthScreenProps {
-  onSignIn: (provider: SocialProvider) => void;
+  onSignIn: (provider: SocialProvider) => Promise<void>;
   onSignInWithEmail: (email: string, password: string) => Promise<void>;
   onCreateAccount: (input: {
     displayName: string;
@@ -30,13 +37,37 @@ export function AuthScreen({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<SocialProvider | null>(null);
+  const [slow, setSlow] = useState(false);
   const inFlight = useRef(false);
   const creating = mode === 'create';
+  const waiting = busy || pending !== null;
   const canSubmit =
     email.trim().length > 0 &&
     password.length >= 8 &&
     (!creating || displayName.trim().length >= 2) &&
-    !busy;
+    !waiting;
+
+  useEffect(() => {
+    if (!waiting) {
+      setSlow(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlow(true), SLOW_SIGN_IN_MS);
+    return () => clearTimeout(timer);
+  }, [waiting]);
+
+  /**
+   * Browsers only open the Google window for a handler that asks during the
+   * press itself, so nothing may be awaited before handing over to `onSignIn`.
+   */
+  const startSocial = (provider: SocialProvider): void => {
+    if (waiting) {
+      return;
+    }
+    setPending(provider);
+    void onSignIn(provider).finally(() => setPending(null));
+  };
 
   const submit = async (): Promise<void> => {
     if (!canSubmit || inFlight.current) {
@@ -73,17 +104,21 @@ export function AuthScreen({
           </Text>
         </View>
 
-        <Pressable
-          style={[styles.button, styles.google]}
-          onPress={() => onSignIn('google')}
-          disabled={busy}
-          accessibilityRole="button"
-          accessibilityLabel="Continue with Google"
-        >
-          <Text style={[styles.buttonText, styles.googleText]}>Continue with Google</Text>
-        </Pressable>
+        {social.google && (
+          <Pressable
+            style={[styles.button, styles.google, waiting && styles.disabled]}
+            onPress={() => startSocial('google')}
+            disabled={waiting}
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Google"
+          >
+            <Text style={[styles.buttonText, styles.googleText]}>
+              {pending === 'google' ? 'Signing you in with Google…' : 'Continue with Google'}
+            </Text>
+          </Pressable>
+        )}
 
-        <Text style={styles.divider}>or use email</Text>
+        {social.google && <Text style={styles.divider}>or use email</Text>}
 
         <View style={styles.tabs}>
           <Pressable
@@ -154,14 +189,22 @@ export function AuthScreen({
 
         {social.facebook && (
           <Pressable
-            style={[styles.button, styles.facebook]}
-            onPress={() => onSignIn('facebook')}
-            disabled={busy}
+            style={[styles.button, styles.facebook, waiting && styles.disabled]}
+            onPress={() => startSocial('facebook')}
+            disabled={waiting}
             accessibilityRole="button"
             accessibilityLabel="Continue with Facebook"
           >
-            <Text style={[styles.buttonText, styles.facebookText]}>Continue with Facebook</Text>
+            <Text style={[styles.buttonText, styles.facebookText]}>
+              {pending === 'facebook' ? 'Signing you in with Facebook…' : 'Continue with Facebook'}
+            </Text>
           </Pressable>
+        )}
+
+        {slow && !error && (
+          <Text style={styles.hint}>
+            Still going — waking the meeting server can take a minute.
+          </Text>
         )}
 
         {error && <Text style={styles.error}>{error}</Text>}
@@ -278,6 +321,11 @@ const styles = StyleSheet.create({
   },
   facebookText: {
     color: '#ffffff',
+  },
+  hint: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
   },
   error: {
     color: '#f87171',
