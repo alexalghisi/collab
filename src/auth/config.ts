@@ -74,3 +74,26 @@ export function readNativeAuthConfig(): NativeAuthConfig | null {
 
   return { google, facebookAppId };
 }
+
+/**
+ * Picks the OAuth client Google will accept for the platform the app is on.
+ * Google issues a separate client per platform and rejects a web client when
+ * the redirect comes back into a phone, so a missing entry means Google
+ * sign-in is unavailable here — not something to paper over with another id.
+ */
+export function nativeGoogleClientId(
+  config: NativeAuthConfig | null,
+  platform: string,
+): string | null {
+  const google = config?.google;
+  if (!google) {
+    return null;
+  }
+  if (platform === 'ios') {
+    return google.iosClientId ?? null;
+  }
+  if (platform === 'android') {
+    return google.androidClientId ?? null;
+  }
+  return google.webClientId ?? null;
+}
