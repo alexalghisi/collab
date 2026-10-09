@@ -8,8 +8,8 @@ type Mode = 'sign-in' | 'create';
 
 /**
  * How long a sign-in may take before the screen admits it is still working.
- * A sleeping free-tier signaling server takes the best part of a minute to
- * answer, which looks exactly like a frozen button unless the screen says so.
+ * A free-tier signaling server that has gone to sleep takes the best part of a
+ * minute to answer, which looks exactly like a frozen button unless said.
  */
 const SLOW_SIGN_IN_MS = 4_000;
 
@@ -203,7 +203,7 @@ export function AuthScreen({
 
         {slow && !error && (
           <Text style={styles.hint}>
-            Still going — waking the meeting server can take a minute.
+            Still going — the first sign-in after a quiet spell can take a minute.
           </Text>
         )}
 
