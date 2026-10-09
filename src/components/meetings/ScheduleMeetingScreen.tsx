@@ -3,7 +3,13 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import { parseDateTime, toDateInput, toTimeInput } from '../../meeting/calendar';
 import { parseContactList } from '../../meeting/contact';
-import { generateRoomId } from '../../meeting/roomId';
+import {
+  ROOM_ID_MIN_LENGTH,
+  generateRoomId,
+  isUsableRoomId,
+  normalizeRoomId,
+  roomIdWhileTyping,
+} from '../../meeting/roomId';
 import {
   meetingInviteContacts,
   type Meeting,
@@ -69,7 +75,8 @@ export function ScheduleMeetingScreen({
   );
 
   const startsAt = parseDateTime(date, time);
-  const ready = title.trim().length > 0 && startsAt !== null;
+  const roomIdReady = isUsableRoomId(roomId);
+  const ready = title.trim().length > 0 && startsAt !== null && roomIdReady;
   const parsedContacts = parseContactList(attendees);
   const people = directory.filter((person) => person.uid !== selfUid);
   const selectedIds = new Set(invitees.map((person) => person.uid));
@@ -119,7 +126,7 @@ export function ScheduleMeetingScreen({
     const guests = meetingInviteContacts({ invitees, guests: extra });
     onSave({
       title: title.trim(),
-      roomId,
+      roomId: normalizeRoomId(roomId),
       startsAt,
       durationMinutes,
       description: description.trim(),
@@ -286,7 +293,16 @@ export function ScheduleMeetingScreen({
 
       <Text style={styles.label}>Meeting ID</Text>
       <View style={styles.inline}>
-        <Text style={[styles.input, styles.roomId]}>{roomId}</Text>
+        <TextInput
+          style={[styles.input, styles.roomId]}
+          value={roomId}
+          onChangeText={(value) => setRoomId(roomIdWhileTyping(value))}
+          placeholder="alghisi-raluca-204815"
+          placeholderTextColor={colors.textSubtle}
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel="Meeting ID"
+        />
         <Pressable
           style={styles.regenerate}
           onPress={() => setRoomId(generateRoomId(title.trim() || hostName))}
@@ -296,6 +312,16 @@ export function ScheduleMeetingScreen({
           <Ionicons name="shuffle" size={18} color={colors.text} />
         </Pressable>
       </View>
+      <Text style={styles.helperText}>
+        {editing
+          ? 'Write your own, or shuffle for a new one. Changing it stops the links you have already sent from working.'
+          : 'Write your own, or shuffle for a new one. This is what people type to join.'}
+      </Text>
+      {!roomIdReady && (
+        <Text style={styles.hint}>
+          A meeting ID needs at least {ROOM_ID_MIN_LENGTH} letters or digits.
+        </Text>
+      )}
 
       <View style={styles.actions}>
         <Button label="Cancel" variant="secondary" onPress={onCancel} />
