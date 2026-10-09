@@ -4,12 +4,42 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "production": {
-      "distribution": "store",
-      "autoIncrement": true,
+    "base": {
+      "env": {
+        "EXPO_PUBLIC_SIGNALING_URL": "https://collab-signaling.onrender.com",
+        "EXPO_PUBLIC_EXECUTION_URL": "https://collab-signaling.onrender.com"
+      },
       "ios": {
         "resourceClass": "m-medium"
       }
+    },
+    "development": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development"
+    },
+    "simulator": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "extends": "base",
+      "distribution": "store",
+      "autoIncrement": true
     }
   },
   "submit": {
