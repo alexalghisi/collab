@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatLongDay, formatTime } from '../../meeting/calendar';
-import { generateRoomId } from '../../meeting/roomId';
+import { generateRoomId, normalizeRoomId, roomIdWhileTyping } from '../../meeting/roomId';
 import type { Meeting } from '../../meeting/types';
 import type { MeetingInviteRequest } from '../meetings/MeetingRow';
 import { colors } from '../../theme';
@@ -117,18 +117,18 @@ export function HomeScreen({
         <TextInput
           style={[styles.input, styles.joinInput]}
           value={roomId}
-          onChangeText={onRoomIdChange}
+          onChangeText={(value) => onRoomIdChange(roomIdWhileTyping(value))}
           placeholder="Meeting ID from an invite"
           placeholderTextColor={colors.textSubtle}
           autoCapitalize="none"
           autoCorrect={false}
-          onSubmitEditing={() => canJoin && onJoin(roomId.trim(), true)}
+          onSubmitEditing={() => canJoin && onJoin(normalizeRoomId(roomId), true)}
         />
         <View style={styles.joinActions}>
           <Button
             label={connecting ? 'Connecting…' : 'Join'}
             icon="call"
-            onPress={() => onJoin(roomId.trim(), true)}
+            onPress={() => onJoin(normalizeRoomId(roomId), true)}
             disabled={!canJoin}
           />
           {connecting && <Button label="Cancel" variant="secondary" onPress={onCancelJoin} />}

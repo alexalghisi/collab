@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import type { AuthSessionResult } from 'expo-auth-session';
 import { SIGNALING_URL } from '../signaling/config';
 import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
-import { readNativeAuthConfig } from './config';
+import { nativeGoogleClientId, readNativeAuthConfig } from './config';
 import { loginAccount, loginWithGoogle, registerAccount, restoreAccount } from './serverAccount';
 import {
   clearSessionToken,
@@ -18,7 +19,17 @@ import type { AuthState, AuthUser, SocialProvider } from './types';
 WebBrowser.maybeCompleteAuthSession();
 
 const config = readNativeAuthConfig();
+const googleClientId = nativeGoogleClientId(config, Platform.OS);
+const facebookAppId = config?.facebookAppId ?? null;
 const SIGN_IN_ERROR = 'Sign-in failed. Please try again.';
+
+/**
+ * Expo's social providers throw while rendering when the platform they run on
+ * has no client id, and a hook cannot be skipped, so each is handed a stand-in
+ * and the app still starts. Neither is ever prompted with it: a button only
+ * appears once the real id for this platform is configured.
+ */
+const UNCONFIGURED_CLIENT_ID = 'unconfigured';
 
 async function fetchGoogleUser(accessToken: string): Promise<AuthUser> {
   const response = await fetch('https://www.googleapis.com/userinfo/v2/me', {
@@ -52,12 +63,10 @@ export function useAuth(): AuthState {
   const [error, setError] = useState<string | null>(null);
 
   const [, googleResponse, promptGoogle] = Google.useAuthRequest({
-    webClientId: config?.google?.webClientId,
-    iosClientId: config?.google?.iosClientId,
-    androidClientId: config?.google?.androidClientId,
+    clientId: googleClientId ?? UNCONFIGURED_CLIENT_ID,
   });
   const [, facebookResponse, promptFacebook] = Facebook.useAuthRequest({
-    clientId: config?.facebookAppId ?? undefined,
+    clientId: facebookAppId ?? UNCONFIGURED_CLIENT_ID,
   });
 
   useEffect(() => {
@@ -93,6 +102,10 @@ export function useAuth(): AuthState {
   const resolve = useCallback(
     async (result: AuthSessionResult | null, fetchUser: (token: string) => Promise<AuthUser>) => {
       if (!result || result.type === 'cancel' || result.type === 'dismiss') {
+        return;
+      }
+      if (result.type === 'error') {
+        setError(result.error?.message || SIGN_IN_ERROR);
         return;
       }
       const authentication = result.type === 'success' ? result.authentication : null;
@@ -145,6 +158,10 @@ export function useAuth(): AuthState {
   const signIn = useCallback(
     async (provider: SocialProvider) => {
       setError(null);
+      if (provider === 'google' ? !googleClientId : !facebookAppId) {
+        setError(`That sign-in is not set up for ${Platform.OS}. Use email and password instead.`);
+        return;
+      }
       await (provider === 'google' ? promptGoogle() : promptFacebook());
     },
     [promptGoogle, promptFacebook],
@@ -184,7 +201,7 @@ export function useAuth(): AuthState {
     initializing,
     user,
     error,
-    social: { google: Boolean(config?.google), facebook: Boolean(config?.facebookAppId) },
+    social: { google: googleClientId !== null, facebook: facebookAppId !== null },
     signIn,
     signInWithEmail,
     createAccount,

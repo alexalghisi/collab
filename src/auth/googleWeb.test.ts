@@ -48,6 +48,23 @@ function stubGoogle(response: TokenResponse): GoogleStub {
   return stub;
 }
 
+/**
+ * Google reports a window it could not open, or one the person closed,
+ * through `error_callback` and never calls back otherwise.
+ */
+function stubGoogleWindowFailure(error: { type?: string; message?: string }): void {
+  (globalThis as GoogleGlobal).google = {
+    accounts: {
+      id: { initialize: () => undefined, prompt: () => undefined },
+      oauth2: {
+        initTokenClient: (config: { error_callback?: (value: unknown) => void }) => ({
+          requestAccessToken: () => config.error_callback?.(error),
+        }),
+      },
+    },
+  };
+}
+
 beforeEach(() => {
   delete (globalThis as GoogleGlobal).google;
   delete (globalThis as { electronAuth?: unknown }).electronAuth;
@@ -87,6 +104,15 @@ describe('requestGoogleCalendarToken', () => {
 
     await expect(requestGoogleCalendarToken()).rejects.toThrow(
       'Google Calendar access was not granted.',
+    );
+  });
+
+  it('gives up when the Google window is closed instead of waiting on it', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    stubGoogleWindowFailure({ type: 'popup_closed' });
+
+    await expect(requestGoogleCalendarToken()).rejects.toThrow(
+      'Google Calendar access was cancelled.',
     );
   });
 });
@@ -149,5 +175,28 @@ describe('requestGoogleCredential', () => {
     stubGoogle({ error: 'popup_closed_by_user' });
 
     await expect(requestGoogleCredential()).rejects.toThrow('popup_closed_by_user');
+  });
+
+  it('gives up when someone closes the Google window instead of waiting on it', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    stubGoogleWindowFailure({ type: 'popup_closed' });
+
+    await expect(requestGoogleCredential()).rejects.toThrow('Google sign-in was cancelled.');
+  });
+
+  it('says so when the browser blocks the Google window', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    stubGoogleWindowFailure({ type: 'popup_failed_to_open' });
+
+    await expect(requestGoogleCredential()).rejects.toThrow(
+      'Your browser blocked the Google window. Allow pop-ups for this site and try again.',
+    );
+  });
+
+  it('passes on whatever Google says about a failure it has no name for', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    stubGoogleWindowFailure({ type: 'unknown', message: 'Network error' });
+
+    await expect(requestGoogleCredential()).rejects.toThrow('Network error');
   });
 });

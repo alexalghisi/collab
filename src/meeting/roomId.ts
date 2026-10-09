@@ -51,7 +51,7 @@ function fold(text: string): string {
     out += FOLD[letter] ?? letter;
   }
   try {
-    return out.normalize('NFD');
+    return out.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   } catch {
     return out;
   }
@@ -91,4 +91,34 @@ export function generateRoomId(name?: string): string {
     return SEGMENTS.map(segment).join('-');
   }
   return `${slug}-${digits(DIGITS)}`;
+}
+
+/** Short enough to read down a phone, long enough for a name and a number. */
+const ID_LIMIT = 48;
+
+/** Below this an id is too easy to land on by accident. */
+export const ROOM_ID_MIN_LENGTH = 3;
+
+/**
+ * Narrows an id to the shape it has to keep while someone is still typing it.
+ * The id travels in a join link and names a room on the server, so only
+ * lowercase letters, digits and single dashes come through. A dash left at
+ * the end survives: taking it away between keystrokes would make `team-sync`
+ * impossible to type.
+ */
+export function roomIdWhileTyping(value: string): string {
+  return fold(value)
+    .replace(/['’`]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, ID_LIMIT);
+}
+
+/** The same id once it is finished with, so no dash is left dangling. */
+export function normalizeRoomId(value: string): string {
+  return roomIdWhileTyping(value).replace(/-+$/, '');
+}
+
+export function isUsableRoomId(value: string): boolean {
+  return normalizeRoomId(value).length >= ROOM_ID_MIN_LENGTH;
 }
