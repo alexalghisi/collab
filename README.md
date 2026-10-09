@@ -53,7 +53,7 @@ The first join after the server has been idle can take about a minute — Render
 - [Project structure](#project-structure)
 - [Local development](#local-development)
 - [Building release binaries](#building-release-binaries)
-- [iOS distribution (EAS / TestFlight)](#ios-distribution-eas--testflight)
+- [Running on iOS](#running-on-ios)
 - [Quality gates](#quality-gates)
 
 ---
@@ -77,7 +77,7 @@ Prebuilt binaries are published automatically for every tagged release.
 
 > The macOS and Windows builds are unsigned. On macOS, right-click the app and choose **Open** the first time to bypass Gatekeeper. On Windows, choose **More info -> Run anyway** on the SmartScreen prompt.
 
-iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloaded `.ipa` directly, so it must be sideloaded (AltStore / Sideloadly) or, for the signed route, installed via TestFlight — see [iOS distribution](#ios-distribution-eas--testflight).
+iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloaded `.ipa` directly, so it must be sideloaded (AltStore / Sideloadly) or, for the signed route, installed via TestFlight. Waiting for a tagged release is not required either — see [Running on iOS](#running-on-ios) for the builds you can make straight from a checkout.
 
 ---
 
@@ -441,6 +441,11 @@ npm run android  # Android device / emulator
 npm run ios      # iOS simulator
 ```
 
+`react-native-webrtc` is native code, so Expo Go cannot run the phone build.
+`npm run ios` / `npm run android` compile it locally, and
+[Running on iOS](#running-on-ios) covers the device builds that need no Mac and
+no release.
+
 With no `EXPO_PUBLIC_SIGNALING_URL`, the client dials the page's own host on
 port 4000 (and `http://localhost:4000` from a loopback preview). A phone on
 the LAN therefore reaches the desktop running the server instead of its own
@@ -483,8 +488,13 @@ Facebook and Firebase remain optional:
   - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
   - `EXPO_PUBLIC_FACEBOOK_APP_ID`
 
-Redirects on device use the app's `collab` scheme, which is already declared in
-`app.json`.
+A phone needs the OAuth client Google issued for that platform; the Web one is
+refused. Without it the Google button is left off the sign-in screen rather
+than opening a browser Google will turn away — see
+[Continue with Google on a phone](#continue-with-google-on-a-phone).
+
+Redirects on device come back to the app's bundle identifier, which the native
+builds register as a URL scheme alongside the `collab` scheme from `app.json`.
 
 ### 4. Run the desktop shell locally
 
@@ -558,13 +568,84 @@ git push origin v1.0.0
 
 ---
 
-## iOS distribution (EAS / TestFlight)
+## Running on iOS
 
-The Releases tab includes an **unsigned** `Collab-unsigned.ipa` built by CI. Because Apple requires every iOS app to be signed, that file cannot be installed by simply downloading it — install it by sideloading with [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io), which re-sign it with your own Apple ID on device.
+Every route below produces a working app from the current checkout. None of
+them needs a tagged release, and only the last one needs the App Store.
 
-For a signed, shareable build (recommended for reviewers), distribute through Expo Application Services (EAS) and TestFlight. This requires a paid **Apple Developer Program** membership.
+[`eas.json`](eas.json) carries four build profiles. All of them point the app at
+the hosted signaling server, because a phone has no `localhost:4000` to fall
+back on:
 
-### One-time setup (local)
+| Profile       | Distribution    | What you get                                                                          |
+| ------------- | --------------- | ------------------------------------------------------------------------------------- |
+| `simulator`   | none (download) | A `.app` for the iOS Simulator. No Apple account at all.                              |
+| `development` | internal        | A dev build that loads JavaScript from `npm start`, so edits land without rebuilding. |
+| `preview`     | internal        | The real app, ad-hoc signed, for people who should just use it.                       |
+| `production`  | store           | The TestFlight / App Store binary.                                                    |
+
+### On a Mac, in the Simulator
+
+```bash
+npm run ios
+```
+
+Xcode builds and launches it locally. Without Xcode, build it on Expo's
+machines instead and drag the result onto a running simulator:
+
+```bash
+npx eas-cli build --platform ios --profile simulator
+```
+
+### On your own iPhone
+
+Installing on a physical device means Apple has to trust the build, which takes
+a paid **Apple Developer Program** membership. After that it is over the air —
+no release, no App Store review:
+
+```bash
+npx eas-cli login
+npx eas-cli init                 # links the repo to an EAS project, once
+npx eas-cli device:create        # registers the iPhone, once
+npx eas-cli build --platform ios --profile development
+```
+
+EAS prints a QR code at the end. Open it on the phone, install, then trust the
+developer under _Settings → General → VPN & Device Management_. Run
+`npm start` on the same network and the phone picks the bundle up live. Swap in
+`--profile preview` for a build without the developer menu.
+
+### On an iPhone without a developer account
+
+The Releases tab carries an **unsigned** `Collab-unsigned.ipa` built by CI;
+sideload it with [AltStore](https://altstore.io) or
+[Sideloadly](https://sideloadly.io), which re-sign it with a free Apple ID (the
+signature lasts seven days). To do the same from this checkout rather than from
+a release, generate the native project and run it from Xcode on a connected
+phone with your personal team selected:
+
+```bash
+npx expo prebuild --platform ios
+open ios/Collab.xcworkspace
+```
+
+### Continue with Google on a phone
+
+Google issues a separate OAuth client per platform and turns away a Web client
+when the redirect comes back into an app, so the Google button only appears
+once `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (or `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`)
+is set; email and password work either way. Create the client in Google Cloud
+Console → _APIs & Services → Credentials → Create credentials → OAuth client ID
+→ iOS_ with bundle ID `com.alexalghisi.collab`. The redirect Expo sends is that
+same bundle identifier, which the iOS build already registers as a URL scheme.
+
+### TestFlight
+
+For a signed build anyone can install from the App Store's testing track,
+distribute through Expo Application Services (EAS). This also requires a paid
+**Apple Developer Program** membership.
+
+#### One-time setup (local)
 
 ```bash
 npm install -g eas-cli
@@ -578,7 +659,7 @@ eas credentials
 eas submit --platform ios --profile production   # run once, choose "API Key" and save it
 ```
 
-### Build and submit
+#### Build and submit
 
 Locally:
 
