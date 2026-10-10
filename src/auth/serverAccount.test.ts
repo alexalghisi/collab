@@ -98,9 +98,21 @@ describe('loginWithGoogle', () => {
   });
 });
 
+function healthResponse(directory: boolean): Response {
+  return new Response(
+    JSON.stringify({
+      status: 'ok',
+      service: 'collab-signaling',
+      sandbox: 'none',
+      ...(directory ? { directory: true } : {}),
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+}
+
 describe('fetchAccountDirectory', () => {
   it('loads signed-up people with the session token', async () => {
-    fetchMock.mockResolvedValue(
+    fetchMock.mockResolvedValueOnce(healthResponse(true)).mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           people: [{ uid: 'u1', displayName: 'Ada', email: 'ada@example.com' }],
@@ -118,5 +130,14 @@ describe('fetchAccountDirectory', () => {
         headers: { Authorization: 'Bearer session-token' },
       }),
     );
+  });
+
+  it('leaves the list empty when the host does not offer a directory', async () => {
+    fetchMock.mockResolvedValueOnce(healthResponse(false));
+
+    await expect(fetchAccountDirectory('session-token')).resolves.toEqual([]);
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).toEqual(['https://collab-signaling.onrender.com/health']);
   });
 });

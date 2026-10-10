@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_APP_URL, publicAppUrl, sendAppHome } from './home';
+import { DEFAULT_APP_URL, publicAppUrl, sendAppHome, signalingHealth } from './home';
 
 describe('publicAppUrl', () => {
   it('uses the hosted Pages app when nothing is configured', () => {
@@ -10,6 +10,17 @@ describe('publicAppUrl', () => {
     expect(publicAppUrl({ PUBLIC_APP_URL: 'https://collab.example/' })).toBe(
       'https://collab.example',
     );
+  });
+});
+
+describe('signalingHealth', () => {
+  it('tells a current client that the account directory route is mounted', () => {
+    expect(signalingHealth('none')).toEqual({
+      status: 'ok',
+      service: 'collab-signaling',
+      sandbox: 'none',
+      directory: true,
+    });
   });
 });
 
