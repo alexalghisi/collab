@@ -10,3 +10,12 @@ export function publicAppUrl(env: Record<string, string | undefined> = process.e
 export function sendAppHome(_request: Request, response: Response): void {
   response.redirect(302, publicAppUrl());
 }
+
+export function signalingHealth(sandbox: string) {
+  return {
+    status: 'ok' as const,
+    service: 'collab-signaling',
+    sandbox,
+    directory: true,
+  };
+}
