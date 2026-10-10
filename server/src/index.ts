@@ -16,7 +16,7 @@ import { verifyToken } from './auth/tokens';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
 import { filesRouter } from './files/router';
-import { sendAppHome } from './home';
+import { sendAppHome, signalingHealth } from './home';
 import { resolveIceServers } from './ice';
 import { ReminderBook } from './invite/reminders';
 import { inviteRouter } from './invite/router';
@@ -68,7 +68,7 @@ const assistant = createMeetingAssistant();
 const userStore = createUserStoreFromEnv(join(ROOT, 'data', 'users.json'));
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'collab-signaling', sandbox: execution.sandbox });
+  res.json(signalingHealth(execution.sandbox));
 });
 app.get('/ice', async (_req, res) => {
   res.json({ iceServers: await resolveIceServers() });

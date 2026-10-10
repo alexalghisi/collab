@@ -156,8 +156,30 @@ function toDirectoryPerson(value: unknown): DirectoryPerson | null {
   return { uid: person.uid, email: person.email, displayName: person.displayName };
 }
 
+async function hostOffersDirectory(): Promise<boolean> {
+  if (isLoopbackSignalingUrl(SIGNALING_URL)) {
+    return true;
+  }
+  try {
+    const response = await fetch(`${SIGNALING_URL}/health`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(4_000),
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const body = (await response.json()) as { directory?: unknown };
+    return body.directory === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchAccountDirectory(token: string): Promise<DirectoryPerson[]> {
   await wakeAccountService();
+  if (!(await hostOffersDirectory())) {
+    return [];
+  }
   let response: Response;
   try {
     response = await fetch(`${SIGNALING_URL}/auth/directory`, {
