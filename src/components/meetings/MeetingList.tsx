@@ -7,6 +7,7 @@ export interface MeetingListProps {
   title: string;
   meetings: Meeting[];
   emptyText: string;
+  selfUid: string;
   onStart: (meeting: Meeting) => void;
   onEdit?: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
@@ -17,6 +18,7 @@ export function MeetingList({
   title,
   meetings,
   emptyText,
+  selfUid,
   onStart,
   onEdit,
   onDelete,
@@ -32,6 +34,7 @@ export function MeetingList({
           <MeetingRow
             key={meeting.id}
             meeting={meeting}
+            selfUid={selfUid}
             onStart={onStart}
             onEdit={onEdit}
             onDelete={onDelete}
