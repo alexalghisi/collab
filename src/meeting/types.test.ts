@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { meetingAttendeeNames, meetingInviteContacts, type Meeting } from './types';
+import { canEditMeeting, meetingAttendeeNames, meetingInviteContacts, type Meeting } from './types';
 
 const meeting: Meeting = {
   id: 'm1',
@@ -12,6 +12,24 @@ const meeting: Meeting = {
   invitees: [{ uid: 'u1', displayName: 'Ada Lovelace', email: 'ada@example.com' }],
   guests: ['ada@example.com', 'linus@example.com', '+15551234567'],
 };
+
+describe('canEditMeeting', () => {
+  it('lets the creator edit', () => {
+    expect(canEditMeeting({ ...meeting, createdBy: 'host' }, 'host')).toBe(true);
+  });
+
+  it('refuses someone else', () => {
+    expect(canEditMeeting({ ...meeting, createdBy: 'host' }, 'guest')).toBe(false);
+  });
+
+  it('keeps older meetings in this account editable', () => {
+    expect(canEditMeeting(meeting, 'host')).toBe(true);
+  });
+
+  it('leaves imported Google events alone', () => {
+    expect(canEditMeeting({ ...meeting, fromGoogle: true }, 'host')).toBe(false);
+  });
+});
 
 describe('meeting attendees', () => {
   it('lists names first and keeps extra emails or numbers', () => {

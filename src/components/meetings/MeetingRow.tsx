@@ -6,7 +6,12 @@ import { downloadTextFile } from '../../meeting/download';
 import { meetingInviteCopy } from '../../meeting/contact';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
 import { whatsappInviteUrl } from '../../meeting/whatsapp';
-import { meetingAttendeeNames, meetingEndsAt, type Meeting } from '../../meeting/types';
+import {
+  canEditMeeting,
+  meetingAttendeeNames,
+  meetingEndsAt,
+  type Meeting,
+} from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
@@ -18,6 +23,8 @@ export interface MeetingInviteRequest {
 
 export interface MeetingRowProps {
   meeting: Meeting;
+  /** Signed-in account. Edit is offered only when this account created the meeting. */
+  selfUid: string;
   onStart: (meeting: Meeting) => void;
   onEdit?: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
@@ -29,7 +36,14 @@ function describeWhen(meeting: Meeting): string {
   return meeting.durationMinutes > 0 ? `${start} – ${formatTime(meetingEndsAt(meeting))}` : start;
 }
 
-export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: MeetingRowProps) {
+export function MeetingRow({
+  meeting,
+  selfUid,
+  onStart,
+  onEdit,
+  onDelete,
+  onInvite,
+}: MeetingRowProps) {
   const upcoming = meetingEndsAt(meeting) >= Date.now();
   const inviteLink = buildInviteLink(meeting.roomId);
   const who = meetingAttendeeNames(meeting);
@@ -85,6 +99,15 @@ export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: Mee
               onPress={() => setInviting((open) => !open)}
             />
           ) : null}
+          {onEdit && canEditMeeting(meeting, selfUid) && meeting.durationMinutes > 0 && (
+            <Button
+              label="Edit"
+              icon="create-outline"
+              compact
+              variant="secondary"
+              onPress={() => onEdit(meeting)}
+            />
+          )}
           <IconButton
             icon="logo-whatsapp"
             label="Invite on WhatsApp"
@@ -125,13 +148,6 @@ export function MeetingRow({ meeting, onStart, onEdit, onDelete, onInvite }: Mee
                 }
               />
             </>
-          )}
-          {onEdit && meeting.durationMinutes > 0 && (
-            <IconButton
-              icon="create-outline"
-              label="Edit meeting"
-              onPress={() => onEdit(meeting)}
-            />
           )}
           <IconButton
             icon="trash-outline"
