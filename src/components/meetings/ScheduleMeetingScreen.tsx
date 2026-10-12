@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { parseDateTime, toDateInput, toTimeInput } from '../../meeting/calendar';
 import { parseContactList } from '../../meeting/contact';
@@ -51,6 +60,8 @@ export function ScheduleMeetingScreen({
   onSave,
   onCancel,
 }: ScheduleMeetingScreenProps) {
+  const { width } = useWindowDimensions();
+  const stackDateTime = width < 640;
   const editing = Boolean(initialMeeting);
   const start = initialMeeting ? new Date(initialMeeting.startsAt) : initialStart;
   const [title, setTitle] = useState(initialMeeting?.title ?? '');
@@ -144,12 +155,12 @@ export function ScheduleMeetingScreen({
         autoFocus
       />
 
-      <View style={styles.inline}>
-        <View style={[styles.field, styles.dateField]}>
+      <View style={[styles.inline, stackDateTime && styles.stacked]}>
+        <View style={[styles.field, stackDateTime ? styles.stackedField : styles.dateField]}>
           <Text style={styles.label}>Date</Text>
           <DateField value={date} onChange={setDate} />
         </View>
-        <View style={[styles.field, styles.timeField]}>
+        <View style={[styles.field, stackDateTime ? styles.stackedField : styles.timeField]}>
           <Text style={styles.label}>Time</Text>
           <TimeField value={time} onChange={setTime} />
         </View>
@@ -417,14 +428,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   field: {
-    flex: 1,
     gap: 10,
   },
   dateField: {
     flex: 1.45,
+    minWidth: 0,
   },
   timeField: {
-    flex: 0.85,
+    flex: 0.9,
+    minWidth: 148,
+  },
+  stacked: {
+    flexDirection: 'column',
+  },
+  stackedField: {
+    alignSelf: 'stretch',
   },
   hint: {
     color: colors.warning,
