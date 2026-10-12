@@ -18,7 +18,12 @@ import {
 } from './src/meeting/calendarInvite';
 import { clearLiveMeeting, readLiveMeeting } from './src/meeting/resume';
 import type { DirectoryPerson } from './src/auth/types';
-import { meetingInviteContacts, type Meeting, type MeetingDraft } from './src/meeting/types';
+import {
+  canEditMeeting,
+  meetingInviteContacts,
+  type Meeting,
+  type MeetingDraft,
+} from './src/meeting/types';
 import { deleteMeeting as retractThenRemove } from './src/meeting/deleteMeeting';
 import { useMeetings } from './src/meeting/useMeetings';
 import { useGoogleCalendar } from './src/meeting/useGoogleCalendar';
@@ -236,13 +241,20 @@ export default function App() {
   };
 
   const openEdit = (meeting: Meeting) => {
+    if (!auth.user || !canEditMeeting(meeting, auth.user.uid)) {
+      return;
+    }
     setEditingMeeting(meeting);
     setView('schedule');
   };
 
   const saveMeeting = (draft: MeetingDraft) => {
     if (editingMeeting) {
-      const updated: Meeting = { ...editingMeeting, ...draft };
+      const updated: Meeting = {
+        ...editingMeeting,
+        ...draft,
+        createdBy: editingMeeting.createdBy ?? auth.user?.uid,
+      };
       void meetings.save(updated).then(() => {
         void googleCalendar.update(updated);
         if (meetingInviteContacts(draft).length > 0) {
@@ -334,6 +346,7 @@ export default function App() {
         {view === 'meetings' && (
           <MeetingsScreen
             meetings={meetings.meetings}
+            selfUid={auth.user.uid}
             onStart={startMeeting}
             onEdit={openEdit}
             onDelete={deleteMeeting}
@@ -344,6 +357,7 @@ export default function App() {
         {view === 'calendar' && (
           <CalendarScreen
             meetings={meetings.meetings}
+            selfUid={auth.user.uid}
             onStart={startMeeting}
             onEdit={openEdit}
             onDelete={deleteMeeting}

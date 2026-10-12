@@ -15,6 +15,8 @@ export interface Meeting {
   readonly durationMinutes: number;
   readonly description: string;
   readonly createdAt: number;
+  /** Account that scheduled this meeting. Absent on older saves and on imported events. */
+  readonly createdBy?: string;
   readonly googleEventId?: string;
   readonly fromGoogle?: boolean;
   readonly guests?: readonly string[];
@@ -22,7 +24,22 @@ export interface Meeting {
   readonly reminderMinutes?: 15 | 30;
 }
 
-export type MeetingDraft = Omit<Meeting, 'id' | 'createdAt'>;
+export type MeetingDraft = Omit<Meeting, 'id' | 'createdAt' | 'createdBy'>;
+
+/**
+ * The account that scheduled a meeting can change it.
+ * Older saves have no creator and live in that account's own list, so they stay editable.
+ * Events imported from Google were not created here.
+ */
+export function canEditMeeting(
+  meeting: Pick<Meeting, 'createdBy' | 'fromGoogle'>,
+  uid: string,
+): boolean {
+  if (meeting.createdBy) {
+    return meeting.createdBy === uid;
+  }
+  return meeting.fromGoogle !== true;
+}
 
 export function meetingEndsAt(meeting: Meeting): number {
   return meeting.startsAt + meeting.durationMinutes * 60_000;
