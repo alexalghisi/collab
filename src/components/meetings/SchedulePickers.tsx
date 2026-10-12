@@ -23,8 +23,8 @@ import {
 import { colors } from '../../theme';
 import { placePopover, type AnchorBox } from './popoverPlacement';
 
-const CALENDAR_WIDTH = 520;
-const CALENDAR_HEIGHT = 560;
+const CALENDAR_WIDTH = 620;
+const CALENDAR_HEIGHT = 600;
 const TIME_WIDTH = 280;
 const TIME_HEIGHT = 420;
 const TIME_ROW = 52;
@@ -119,7 +119,7 @@ function AnchoredPopover({
     <Modal
       visible={open}
       transparent
-      animationType="fade"
+      animationType="none"
       onRequestClose={onClose}
       accessibilityViewIsModal
     >
@@ -465,13 +465,14 @@ const styles = StyleSheet.create({
   },
   day: {
     width: `${100 / 7}%`,
-    height: 64,
+    height: 68,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayFace: {
-    width: 52,
-    height: 52,
+    width: '84%',
+    maxWidth: 58,
+    aspectRatio: 1,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
