@@ -12,6 +12,7 @@ import {
 } from '../../meeting/types';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
+import { DateField, TimeField } from './SchedulePickers';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
@@ -144,30 +145,16 @@ export function ScheduleMeetingScreen({
       />
 
       <View style={styles.inline}>
-        <View style={styles.field}>
+        <View style={[styles.field, styles.dateField]}>
           <Text style={styles.label}>Date</Text>
-          <TextInput
-            style={styles.input}
-            value={date}
-            onChangeText={setDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={colors.textSubtle}
-            autoCorrect={false}
-          />
+          <DateField value={date} onChange={setDate} />
         </View>
-        <View style={styles.field}>
+        <View style={[styles.field, styles.timeField]}>
           <Text style={styles.label}>Time</Text>
-          <TextInput
-            style={styles.input}
-            value={time}
-            onChangeText={setTime}
-            placeholder="HH:MM"
-            placeholderTextColor={colors.textSubtle}
-            autoCorrect={false}
-          />
+          <TimeField value={time} onChange={setTime} />
         </View>
       </View>
-      {startsAt === null && <Text style={styles.hint}>Use YYYY-MM-DD and 24-hour HH:MM.</Text>}
+      {startsAt === null && <Text style={styles.hint}>Pick a date and time.</Text>}
 
       <Text style={styles.label}>Duration</Text>
       <View style={styles.chips}>
@@ -432,6 +419,12 @@ const styles = StyleSheet.create({
   field: {
     flex: 1,
     gap: 10,
+  },
+  dateField: {
+    flex: 1.45,
+  },
+  timeField: {
+    flex: 0.85,
   },
   hint: {
     color: colors.warning,
