@@ -21,6 +21,7 @@ import { IconButton } from '../ui/IconButton';
 
 export interface CalendarScreenProps {
   meetings: Meeting[];
+  selfUid: string;
   onStart: (meeting: Meeting) => void;
   onEdit: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
@@ -31,6 +32,7 @@ export interface CalendarScreenProps {
 
 export function CalendarScreen({
   meetings,
+  selfUid,
   onStart,
   onEdit,
   onDelete,
@@ -156,6 +158,7 @@ export function CalendarScreen({
         title={formatLongDay(selected)}
         meetings={selectedMeetings}
         emptyText="No meetings on this day."
+        selfUid={selfUid}
         onStart={onStart}
         onEdit={onEdit}
         onDelete={onDelete}

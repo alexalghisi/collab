@@ -7,6 +7,7 @@ import type { MeetingInviteRequest } from './MeetingRow';
 
 export interface MeetingsScreenProps {
   meetings: Meeting[];
+  selfUid: string;
   onStart: (meeting: Meeting) => void;
   onEdit: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
@@ -22,6 +23,7 @@ export function splitByTime(meetings: Meeting[], now = Date.now()) {
 
 export function MeetingsScreen({
   meetings,
+  selfUid,
   onStart,
   onEdit,
   onDelete,
@@ -40,6 +42,7 @@ export function MeetingsScreen({
         title="Upcoming"
         meetings={upcoming}
         emptyText="Nothing scheduled. Plan a meeting and share the invite link."
+        selfUid={selfUid}
         onStart={onStart}
         onEdit={onEdit}
         onDelete={onDelete}
@@ -49,6 +52,7 @@ export function MeetingsScreen({
         title="Past"
         meetings={past}
         emptyText="Meetings you host or join will show up here."
+        selfUid={selfUid}
         onStart={onStart}
         onEdit={onEdit}
         onDelete={onDelete}
