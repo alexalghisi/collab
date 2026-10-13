@@ -48,10 +48,6 @@ function stubGoogle(response: TokenResponse): GoogleStub {
   return stub;
 }
 
-/**
- * Google reports a window it could not open, or one the person closed,
- * through `error_callback` and never calls back otherwise.
- */
 function stubGoogleWindowFailure(error: { type?: string; message?: string }): void {
   (globalThis as GoogleGlobal).google = {
     accounts: {
