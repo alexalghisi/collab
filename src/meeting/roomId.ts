@@ -51,7 +51,7 @@ function fold(text: string): string {
     out += FOLD[letter] ?? letter;
   }
   try {
-    return out.normalize('NFD');
+    return out.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   } catch {
     return out;
   }
@@ -91,4 +91,24 @@ export function generateRoomId(name?: string): string {
     return SEGMENTS.map(segment).join('-');
   }
   return `${slug}-${digits(DIGITS)}`;
+}
+
+const ID_LIMIT = 48;
+
+export const ROOM_ID_MIN_LENGTH = 3;
+
+export function roomIdWhileTyping(value: string): string {
+  return fold(value)
+    .replace(/['’`]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, ID_LIMIT);
+}
+
+export function normalizeRoomId(value: string): string {
+  return roomIdWhileTyping(value).replace(/-+$/, '');
+}
+
+export function isUsableRoomId(value: string): boolean {
+  return normalizeRoomId(value).length >= ROOM_ID_MIN_LENGTH;
 }
