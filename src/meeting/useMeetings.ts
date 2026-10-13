@@ -26,11 +26,16 @@ export function useMeetings(uid: string): MeetingsState {
 
   const schedule = useCallback(
     async (draft: MeetingDraft) => {
-      const meeting: Meeting = { ...draft, id: randomUUID(), createdAt: Date.now() };
+      const meeting: Meeting = {
+        ...draft,
+        id: randomUUID(),
+        createdAt: Date.now(),
+        createdBy: uid,
+      };
       await store.save(meeting);
       return meeting;
     },
-    [store],
+    [store, uid],
   );
 
   const remove = useCallback((id: string) => store.remove(id), [store]);
@@ -74,9 +79,10 @@ export function useMeetings(uid: string): MeetingsState {
         durationMinutes: 0,
         description: '',
         createdAt: now,
+        createdBy: uid,
       });
     },
-    [store],
+    [store, uid],
   );
 
   return { meetings, schedule, save, remove, applyGoogle, recordInstant };
