@@ -74,3 +74,20 @@ export function readNativeAuthConfig(): NativeAuthConfig | null {
 
   return { google, facebookAppId };
 }
+
+export function nativeGoogleClientId(
+  config: NativeAuthConfig | null,
+  platform: string,
+): string | null {
+  const google = config?.google;
+  if (!google) {
+    return null;
+  }
+  if (platform === 'ios') {
+    return google.iosClientId ?? null;
+  }
+  if (platform === 'android') {
+    return google.androidClientId ?? null;
+  }
+  return google.webClientId ?? null;
+}

@@ -284,7 +284,7 @@ export default function App() {
   if (!auth.user) {
     return (
       <AuthScreen
-        onSignIn={(provider) => void auth.signIn(provider)}
+        onSignIn={auth.signIn}
         onSignInWithEmail={auth.signInWithEmail}
         onCreateAccount={auth.createAccount}
         social={auth.social}

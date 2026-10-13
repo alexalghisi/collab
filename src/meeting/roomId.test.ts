@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { generateRoomId, nameSlug } from './roomId';
+import {
+  generateRoomId,
+  isUsableRoomId,
+  nameSlug,
+  normalizeRoomId,
+  roomIdWhileTyping,
+} from './roomId';
 
 describe('nameSlug', () => {
   it('reads a name back as the part of an id a person recognises', () => {
@@ -53,5 +59,56 @@ describe('generateRoomId', () => {
 
   it('stays something a person can type: lowercase letters, digits and dashes', () => {
     expect(generateRoomId("Ștefan O'Brien")).toMatch(/^[a-z0-9-]+$/);
+  });
+});
+
+describe('roomIdWhileTyping', () => {
+  it('turns what someone writes into something a link can carry', () => {
+    expect(roomIdWhileTyping('Alghisi Raluca')).toBe('alghisi-raluca');
+    expect(roomIdWhileTyping('Ședința de Luni')).toBe('sedinta-de-luni');
+    expect(roomIdWhileTyping('Café Ōsaka')).toBe('cafe-osaka');
+  });
+
+  it('leaves a dash you have just typed alone, so a two-word id can be reached', () => {
+    expect(roomIdWhileTyping('team-')).toBe('team-');
+    expect(roomIdWhileTyping('team-sync')).toBe('team-sync');
+  });
+
+  it('never starts with a dash and never doubles one up', () => {
+    expect(roomIdWhileTyping('  -- team   sync --')).toBe('team-sync-');
+  });
+
+  it('stops before an id grows longer than a phone screen', () => {
+    expect(roomIdWhileTyping('a'.repeat(200))).toHaveLength(48);
+  });
+});
+
+describe('normalizeRoomId', () => {
+  it('tidies the dash left hanging at the end', () => {
+    expect(normalizeRoomId('team-')).toBe('team');
+    expect(normalizeRoomId('Alghisi Raluca ')).toBe('alghisi-raluca');
+  });
+
+  it('leaves a generated id exactly as it was', () => {
+    const generated = generateRoomId('Alghisi Raluca');
+
+    expect(normalizeRoomId(generated)).toBe(generated);
+  });
+
+  it('lands two people on the same room however they typed it', () => {
+    expect(normalizeRoomId('Alghisi Raluca')).toBe(normalizeRoomId('  alghisi raluca  '));
+  });
+});
+
+describe('isUsableRoomId', () => {
+  it('turns down an id too short to be anything but a collision', () => {
+    expect(isUsableRoomId('')).toBe(false);
+    expect(isUsableRoomId('a-')).toBe(false);
+    expect(isUsableRoomId('日本語')).toBe(false);
+  });
+
+  it('accepts a short word someone chose on purpose', () => {
+    expect(isUsableRoomId('lab')).toBe(true);
+    expect(isUsableRoomId('Alghisi Raluca')).toBe(true);
   });
 });
