@@ -23,12 +23,6 @@ const googleClientId = nativeGoogleClientId(config, Platform.OS);
 const facebookAppId = config?.facebookAppId ?? null;
 const SIGN_IN_ERROR = 'Sign-in failed. Please try again.';
 
-/**
- * Expo's social providers throw while rendering when the platform they run on
- * has no client id, and a hook cannot be skipped, so each is handed a stand-in
- * and the app still starts. Neither is ever prompted with it: a button only
- * appears once the real id for this platform is configured.
- */
 const UNCONFIGURED_CLIENT_ID = 'unconfigured';
 
 async function fetchGoogleUser(accessToken: string): Promise<AuthUser> {
