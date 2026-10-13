@@ -1,11 +1,6 @@
 import { readGoogleWebClientId } from './config';
 import type { GoogleCredential } from './types';
 
-/**
- * Google only reports a cancelled or blocked window through `error_callback`.
- * Without it the token request simply never answers, which on screen is a
- * button that was pressed and then did nothing at all.
- */
 interface TokenClientError {
   readonly type?: string;
   readonly message?: string;
@@ -47,11 +42,6 @@ function googleApi(): GoogleIdentity | undefined {
 }
 
 const SCRIPT_UNAVAILABLE = 'Could not load Google Sign-In. Check your connection and try again.';
-
-/**
- * A network that swallows the request to accounts.google.com instead of
- * refusing it never fires `error`, so the load is given a deadline of its own.
- */
 const SCRIPT_TIMEOUT_MS = 15_000;
 
 function loadScript(): Promise<void> {

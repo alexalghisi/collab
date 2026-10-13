@@ -6,11 +6,6 @@ import { colors } from '../../theme';
 
 type Mode = 'sign-in' | 'create';
 
-/**
- * How long a sign-in may take before the screen admits it is still working.
- * A free-tier signaling server that has gone to sleep takes the best part of a
- * minute to answer, which looks exactly like a frozen button unless said.
- */
 const SLOW_SIGN_IN_MS = 4_000;
 
 interface AuthScreenProps {
@@ -57,10 +52,6 @@ export function AuthScreen({
     return () => clearTimeout(timer);
   }, [waiting]);
 
-  /**
-   * Browsers only open the Google window for a handler that asks during the
-   * press itself, so nothing may be awaited before handing over to `onSignIn`.
-   */
   const startSocial = (provider: SocialProvider): void => {
     if (waiting) {
       return;
