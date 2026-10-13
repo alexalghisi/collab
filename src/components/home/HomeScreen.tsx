@@ -148,6 +148,7 @@ export function HomeScreen({
         title="Up next"
         meetings={upNext}
         emptyText="No upcoming meetings. Schedule one to see it here."
+        selfUid={ownerId}
         onStart={onStartMeeting}
         onEdit={onEditMeeting}
         onDelete={onDeleteMeeting}
