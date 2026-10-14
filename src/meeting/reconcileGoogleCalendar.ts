@@ -55,3 +55,20 @@ export function reconcileGoogleCalendar(
 
   return { upserts, removeIds };
 }
+
+export function mergeGoogleDraft(existing: Meeting, draft: MeetingDraft): Meeting {
+  if (existing.fromGoogle === true) {
+    return {
+      ...existing,
+      title: draft.title,
+      startsAt: draft.startsAt,
+      durationMinutes: draft.durationMinutes,
+      description: draft.description,
+    };
+  }
+  return {
+    ...existing,
+    title: draft.title,
+    description: draft.description,
+  };
+}

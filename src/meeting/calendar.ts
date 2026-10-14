@@ -1,3 +1,5 @@
+import type { Meeting } from './types';
+
 export const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const monthFormat = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' });
@@ -75,4 +77,12 @@ export function parseDateTime(date: string, time: string): number | null {
     result.getHours() === hours &&
     result.getMinutes() === minutes;
   return valid ? result.getTime() : null;
+}
+
+export function meetingWithStartTime(meeting: Meeting, time: string): Meeting | null {
+  const startsAt = parseDateTime(toDateInput(new Date(meeting.startsAt)), time);
+  if (startsAt === null || startsAt === meeting.startsAt) {
+    return null;
+  }
+  return { ...meeting, startsAt };
 }

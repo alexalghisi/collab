@@ -201,6 +201,12 @@ export default function App() {
     void retractThenRemove(meeting, googleCalendar.retract, meetings.remove);
   };
 
+  const rescheduleMeeting = (meeting: Meeting) => {
+    void meetings.save(meeting).then(() => {
+      void googleCalendar.update(meeting);
+    });
+  };
+
   useEffect(() => {
     if (resumeAttempted.current || !auth.user || session.status !== 'idle') {
       return;
@@ -339,6 +345,7 @@ export default function App() {
             meetings={meetings.meetings}
             onStartMeeting={startMeeting}
             onEditMeeting={openEdit}
+            onRescheduleMeeting={rescheduleMeeting}
             onDeleteMeeting={deleteMeeting}
             onInviteMeeting={inviteMeeting}
           />
@@ -349,6 +356,7 @@ export default function App() {
             selfUid={auth.user.uid}
             onStart={startMeeting}
             onEdit={openEdit}
+            onReschedule={rescheduleMeeting}
             onDelete={deleteMeeting}
             onInvite={inviteMeeting}
             onSchedule={() => openSchedule()}
@@ -360,6 +368,7 @@ export default function App() {
             selfUid={auth.user.uid}
             onStart={startMeeting}
             onEdit={openEdit}
+            onReschedule={rescheduleMeeting}
             onDelete={deleteMeeting}
             onInvite={inviteMeeting}
             onSchedule={openSchedule}
