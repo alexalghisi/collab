@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { buildIcs, googleCalendarUrl } from '../../meeting/calendarExport';
-import { formatDay, formatTime } from '../../meeting/calendar';
+import { formatDay, formatTime, meetingWithStartTime, toTimeInput } from '../../meeting/calendar';
 import { downloadTextFile } from '../../meeting/download';
 import { meetingInviteCopy } from '../../meeting/contact';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
 import { whatsappInviteUrl } from '../../meeting/whatsapp';
 import {
   canEditMeeting,
+  canRescheduleMeeting,
   meetingAttendeeNames,
   meetingEndsAt,
   type Meeting,
@@ -15,6 +16,7 @@ import {
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
+import { TimeField } from './SchedulePickers';
 
 export interface MeetingInviteRequest {
   readonly emails: string;
@@ -27,6 +29,7 @@ export interface MeetingRowProps {
   selfUid: string;
   onStart: (meeting: Meeting) => void;
   onEdit?: (meeting: Meeting) => void;
+  onReschedule?: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
 }
@@ -41,10 +44,12 @@ export function MeetingRow({
   selfUid,
   onStart,
   onEdit,
+  onReschedule,
   onDelete,
   onInvite,
 }: MeetingRowProps) {
   const upcoming = meetingEndsAt(meeting) >= Date.now();
+  const canMoveTime = canRescheduleMeeting(meeting, selfUid);
   const inviteLink = buildInviteLink(meeting.roomId);
   const who = meetingAttendeeNames(meeting);
   const [inviting, setInviting] = useState(false);
@@ -75,6 +80,17 @@ export function MeetingRow({
             {meeting.title}
           </Text>
           <Text style={styles.when}>{describeWhen(meeting)}</Text>
+          {canMoveTime && onReschedule ? (
+            <TimeField
+              value={toTimeInput(new Date(meeting.startsAt))}
+              onChange={(time) => {
+                const next = meetingWithStartTime(meeting, time);
+                if (next) {
+                  onReschedule(next);
+                }
+              }}
+            />
+          ) : null}
           {who.length > 0 ? (
             <Text style={styles.who} numberOfLines={2}>
               {who.join(', ')}

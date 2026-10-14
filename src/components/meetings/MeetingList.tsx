@@ -10,6 +10,7 @@ export interface MeetingListProps {
   selfUid: string;
   onStart: (meeting: Meeting) => void;
   onEdit?: (meeting: Meeting) => void;
+  onReschedule?: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
 }
@@ -21,6 +22,7 @@ export function MeetingList({
   selfUid,
   onStart,
   onEdit,
+  onReschedule,
   onDelete,
   onInvite,
 }: MeetingListProps) {
@@ -37,6 +39,7 @@ export function MeetingList({
             selfUid={selfUid}
             onStart={onStart}
             onEdit={onEdit}
+            onReschedule={onReschedule}
             onDelete={onDelete}
             onInvite={onInvite}
           />

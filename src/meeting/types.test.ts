@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { canEditMeeting, meetingAttendeeNames, meetingInviteContacts, type Meeting } from './types';
+import {
+  canEditMeeting,
+  canRescheduleMeeting,
+  meetingAttendeeNames,
+  meetingInviteContacts,
+  type Meeting,
+} from './types';
 
 const meeting: Meeting = {
   id: 'm1',
@@ -28,6 +34,26 @@ describe('canEditMeeting', () => {
 
   it('leaves imported Google events alone', () => {
     expect(canEditMeeting({ ...meeting, fromGoogle: true }, 'host')).toBe(false);
+  });
+});
+
+describe('canRescheduleMeeting', () => {
+  it('lets the creator move a scheduled meeting', () => {
+    expect(canRescheduleMeeting({ ...meeting, createdBy: 'host' }, 'host')).toBe(true);
+  });
+
+  it('lets an imported Google event move', () => {
+    expect(canRescheduleMeeting({ ...meeting, fromGoogle: true }, 'host')).toBe(true);
+  });
+
+  it('leaves an instant meeting where it is', () => {
+    expect(
+      canRescheduleMeeting({ ...meeting, createdBy: 'host', durationMinutes: 0 }, 'host'),
+    ).toBe(false);
+  });
+
+  it('refuses someone else', () => {
+    expect(canRescheduleMeeting({ ...meeting, createdBy: 'host' }, 'guest')).toBe(false);
   });
 });
 
