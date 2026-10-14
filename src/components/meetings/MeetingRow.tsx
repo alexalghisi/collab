@@ -115,17 +115,15 @@ export function MeetingRow({
               onPress={() => setInviting((open) => !open)}
             />
           ) : null}
-          {onEdit &&
-            (canEditMeeting(meeting, selfUid) || canMoveTime) &&
-            meeting.durationMinutes > 0 && (
-              <Button
-                label="Edit"
-                icon="create-outline"
-                compact
-                variant="secondary"
-                onPress={() => onEdit(meeting)}
-              />
-            )}
+          {onEdit && canEditMeeting(meeting, selfUid) && meeting.durationMinutes > 0 && (
+            <Button
+              label="Edit"
+              icon="create-outline"
+              compact
+              variant="secondary"
+              onPress={() => onEdit(meeting)}
+            />
+          )}
           <IconButton
             icon="logo-whatsapp"
             label="Invite on WhatsApp"
