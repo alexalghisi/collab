@@ -41,6 +41,19 @@ export function canEditMeeting(
   return meeting.fromGoogle !== true;
 }
 
+export function canRescheduleMeeting(
+  meeting: Pick<Meeting, 'createdBy' | 'fromGoogle' | 'durationMinutes'>,
+  uid: string,
+): boolean {
+  if (meeting.durationMinutes <= 0) {
+    return false;
+  }
+  if (meeting.fromGoogle) {
+    return true;
+  }
+  return canEditMeeting(meeting, uid);
+}
+
 export function meetingEndsAt(meeting: Meeting): number {
   return meeting.startsAt + meeting.durationMinutes * 60_000;
 }
