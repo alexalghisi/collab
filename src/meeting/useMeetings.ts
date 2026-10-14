@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { firestore } from '../firebase/app';
+import { mergeGoogleDraft } from './reconcileGoogleCalendar';
 import { createMeetingStore } from './store';
 import type { Meeting, MeetingDraft } from './types';
 
@@ -46,13 +47,7 @@ export function useMeetings(uid: string): MeetingsState {
       for (const draft of drafts) {
         const existing = current.find((meeting) => meeting.googleEventId === draft.googleEventId);
         if (existing) {
-          const next = {
-            ...existing,
-            title: draft.title,
-            startsAt: draft.startsAt,
-            durationMinutes: draft.durationMinutes,
-            description: draft.description,
-          };
+          const next = mergeGoogleDraft(existing, draft);
           await store.save(next);
           current = current.map((meeting) => (meeting.id === existing.id ? next : meeting));
         } else {
