@@ -24,6 +24,7 @@ export interface CalendarScreenProps {
   selfUid: string;
   onStart: (meeting: Meeting) => void;
   onEdit: (meeting: Meeting) => void;
+  onReschedule: (meeting: Meeting) => void;
   onDelete: (meeting: Meeting) => void;
   onInvite: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
   onSchedule: (day: Date) => void;
@@ -35,6 +36,7 @@ export function CalendarScreen({
   selfUid,
   onStart,
   onEdit,
+  onReschedule,
   onDelete,
   onInvite,
   onSchedule,
@@ -161,6 +163,7 @@ export function CalendarScreen({
         selfUid={selfUid}
         onStart={onStart}
         onEdit={onEdit}
+        onReschedule={onReschedule}
         onDelete={onDelete}
         onInvite={onInvite}
       />
