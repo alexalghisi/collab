@@ -24,6 +24,7 @@ export interface HomeScreenProps {
   meetings: Meeting[];
   onStartMeeting: (meeting: Meeting) => void;
   onEditMeeting: (meeting: Meeting) => void;
+  onRescheduleMeeting: (meeting: Meeting) => void;
   onDeleteMeeting: (meeting: Meeting) => void;
   onInviteMeeting: (meeting: Meeting, invite: MeetingInviteRequest) => Promise<string>;
 }
@@ -74,6 +75,7 @@ export function HomeScreen({
   meetings,
   onStartMeeting,
   onEditMeeting,
+  onRescheduleMeeting,
   onDeleteMeeting,
   onInviteMeeting,
 }: HomeScreenProps) {
@@ -151,6 +153,7 @@ export function HomeScreen({
         selfUid={ownerId}
         onStart={onStartMeeting}
         onEdit={onEditMeeting}
+        onReschedule={onRescheduleMeeting}
         onDelete={onDeleteMeeting}
         onInvite={onInviteMeeting}
       />
