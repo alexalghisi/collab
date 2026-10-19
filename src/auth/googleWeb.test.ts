@@ -61,6 +61,53 @@ function stubGoogleWindowFailure(error: { type?: string; message?: string }): vo
   };
 }
 
+interface RedirectFields {
+  readonly access_token?: string;
+  readonly error?: string;
+  readonly state: string;
+}
+
+interface BrowserStub {
+  readonly opened: URL[];
+  restore(): void;
+}
+
+/** Fakes the browser: window.open "redirects" back by broadcasting the result. */
+function stubBrowser(
+  respond: ((request: { state: string }) => RedirectFields) | null,
+): BrowserStub {
+  const opened: URL[] = [];
+  const g = globalThis as { window?: unknown };
+  const previous = g.window;
+  g.window = {
+    location: { origin: 'https://alexalghisi.github.io', pathname: '/collab/', hash: '' },
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    open: (href: string) => {
+      if (!respond) {
+        return null;
+      }
+      const url = new URL(href);
+      opened.push(url);
+      const fields = respond({ state: url.searchParams.get('state') ?? '' });
+      const channel = new BroadcastChannel('collab.google-oauth');
+      channel.postMessage({
+        state: fields.state,
+        accessToken: fields.access_token,
+        error: fields.error,
+      });
+      channel.close();
+      return {};
+    },
+  };
+  return {
+    opened,
+    restore: () => {
+      g.window = previous;
+    },
+  };
+}
+
 beforeEach(() => {
   delete (globalThis as GoogleGlobal).google;
   delete (globalThis as { electronAuth?: unknown }).electronAuth;
@@ -74,12 +121,18 @@ describe('requestGoogleCalendarToken', () => {
     );
   });
 
-  it('asks Google for the calendar scope and hands back the access token', async () => {
+  it('asks Google for the calendar scope in its own popup and hands back the token', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    const stub = stubGoogle({ access_token: 'ya29.calendar' });
+    const browser = stubBrowser((url) => ({ access_token: 'ya29.calendar', state: url.state }));
 
     await expect(requestGoogleCalendarToken('consent')).resolves.toBe('ya29.calendar');
-    expect(stub.asked).toEqual([{ scope: CALENDAR_SCOPE, prompt: 'consent' }]);
+    expect(browser.opened).toHaveLength(1);
+    expect(browser.opened[0]?.searchParams.get('scope')).toBe(CALENDAR_SCOPE);
+    expect(browser.opened[0]?.searchParams.get('prompt')).toBe('consent');
+    expect(browser.opened[0]?.searchParams.get('redirect_uri')).toBe(
+      'https://alexalghisi.github.io/collab/',
+    );
+    browser.restore();
   });
 
   it('delegates to electronAuth.requestCalendarToken when running in Electron', async () => {
@@ -96,20 +149,20 @@ describe('requestGoogleCalendarToken', () => {
 
   it('reports a refused consent instead of resolving without a token', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    stubGoogle({ error: 'access_denied' });
+    const browser = stubBrowser((url) => ({ error: 'access_denied', state: url.state }));
 
     await expect(requestGoogleCalendarToken()).rejects.toThrow(
       'Google Calendar access was not granted.',
     );
+    browser.restore();
   });
 
-  it('gives up when the Google window is closed instead of waiting on it', async () => {
+  it('says so when the browser blocks the Google window', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    stubGoogleWindowFailure({ type: 'popup_closed' });
+    const browser = stubBrowser(null);
 
-    await expect(requestGoogleCalendarToken()).rejects.toThrow(
-      'Google Calendar access was cancelled.',
-    );
+    await expect(requestGoogleCalendarToken()).rejects.toThrow(/blocked the Google window/);
+    browser.restore();
   });
 });
 
