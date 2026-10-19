@@ -1,4 +1,5 @@
 import { readGoogleWebClientId } from './config';
+import { requestTokenInPopup } from './googleOAuthPopup';
 import type { GoogleCredential } from './types';
 
 interface TokenClientError {
@@ -129,36 +130,15 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
   if (!clientId) {
     throw new Error('Google Calendar is not configured on this deployment.');
   }
-  await loadScript();
-  const api = googleApi();
-  const oauth = api?.oauth2;
-  if (!oauth) {
-    throw new Error('Could not load Google Sign-In.');
-  }
-  return new Promise((resolve, reject) => {
-    const cancelled = 'Google Calendar access was cancelled.';
-    const client = oauth.initTokenClient({
-      client_id: clientId,
-      scope: CALENDAR_SCOPE,
-      callback: (response) => {
-        if (response.access_token) {
-          resolve(response.access_token);
-          return;
-        }
-        reject(
-          new Error(
-            response.error === 'access_denied'
-              ? 'Google Calendar access was not granted.'
-              : response.error || cancelled,
-          ),
-        );
-      },
-      error_callback: (error) => {
-        reject(new Error(describeTokenClientError(error, cancelled)));
-      },
-    });
-    client.requestAccessToken({ prompt });
+  // Own popup flow instead of the GIS token client: GIS polls popup.closed,
+  // which Google's COOP header turns into console errors on every poll.
+  const { accessToken } = await requestTokenInPopup({
+    clientId,
+    scope: CALENDAR_SCOPE,
+    prompt,
+    cancelledMessage: 'Google Calendar access was cancelled.',
   });
+  return accessToken;
 }
 
 export async function requestGoogleCredential(): Promise<GoogleCredential> {
