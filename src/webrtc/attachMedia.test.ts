@@ -265,6 +265,72 @@ describe('attachMediaStream', () => {
     expect(audio.muted).toBe(true);
   });
 
+  it('lets the element speak while the browser holds the context suspended', () => {
+    const listeners = new Map<string, () => void>();
+    const context = {
+      state: 'suspended' as AudioContextState,
+      resume: vi.fn(async () => undefined),
+      createMediaStreamSource: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
+      destination: {},
+      addEventListener: vi.fn((event: string, listener: () => void) => {
+        listeners.set(event, listener);
+      }),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal('window', {
+      AudioContext: vi.fn(function AudioContext() {
+        return context;
+      }),
+    });
+    const attributes = new Map<string, string>();
+    const audio = {
+      autoplay: false,
+      muted: true,
+      paused: true,
+      setAttribute: vi.fn((name: string, value: string) => attributes.set(name, value)),
+      removeAttribute: vi.fn((name: string) => attributes.delete(name)),
+      getAttribute: vi.fn((name: string) => attributes.get(name) ?? null),
+      style: { cssText: '' },
+      tagName: 'AUDIO',
+      srcObject: null as unknown,
+      volume: 1,
+      play: vi.fn(async () => undefined),
+      remove: vi.fn(),
+    };
+    vi.stubGlobal('document', {
+      createElement: () => audio,
+      body: { appendChild: vi.fn() },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return { id: 'voice' };
+      }),
+    );
+    const stream = {
+      getAudioTracks: () => [{ id: 'mic' }],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStream;
+
+    const stop = attachRemoteAudio(stream);
+    expect(audio.muted).toBe(false);
+    expect(audio.play).toHaveBeenCalled();
+
+    context.state = 'running';
+    listeners.get('statechange')?.();
+    expect(audio.muted).toBe(true);
+
+    context.state = 'interrupted' as AudioContextState;
+    listeners.get('statechange')?.();
+    expect(audio.muted).toBe(false);
+
+    stop();
+    expect(context.removeEventListener).toHaveBeenCalledWith('statechange', expect.any(Function));
+  });
+
   it('plays a voice the phone paused while the app was away', () => {
     vi.stubGlobal(
       'MediaStream',
