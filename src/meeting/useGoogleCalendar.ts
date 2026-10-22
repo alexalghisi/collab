@@ -29,6 +29,8 @@ export interface GoogleCalendarSync {
   readonly available: boolean;
   readonly connected: boolean;
   readonly syncing: boolean;
+  /** Connected, but live sync waits for a click because Google access expired. */
+  readonly paused: boolean;
   readonly error: string | null;
   connect: () => Promise<void>;
   sync: () => Promise<void>;
@@ -39,11 +41,18 @@ export interface GoogleCalendarSync {
   retract: (meeting: Meeting) => Promise<void>;
 }
 
+const RESUME_HINT = 'Google Calendar access expired. Click "Sync now" to resume live sync.';
+const NEEDS_CLICK = 'collab.google-calendar.needs-click';
+
 export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleCalendarSync {
   const available = Platform.OS === 'web' && Boolean(readGoogleWebClientId());
   const [connected, setConnected] = useState(() => readGoogleCalendarConnected(uid));
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
+  // Bumped after every successful interactive token request, so the polling
+  // loop (re)starts even if it had stopped for want of a token.
+  const [pollKey, setPollKey] = useState(0);
   const tokenRef = useRef<string | null>(readGoogleCalendarToken(uid));
   const syncTokenRef = useRef<string | null>(readGoogleCalendarSyncToken(uid));
   const haltRef = useRef(false);
@@ -58,6 +67,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     syncTokenRef.current = readGoogleCalendarSyncToken(uid);
     setConnected(readGoogleCalendarConnected(uid));
     setError(null);
+    setPaused(false);
     haltRef.current = false;
   }, [uid]);
 
@@ -114,7 +124,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
   }, []);
 
   const runGuarded = useCallback(
-    async (accessToken: string, epoch: number) => {
+    async (accessToken: string, epoch: number, interactive: boolean) => {
       if (haltRef.current || flightRef.current) {
         return;
       }
@@ -139,16 +149,20 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
           pushLocal,
           writeSyncToken,
           rememberToken,
-          requestSilentToken: () => token(''),
+          // A background poll has no click to open Google's window with, so
+          // it pauses instead; the next "Sync now" click gets a fresh token.
+          requestSilentToken: interactive
+            ? () => token('')
+            : () => Promise.reject(new Error(NEEDS_CLICK)),
         });
-        if (epochRef.current !== epoch) {
+        if (result.stopped) {
+          // Stay connected: one click on "Sync now" resumes live sync.
+          haltRef.current = true;
+          setPaused(true);
+          setError(!interactive || result.error === NEEDS_CLICK ? RESUME_HINT : result.error);
           return;
         }
-        if (result.stopped) {
-          haltRef.current = true;
-          writeGoogleCalendarConnected(uid, false);
-          setConnected(false);
-          setError(result.error);
+        if (epochRef.current !== epoch) {
           return;
         }
         setError(result.error);
@@ -196,25 +210,42 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
         });
         return;
       }
-      void runGuardedRef.current(accessToken, epoch);
+      void runGuardedRef.current(accessToken, epoch, false);
     };
     kick();
     const timer = setInterval(kick, CALENDAR_LIVE_SYNC_INTERVAL_MS);
+    // Pull right away when the person comes back to the tab.
+    const onVisible = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        kick();
+      }
+    };
+    const canListen = Platform.OS === 'web' && typeof window !== 'undefined';
+    if (canListen) {
+      window.addEventListener('focus', onVisible);
+      document.addEventListener('visibilitychange', onVisible);
+    }
     return () => {
       epochRef.current += 1;
       clearInterval(timer);
+      if (canListen) {
+        window.removeEventListener('focus', onVisible);
+        document.removeEventListener('visibilitychange', onVisible);
+      }
     };
-  }, [connected, uid]);
+  }, [connected, uid, pollKey]);
 
   const connect = useCallback(async () => {
     setError(null);
+    setPaused(false);
     haltRef.current = false;
     setSyncing(true);
     try {
       const accessToken = await token('consent');
       writeGoogleCalendarConnected(uid, true);
       setConnected(true);
-      await runGuarded(accessToken, epochRef.current);
+      await runGuarded(accessToken, epochRef.current, true);
+      setPollKey((key) => key + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not connect Google Calendar.');
     } finally {
@@ -223,13 +254,22 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
   }, [runGuarded, token, uid]);
 
   const sync = useCallback(async () => {
-    if (!connected || haltRef.current || flightRef.current) {
+    if (!connected) {
       return;
     }
     setError(null);
     try {
+      // Get a token first, while the click still allows opening Google's window.
       const accessToken = tokenRef.current ?? (await token(''));
-      await runGuarded(accessToken, epochRef.current);
+      const inflight = flightRef.current;
+      if (inflight) {
+        await inflight;
+      }
+      haltRef.current = false;
+      setPaused(false);
+      await runGuarded(tokenRef.current ?? accessToken, epochRef.current, true);
+      // (Re)start continuous polling of Google Calendar.
+      setPollKey((key) => key + 1);
     } catch (cause) {
       forgetExpiredToken(cause);
       setError(cause instanceof Error ? cause.message : 'Could not sync Google Calendar.');
@@ -240,6 +280,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     rememberToken(null);
     writeGoogleCalendarConnected(uid, false);
     setConnected(false);
+    setPaused(false);
     setError(null);
   }, [rememberToken, uid]);
 
@@ -350,6 +391,7 @@ export function useGoogleCalendar(uid: string, meetings: MeetingsState): GoogleC
     available,
     connected,
     syncing,
+    paused,
     error,
     connect,
     sync,
