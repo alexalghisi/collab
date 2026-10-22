@@ -177,7 +177,31 @@ export function attachRemoteAudio(stream: MediaStream): () => void {
   audio.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
   document.body.appendChild(audio);
   const detach = attachMediaStream(audio, stream);
+
+  // A context the browser suspends or interrupts (another app took the audio
+  // session, a headset was unplugged, the tab slept) goes silent without an
+  // error, and the element is muted behind it, so the voice just vanishes.
+  // Let the element speak whenever the context is not actually playing.
+  const followContext = (): void => {
+    if (!context || !source) {
+      return;
+    }
+    const contextPlays = context.state === 'running';
+    if (contextPlays) {
+      audio.setAttribute('data-silent', '1');
+    } else {
+      audio.removeAttribute('data-silent');
+    }
+    audio.muted = contextPlays;
+    if (!contextPlays && audio.paused !== false) {
+      void audio.play().catch(() => undefined);
+    }
+  };
+  followContext();
+  context?.addEventListener?.('statechange', followContext);
+
   return () => {
+    context?.removeEventListener?.('statechange', followContext);
     detach();
     audio.remove();
     source?.disconnect();
