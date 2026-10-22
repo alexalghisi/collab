@@ -63,9 +63,11 @@ export function CalendarScreen({
           <View style={styles.syncCopy}>
             <Text style={styles.syncTitle}>Google Calendar</Text>
             <Text style={styles.syncHint}>
-              {google.connected
-                ? 'Collab and Google Calendar stay in sync.'
-                : 'Connect once. Both calendars stay in sync while this page is open.'}
+              {!google.connected
+                ? 'Connect once. Both calendars stay in sync while this page is open.'
+                : google.paused
+                  ? 'Live sync is paused.'
+                  : 'Live sync is on: changes in Google Calendar show up here within seconds.'}
             </Text>
             {google.error ? <Text style={styles.syncError}>{google.error}</Text> : null}
             {google.error === CALENDAR_API_DISABLED && googleClientId ? (

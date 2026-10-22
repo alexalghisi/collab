@@ -3,7 +3,7 @@ import type { CalendarPage, CalendarQuery, CalendarWindow } from './googleCalend
 import { reconcileGoogleCalendar } from './reconcileGoogleCalendar';
 import type { Meeting, MeetingDraft } from './types';
 
-export const CALENDAR_LIVE_SYNC_INTERVAL_MS = 30_000;
+export const CALENDAR_LIVE_SYNC_INTERVAL_MS = 10_000;
 
 const ACCESS_EXPIRED = 'Google Calendar access expired. Connect it again.';
 
