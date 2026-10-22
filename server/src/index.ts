@@ -21,7 +21,13 @@ import { resolveIceServers } from './ice';
 import { ReminderBook } from './invite/reminders';
 import { inviteRouter } from './invite/router';
 import { transportFromEnv } from './invite/senders';
-import { files, isAdmitted, registerSignalingHandlers, type CollabServer } from './SignalingServer';
+import {
+  files,
+  isAdmitted,
+  registerSignalingHandlers,
+  SIGNALING_SERVER_OPTIONS,
+  type CollabServer,
+} from './SignalingServer';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -108,6 +114,7 @@ if (existsSync(WEB_ROOT)) {
 
 const httpServer = createServer(app);
 const io: CollabServer = new Server(httpServer, {
+  ...SIGNALING_SERVER_OPTIONS,
   cors: { origin: CORS_ORIGIN },
 });
 
