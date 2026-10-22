@@ -580,6 +580,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           signaling,
           localStream: stream,
           iceServers: await loadIceServers(SIGNALING_URL),
+          // Relay credentials expire; a restart an hour in needs fresh ones.
+          reloadIceServers: () => loadIceServers(SIGNALING_URL),
           onRemoteStream: (peerId, remoteStream) =>
             setParticipants((current) => rememberRemoteStream(current, peerId, remoteStream)),
           onPeerClosed: dropParticipant,
@@ -740,7 +742,18 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     if (!localStream) {
       return;
     }
-    const stopResuming = onAppResumed(resumePlayback);
+    // Coming back to the app or back online is when a link that died while
+    // nobody was looking gets noticed, so check every connection right then.
+    const checkLinks = (): void => managerRef.current?.checkConnections();
+    const stopResuming = onAppResumed(() => {
+      resumePlayback();
+      checkLinks();
+    });
+    const canWatchNetwork =
+      typeof window !== 'undefined' && typeof window.addEventListener === 'function';
+    if (canWatchNetwork) {
+      window.addEventListener('online', checkLinks);
+    }
     const stopWatching = watchCapture({
       stream: localStream,
       microphone: {
@@ -774,6 +787,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     return () => {
       stopResuming();
       stopWatching();
+      if (canWatchNetwork) {
+        window.removeEventListener('online', checkLinks);
+      }
     };
   }, [localStream, swapLocalVideo]);
 

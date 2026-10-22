@@ -10,7 +10,23 @@ export interface PeerConnectionManagerOptions {
   readonly iceServers?: readonly IceServerConfig[];
   readonly onRemoteStream: (peerId: string, stream: MediaStream) => void;
   readonly onPeerClosed: (peerId: string) => void;
+  /**
+   * Fetches fresh ICE servers before a restart. Relay credentials are
+   * short-lived, so a call that drops after an hour cannot reuse the old ones.
+   */
+  readonly reloadIceServers?: () => Promise<readonly IceServerConfig[]>;
 }
+
+/** How long a `disconnected` link may stay down before we restart ICE. */
+export const DISCONNECT_GRACE_MS = 2500;
+/** Delay between ICE restarts while a link keeps failing; caps at the last value. */
+export const RESTART_BACKOFF_MS: readonly number[] = [0, 2000, 5000, 10_000];
+/**
+ * Extra wait before the answering side restarts ICE itself. The caller goes
+ * first; this only kicks in when the caller cannot (its tab is asleep, its
+ * restart offer was lost), so a dead link never depends on one side alone.
+ */
+export const POLITE_RESTART_DELAY_MS = 4000;
 
 type MediaKind = 'audio' | 'video';
 
@@ -26,7 +42,9 @@ interface PeerEntry {
   offerer: boolean;
   polite: boolean;
   offerAgain: boolean;
-  restarted: boolean;
+  /** Restarts attempted since the link was last connected. */
+  restarts: number;
+  recoveryTimer: ReturnType<typeof setTimeout> | null;
 }
 
 /**
@@ -41,9 +59,10 @@ interface PeerEntry {
 export class PeerConnectionManager {
   private readonly signaling: SignalingChannel;
   private readonly localStream: MediaStream;
-  private readonly configuration: RTCConfiguration;
   private readonly onRemoteStream: (peerId: string, stream: MediaStream) => void;
   private readonly onPeerClosed: (peerId: string) => void;
+  private readonly reloadIceServers?: () => Promise<readonly IceServerConfig[]>;
+  private configuration: RTCConfiguration;
   private readonly peers = new Map<string, PeerEntry>();
   private readonly earlyIce = new Map<string, RTCIceCandidateInit[]>();
   private readonly offerQueue = new Map<string, Promise<void>>();
@@ -56,10 +75,17 @@ export class PeerConnectionManager {
     this.configuration = buildRtcConfiguration(options.iceServers);
     this.onRemoteStream = options.onRemoteStream;
     this.onPeerClosed = options.onPeerClosed;
+    this.reloadIceServers = options.reloadIceServers;
   }
 
   start(): void {
     this.signaling.on('room:joined', ({ selfPeerId, selfJoinedAt, peers }) => {
+      if (this.selfPeerId !== '' && this.selfPeerId !== selfPeerId) {
+        // The signaling socket reconnected under a new id. Everyone else has
+        // already dropped the old one, so these links lead nowhere: drop them
+        // without telling the UI (the room list just arrived) and dial again.
+        this.resetPeers();
+      }
       this.selfPeerId = selfPeerId;
       this.selfJoinedAt = selfJoinedAt;
       for (const peer of peers) {
@@ -115,6 +141,20 @@ export class PeerConnectionManager {
       this.closePeer(peerId);
     }
     stopAllPeerAudio();
+  }
+
+  /**
+   * Restarts ICE on every link that is not currently connected. Call it when
+   * the device comes back online or the app returns to the foreground: the
+   * network under the call may have changed while nobody was looking.
+   */
+  checkConnections(): void {
+    for (const [peerId, entry] of this.peers) {
+      const state = entry.connection.connectionState;
+      if (state === 'disconnected' || state === 'failed') {
+        this.scheduleRecovery(peerId, entry, 0);
+      }
+    }
   }
 
   async replaceAudioTrack(track: MediaStreamTrack | null): Promise<void> {
@@ -189,11 +229,29 @@ export class PeerConnectionManager {
     });
 
     connection.addEventListener('connectionstatechange', () => {
-      if (connection.connectionState === 'failed') {
-        void this.recover(peerId);
+      const entry = this.peers.get(peerId);
+      if (!entry || entry.connection !== connection) {
+        return;
       }
-      if (connection.connectionState === 'closed') {
-        this.closePeer(peerId);
+      switch (connection.connectionState) {
+        case 'connected':
+          entry.restarts = 0;
+          this.clearRecovery(entry);
+          break;
+        case 'disconnected':
+          // Often heals by itself within a second or two; if it does not, the
+          // browser can sit here for ~30s before declaring `failed`, which is
+          // the "we stopped hearing each other" gap. Restart sooner.
+          this.scheduleRecovery(peerId, entry, DISCONNECT_GRACE_MS);
+          break;
+        case 'failed':
+          this.scheduleRecovery(peerId, entry, this.backoff(entry));
+          break;
+        case 'closed':
+          this.closePeer(peerId);
+          break;
+        default:
+          break;
       }
     });
 
@@ -205,7 +263,8 @@ export class PeerConnectionManager {
       offerer: false,
       polite: true,
       offerAgain: false,
-      restarted: false,
+      restarts: 0,
+      recoveryTimer: null,
     };
     const queued = this.earlyIce.get(peerId);
     if (queued) {
@@ -325,17 +384,82 @@ export class PeerConnectionManager {
     await this.offerNow(entry, peerId);
   }
 
-  private async recover(peerId: string): Promise<void> {
-    const entry = this.peers.get(peerId);
-    if (!entry?.offerer || entry.restarted) {
+  private backoff(entry: PeerEntry): number {
+    const last = RESTART_BACKOFF_MS.length - 1;
+    return RESTART_BACKOFF_MS[Math.min(entry.restarts, last)] ?? 0;
+  }
+
+  private clearRecovery(entry: PeerEntry): void {
+    if (entry.recoveryTimer !== null) {
+      clearTimeout(entry.recoveryTimer);
+      entry.recoveryTimer = null;
+    }
+  }
+
+  private scheduleRecovery(peerId: string, entry: PeerEntry, baseDelayMs: number): void {
+    if (entry.recoveryTimer !== null) {
       return;
     }
-    entry.restarted = true;
+    const delayMs = baseDelayMs + (entry.polite ? POLITE_RESTART_DELAY_MS : 0);
+    const run = (): void => {
+      entry.recoveryTimer = null;
+      void this.enqueue(peerId, () => this.recover(peerId));
+    };
+    if (delayMs <= 0) {
+      run();
+      return;
+    }
+    entry.recoveryTimer = setTimeout(run, delayMs);
+  }
+
+  /**
+   * Restarts ICE for as long as the peer is in the room and the link is down.
+   * The original caller (`polite === false`) goes first; the answering side
+   * follows a few seconds later only if the link is still down. Should both
+   * restart offers cross, the usual glare rules settle it: the polite side
+   * rolls its own back and answers. If a restart offer is lost, the next
+   * state change or backoff tick tries again.
+   */
+  private async recover(peerId: string): Promise<void> {
+    const entry = this.peers.get(peerId);
+    if (!entry) {
+      return;
+    }
+    const state = entry.connection.connectionState;
+    if (state !== 'disconnected' && state !== 'failed') {
+      return;
+    }
+    entry.restarts += 1;
+    await this.refreshIceServers(entry);
+    if (entry.connection.signalingState !== 'stable') {
+      // An earlier offer never got its answer (it was lost with the link):
+      // drop it so the restart can go out.
+      try {
+        await entry.connection.setLocalDescription({ type: 'rollback' });
+      } catch {
+        // Nothing to roll back on this stack; try the restart anyway.
+      }
+    }
+    entry.offerer = true;
     try {
       const offer = await entry.connection.createOffer({ iceRestart: true });
       await this.publishLocalDescription(entry, peerId, 'signal:offer', offer);
     } catch {
-      this.closePeer(peerId);
+      // Keep the peer; the backoff below gives it another go.
+    }
+    // Re-arm in case this restart goes unanswered and the state never changes.
+    this.scheduleRecovery(peerId, entry, this.backoff(entry) || RESTART_BACKOFF_MS[1] || 2000);
+  }
+
+  private async refreshIceServers(entry: PeerEntry): Promise<void> {
+    if (!this.reloadIceServers) {
+      return;
+    }
+    try {
+      this.configuration = buildRtcConfiguration(await this.reloadIceServers());
+      entry.connection.setConfiguration?.(this.configuration);
+    } catch {
+      // Keep the servers we had.
     }
   }
 
@@ -367,15 +491,32 @@ export class PeerConnectionManager {
     await this.flushOffer(entry, peerId);
   }
 
+  /** Tears every link down quietly, for a rejoin under a new peer id. */
+  private resetPeers(): void {
+    for (const [peerId, entry] of [...this.peers]) {
+      this.clearRecovery(entry);
+      this.peers.delete(peerId);
+      entry.connection.close();
+      stopPeerAudio(peerId);
+    }
+    this.earlyIce.clear();
+    this.offerQueue.clear();
+  }
+
   private closePeer(peerId: string): void {
     const entry = this.peers.get(peerId);
     if (!entry) {
       return;
     }
-    entry.connection.close();
+    this.clearRecovery(entry);
     this.peers.delete(peerId);
     this.earlyIce.delete(peerId);
     this.offerQueue.delete(peerId);
+    // Without this the link to someone who left keeps its ports, its relay
+    // allocation and its decoder running for the rest of the call.
+    if (entry.connection.connectionState !== 'closed') {
+      entry.connection.close();
+    }
     stopPeerAudio(peerId);
     this.onPeerClosed(peerId);
   }

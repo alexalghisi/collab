@@ -10,6 +10,7 @@ import {
   files,
   isAdmitted,
   registerSignalingHandlers,
+  SIGNALING_SERVER_OPTIONS,
   type CollabServer,
 } from '../../server/src/SignalingServer';
 import { INITIAL_PEER_STATE, type RoomJoinedPayload } from '../signaling/events';
@@ -42,7 +43,7 @@ export async function startRoomServer(
   const app = express();
   app.use(filesRouter({ store: files, membership: isAdmitted }));
   const httpServer = createServer(app);
-  const io: CollabServer = new Server(httpServer);
+  const io: CollabServer = new Server(httpServer, SIGNALING_SERVER_OPTIONS);
   registerSignalingHandlers(io, execution, assistant);
   httpServer.listen(0);
   await once(httpServer, 'listening');
