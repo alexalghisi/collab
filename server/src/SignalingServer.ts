@@ -45,6 +45,46 @@ export interface SocketData {
   waitingFor?: string;
 }
 
+/**
+ * How long a participant whose connection dropped (Wi-Fi hand-off, a phone
+ * locking, a proxy recycling the socket) keeps their seat before the room is
+ * told they left. Audio and video flow peer to peer and usually survive the
+ * drop untouched, so announcing a departure right away would make everyone
+ * hang up on a call that was still working.
+ */
+export const RETURN_GRACE_MS = 30_000;
+
+/**
+ * Server options the signaling handlers rely on. Connection state recovery
+ * gives a socket that comes back within the window its old id, rooms and data,
+ * and replays what it missed (offers, answers, ICE), so the peer links built
+ * on that id keep working. It is a little shorter than the grace period so a
+ * recovered socket always finds its seat still held.
+ */
+export const SIGNALING_SERVER_OPTIONS = {
+  connectionStateRecovery: {
+    maxDisconnectionDuration: RETURN_GRACE_MS - 5_000,
+    skipMiddlewares: true,
+  },
+};
+
+/** Disconnect reasons that mean the network failed, not that someone left. */
+const UNPLANNED_DISCONNECTS = new Set([
+  'transport close',
+  'transport error',
+  'ping timeout',
+  'forced close',
+]);
+
+interface AwaySeat {
+  readonly roomId: string;
+  readonly data: SocketData;
+  readonly timer: ReturnType<typeof setTimeout>;
+}
+
+/** Participants who dropped without leaving, by peer id, until they return or time out. */
+const away = new Map<string, AwaySeat>();
+
 export type CollabServer = Server<
   ClientToServerEvents,
   ServerToClientEvents,
@@ -158,7 +198,10 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     room.admitted.add(socket.data.sessionId);
   }
 
-  socket.emit('room:joined', {
+  // Sent through the socket's own room rather than straight down the socket:
+  // room traffic carries a resume offset, so even a peer that has heard
+  // nothing else yet can recover its connection after a drop.
+  io.to(socket.id).emit('room:joined', {
     selfPeerId: socket.id,
     selfJoinedAt: joinedAt,
     hostPeerId: room.hostPeerId,
@@ -242,6 +285,7 @@ async function takeSeat(
   socket: CollabServerSocket,
   roomId: string,
 ): Promise<boolean> {
+  const tookAwayHost = await releaseAwaySeats(io, socket, roomId);
   const room = rooms.get(roomId);
   if (room) {
     let waitingChanged = false;
@@ -283,7 +327,7 @@ async function takeSeat(
       current.hostPeerId = socket.id;
     }
   }
-  return keepHost;
+  return keepHost || tookAwayHost;
 }
 
 function authorIds(socket: CollabServerSocket): string[] {
@@ -309,9 +353,57 @@ function replaceChatMessage(room: RoomState, next: ChatMessage): void {
   }
 }
 
+function someoneAway(roomId: string, exceptPeerId: string): boolean {
+  for (const [peerId, seat] of away) {
+    if (peerId !== exceptPeerId && seat.roomId === roomId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Tells the room someone is gone for good, and hands over what they held. */
+async function announceLeave(io: CollabServer, roomId: string, peerId: string): Promise<void> {
+  const seat = away.get(peerId);
+  if (seat) {
+    clearTimeout(seat.timer);
+    away.delete(peerId);
+  }
+  io.to(roomId).emit('peer:left', peerId);
+  await handleLeave(io, roomId, peerId);
+}
+
+/**
+ * A participant who could not recover their old connection (the page was
+ * reloaded, the drop outlasted the recovery window) comes back under a new id.
+ * Their old seat must go at once, or the room shows them twice.
+ */
+async function releaseAwaySeats(
+  io: CollabServer,
+  socket: CollabServerSocket,
+  roomId: string,
+): Promise<boolean> {
+  let keepHost = false;
+  for (const [peerId, seat] of [...away]) {
+    if (seat.roomId !== roomId || peerId === socket.id || !isSameOccupant(seat.data, socket.data)) {
+      continue;
+    }
+    const room = rooms.get(roomId);
+    if (room?.hostPeerId === peerId) {
+      keepHost = true;
+      room.hostPeerId = socket.id;
+    }
+    await announceLeave(io, roomId, peerId);
+  }
+  return keepHost;
+}
+
 async function handleLeave(io: CollabServer, roomId: string, peerId: string): Promise<void> {
   const room = rooms.get(roomId);
   const remaining = await listRoomPeers(io, roomId, peerId);
+  if (remaining.length === 0 && someoneAway(roomId, peerId)) {
+    return;
+  }
   if (remaining.length === 0) {
     room?.code.destroy();
     rooms.delete(roomId);
@@ -690,7 +782,7 @@ function registerSocket(
     io.to(targetPeerId).emit('signal:ice', { fromPeerId: socket.id, candidate });
   });
 
-  socket.on('disconnect', async () => {
+  socket.on('disconnect', async (reason) => {
     const { roomId, waitingFor } = socket.data;
     const waitingRoom = waitingFor ? rooms.get(waitingFor) : undefined;
     if (waitingRoom?.waiting.delete(socket.id)) {
@@ -699,8 +791,18 @@ function registerSocket(
     if (!roomId) {
       return;
     }
-    socket.to(roomId).emit('peer:left', socket.id);
-    await handleLeave(io, roomId, socket.id);
+    if (UNPLANNED_DISCONNECTS.has(reason) && rooms.has(roomId)) {
+      const peerId = socket.id;
+      const timer = setTimeout(() => {
+        if (away.get(peerId)?.timer === timer) {
+          void announceLeave(io, roomId, peerId);
+        }
+      }, RETURN_GRACE_MS);
+      (timer as { unref?: () => void }).unref?.();
+      away.set(peerId, { roomId, data: { ...socket.data }, timer });
+      return;
+    }
+    await announceLeave(io, roomId, socket.id);
   });
 }
 
@@ -711,6 +813,15 @@ export function registerSignalingHandlers(
 ): void {
   const helper = assistant ?? createMeetingAssistant();
   io.on('connection', (socket) => {
+    if (socket.recovered) {
+      // Back within the window: same id, same rooms. Nobody was told it left,
+      // so there is nothing to announce — just stop the departure clock.
+      const seat = away.get(socket.id);
+      if (seat) {
+        clearTimeout(seat.timer);
+        away.delete(socket.id);
+      }
+    }
     registerSocket(io, socket, execution, helper);
   });
 }
