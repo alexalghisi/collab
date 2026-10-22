@@ -28,6 +28,9 @@ interface RawSocket {
 class SocketChannel implements SignalingChannel {
   private readonly socket: CollabSocket;
   private readonly raw: RawSocket;
+  /** Latest state this peer announced, so a rejoin shows the room the truth. */
+  private state: SignalingOptions['state'];
+  private inRoom = false;
 
   constructor(
     private readonly url: string,
@@ -37,11 +40,26 @@ class SocketChannel implements SignalingChannel {
     this.socket = io(url, {
       transports: ['polling', 'websocket'],
       autoConnect: false,
-      reconnectionAttempts: 8,
+      // A call outlives short network drops (Wi-Fi hand-off, a phone locking,
+      // a cold Render instance), so keep trying rather than give up silently.
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 750,
+      reconnectionDelayMax: 5000,
       auth: { token: readSessionToken() ?? '' },
     });
     this.raw = this.socket as unknown as RawSocket;
+    this.state = options.state;
+  }
+
+  private joinRoom(): void {
+    const { sessionId, roomId, displayName, breakoutOf } = this.options;
+    this.socket.emit('room:join', {
+      sessionId,
+      roomId,
+      displayName,
+      state: this.state,
+      breakoutOf,
+    });
   }
 
   on: SignalingChannel['on'] = (event, handler) => {
@@ -49,6 +67,9 @@ class SocketChannel implements SignalingChannel {
   };
 
   emit: SignalingChannel['emit'] = (event, payload) => {
+    if (event === 'peer:state') {
+      this.state = payload as SignalingOptions['state'];
+    }
     this.raw.emit(event, payload);
   };
 
@@ -96,9 +117,22 @@ class SocketChannel implements SignalingChannel {
         holdingForHost = true;
         clearTimeout(timer);
       });
-      this.socket.once('connect', () => {
-        const { sessionId, roomId, displayName, state, breakoutOf } = this.options;
-        this.socket.emit('room:join', { sessionId, roomId, displayName, state, breakoutOf });
+      // Every connect, not just the first: the server gives a reconnected socket
+      // a new peer id and forgets the old one, so without joining again this
+      // client stays online but invisible and inaudible to everyone else.
+      this.socket.on('connect', () => {
+        // A short drop the server recovered: same peer id, same room, and the
+        // messages sent meanwhile are replayed. Joining again would announce
+        // this peer as new and make everyone tear down a call that still works.
+        if (this.socket.recovered && this.inRoom) {
+          return;
+        }
+        if (!settled || this.inRoom) {
+          this.joinRoom();
+        }
+      });
+      this.socket.once('room:joined', () => {
+        this.inRoom = true;
       });
       this.socket.connect();
     });
@@ -121,6 +155,7 @@ class SocketChannel implements SignalingChannel {
   }
 
   disconnect(): void {
+    this.inRoom = false;
     this.socket.disconnect();
   }
 }
