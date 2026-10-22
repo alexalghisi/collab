@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { INITIAL_PEER_STATE } from '../signaling/events';
 import { playPeerAudio } from './remotePlayback';
-import { PeerConnectionManager } from './PeerConnectionManager';
+import { POLITE_RESTART_DELAY_MS, PeerConnectionManager } from './PeerConnectionManager';
 
 vi.mock('./remotePlayback', () => ({
   playPeerAudio: vi.fn(),
@@ -443,5 +443,77 @@ describe('PeerConnectionManager', () => {
     expect(seen).toHaveLength(2);
     expect(seen[0]).toBe(seen[1]);
     expect(track.enabled).toBe(true);
+  });
+
+  function answeringSide() {
+    const connection = new FakePeerConnection();
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return new FakeStream();
+      }),
+    );
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      vi.fn(function RTCPeerConnection() {
+        return connection;
+      }),
+    );
+    const handlers = new Map<string, (payload: never) => void>();
+    const signaling = {
+      on: (event: string, handler: (payload: never) => void) => {
+        handlers.set(event, handler);
+      },
+      emit: vi.fn(),
+    };
+    const onPeerClosed = vi.fn();
+    const manager = new PeerConnectionManager({
+      signaling: signaling as never,
+      localStream: new FakeStream() as unknown as MediaStream,
+      onRemoteStream: vi.fn(),
+      onPeerClosed,
+    });
+    manager.start();
+    handlers.get('room:joined')?.({ selfPeerId: 'self', selfJoinedAt: 1, peers: [] } as never);
+    handlers.get('signal:offer')?.({
+      fromPeerId: 'peer-b',
+      description: { type: 'offer', sdp: 'offer' },
+    } as never);
+    return { connection, handlers, signaling, onPeerClosed };
+  }
+
+  it('closes the link to someone who left so it stops holding the network', async () => {
+    const { connection, handlers, onPeerClosed } = answeringSide();
+    await vi.waitFor(() => expect(connection.setRemoteDescription).toHaveBeenCalled());
+
+    handlers.get('peer:left')?.('peer-b' as never);
+
+    expect(connection.close).toHaveBeenCalledTimes(1);
+    expect(onPeerClosed).toHaveBeenCalledWith('peer-b');
+  });
+
+  it('restarts ICE from the answering side too when the caller never does', async () => {
+    vi.useFakeTimers();
+    try {
+      const { connection, signaling } = answeringSide();
+      await vi.waitFor(() =>
+        expect(signaling.emit).toHaveBeenCalledWith('signal:answer', expect.anything()),
+      );
+      signaling.emit.mockClear();
+
+      connection.connectionState = 'failed';
+      connection.listeners.get('connectionstatechange')?.(undefined);
+      await vi.advanceTimersByTimeAsync(POLITE_RESTART_DELAY_MS - 100);
+      expect(connection.createOffer).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(connection.createOffer).toHaveBeenLastCalledWith({ iceRestart: true });
+      expect(signaling.emit).toHaveBeenLastCalledWith('signal:offer', {
+        targetPeerId: 'peer-b',
+        description: { type: 'offer', sdp: 'restart' },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
