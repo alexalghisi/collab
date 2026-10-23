@@ -3,67 +3,29 @@ import { DEFAULT_ICE_SERVERS } from './config';
 import { loadIceServers } from './loadIceServers';
 
 describe('loadIceServers', () => {
-  it('uses the hosted TURN list when the signaling process has one', async () => {
+  it('uses the hosted TURN list from /ice', async () => {
     const iceServers = [{ urls: 'turn:example', username: 'u', credential: 'p' }];
-    const fetchImpl = (async () =>
-      new Response(JSON.stringify({ iceServers }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })) as typeof fetch;
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ iceServers }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as typeof fetch;
 
     await expect(loadIceServers('https://signal.example', fetchImpl)).resolves.toEqual(iceServers);
+    expect(String(vi.mocked(fetchImpl).mock.calls[0]?.[0])).toBe('https://signal.example/ice');
   });
 
-  it('uses the public relay on a remote host without asking /ice', async () => {
-    const fetchImpl = vi.fn(async () => {
-      return new Response(
-        JSON.stringify({
-          uris: ['turn:203.0.113.8:3478?transport=udp'],
-          username: 'u',
-          password: 'p',
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
-    }) as typeof fetch;
+  it('does not call a third-party TURN host from the browser', async () => {
+    const fetchImpl = vi.fn(async () => new Response('no', { status: 404 })) as typeof fetch;
 
-    await loadIceServers('https://collab-signaling.onrender.com', fetchImpl);
+    await expect(
+      loadIceServers('https://collab-signaling.onrender.com', fetchImpl),
+    ).resolves.toEqual(DEFAULT_ICE_SERVERS);
 
     const urls = vi.mocked(fetchImpl).mock.calls.map((call) => String(call[0]));
-    expect(urls.some((url) => url.includes('/ice'))).toBe(false);
-    expect(urls.some((url) => url.includes('turn.elixir-webrtc.org'))).toBe(true);
-  });
-
-  it('asks a public relay when /ice is missing', async () => {
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/ice')) {
-        return new Response('nope', { status: 404 });
-      }
-      return new Response(
-        JSON.stringify({
-          uris: ['turn:203.0.113.8:3478?transport=udp'],
-          username: 'u',
-          password: 'p',
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
-    }) as typeof fetch;
-
-    await expect(loadIceServers('https://signal.example', fetchImpl)).resolves.toEqual([
-      ...DEFAULT_ICE_SERVERS,
-      {
-        urls: ['turn:203.0.113.8:3478?transport=udp', 'turn:203.0.113.8:3478?transport=tcp'],
-        username: 'u',
-        credential: 'p',
-      },
-    ]);
-  });
-
-  it('keeps STUN when the public relay is quiet too', async () => {
-    const fetchImpl = (async () => new Response('nope', { status: 404 })) as typeof fetch;
-
-    await expect(loadIceServers('https://signal.example', fetchImpl)).resolves.toEqual(
-      DEFAULT_ICE_SERVERS,
-    );
+    expect(urls).toEqual(['https://collab-signaling.onrender.com/ice']);
+    expect(urls.some((url) => url.includes('turn.elixir-webrtc.org'))).toBe(false);
   });
 });
