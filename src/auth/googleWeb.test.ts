@@ -3,9 +3,63 @@ import { requestGoogleCalendarToken, requestGoogleCredential } from './googleWeb
 
 const CLIENT_ID = 'collab.apps.googleusercontent.com';
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
-const SIGN_IN_SCOPE = 'openid email profile';
+
+interface TokenResponse {
+  readonly access_token?: string;
+  readonly error?: string;
+}
+
+interface Asked {
+  readonly scope: string;
+  readonly prompt: string;
+}
+
+interface GoogleStub {
+  readonly asked: Asked[];
+  initializeCalls: number;
+  promptCalls: number;
+}
 
 type GoogleGlobal = { google?: unknown };
+
+function stubGoogle(response: TokenResponse): GoogleStub {
+  const stub: GoogleStub = { asked: [], initializeCalls: 0, promptCalls: 0 };
+  (globalThis as GoogleGlobal).google = {
+    accounts: {
+      id: {
+        initialize: () => {
+          stub.initializeCalls += 1;
+        },
+        prompt: () => {
+          stub.promptCalls += 1;
+          throw new Error('GIS One Tap prompt should not run');
+        },
+      },
+      oauth2: {
+        initTokenClient: (config: { scope: string; callback: (value: TokenResponse) => void }) => ({
+          requestAccessToken: (options?: { prompt?: string }) => {
+            stub.asked.push({ scope: config.scope, prompt: options?.prompt ?? '' });
+            config.callback(response);
+          },
+        }),
+      },
+    },
+  };
+  return stub;
+}
+
+function stubGoogleWindowFailure(error: { type?: string; message?: string }): void {
+  (globalThis as GoogleGlobal).google = {
+    accounts: {
+      id: { initialize: () => undefined, prompt: () => undefined },
+      oauth2: {
+        initTokenClient: (config: { error_callback?: (value: unknown) => void }) => ({
+          requestAccessToken: () => config.error_callback?.(error),
+        }),
+      },
+    },
+  };
+}
 
 interface RedirectFields {
   readonly access_token?: string;
@@ -119,39 +173,22 @@ describe('requestGoogleCredential', () => {
     );
   });
 
-  it('asks Google for the profile scope in its own window and returns the access token', async () => {
+  it('opens the OAuth account picker and returns an access token', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    const browser = stubBrowser((url) => ({ access_token: 'ya29.login', state: url.state }));
+    const stub = stubGoogle({ access_token: 'ya29.login' });
 
     await expect(requestGoogleCredential()).resolves.toEqual({ accessToken: 'ya29.login' });
-    expect(browser.opened).toHaveLength(1);
-    expect(browser.opened[0]?.searchParams.get('scope')).toBe(SIGN_IN_SCOPE);
-    expect(browser.opened[0]?.searchParams.get('prompt')).toBe('select_account');
-    expect(browser.opened[0]?.searchParams.get('redirect_uri')).toBe(
-      'https://alexalghisi.github.io/collab/',
-    );
-    browser.restore();
+    expect(stub.asked).toEqual([{ scope: 'openid email profile', prompt: 'select_account' }]);
   });
 
-  it('opens the Google window in the same turn as the click', async () => {
+  it('opens the account picker in the same turn once Google is loaded', () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    const browser = stubBrowser((url) => ({ access_token: 'ya29.login', state: url.state }));
+    const stub = stubGoogle({ access_token: 'ya29.login' });
 
     const pending = requestGoogleCredential();
 
-    expect(browser.opened).toHaveLength(1);
-    await expect(pending).resolves.toEqual({ accessToken: 'ya29.login' });
-    browser.restore();
-  });
-
-  it('does not load the Google Identity Services script', async () => {
-    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    const browser = stubBrowser((url) => ({ access_token: 'ya29.login', state: url.state }));
-
-    await requestGoogleCredential();
-
-    expect((globalThis as GoogleGlobal).google).toBeUndefined();
-    browser.restore();
+    expect(stub.asked).toEqual([{ scope: 'openid email profile', prompt: 'select_account' }]);
+    return expect(pending).resolves.toEqual({ accessToken: 'ya29.login' });
   });
 
   it('delegates to electronAuth.loginWithGoogle when running in Electron', async () => {
@@ -172,29 +209,43 @@ describe('requestGoogleCredential', () => {
     expect(loginWithGoogle).toHaveBeenCalledWith('electron-client-id');
   });
 
-  it('reports a refused account choice as a cancelled sign-in', async () => {
+  it('does not call Google One Tap initialize or prompt', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    const browser = stubBrowser((url) => ({ error: 'access_denied', state: url.state }));
+    const stub = stubGoogle({ access_token: 'ya29.login' });
 
-    await expect(requestGoogleCredential()).rejects.toThrow('Google sign-in was cancelled.');
-    browser.restore();
+    await requestGoogleCredential();
+
+    expect(stub.initializeCalls).toBe(0);
+    expect(stub.promptCalls).toBe(0);
   });
 
-  it('passes on whatever Google says about a failure it has no name for', async () => {
+  it('surfaces popup_closed_by_user from the token client', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    const browser = stubBrowser((url) => ({ error: 'server_error', state: url.state }));
+    stubGoogle({ error: 'popup_closed_by_user' });
 
-    await expect(requestGoogleCredential()).rejects.toThrow('server_error');
-    browser.restore();
+    await expect(requestGoogleCredential()).rejects.toThrow('popup_closed_by_user');
+  });
+
+  it('gives up when someone closes the Google window instead of waiting on it', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    stubGoogleWindowFailure({ type: 'popup_closed' });
+
+    await expect(requestGoogleCredential()).rejects.toThrow('Google sign-in was cancelled.');
   });
 
   it('says so when the browser blocks the Google window', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    const browser = stubBrowser(null);
+    stubGoogleWindowFailure({ type: 'popup_failed_to_open' });
 
     await expect(requestGoogleCredential()).rejects.toThrow(
       'Your browser blocked the Google window. Allow pop-ups for this site and try again.',
     );
-    browser.restore();
+  });
+
+  it('passes on whatever Google says about a failure it has no name for', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    stubGoogleWindowFailure({ type: 'unknown', message: 'Network error' });
+
+    await expect(requestGoogleCredential()).rejects.toThrow('Network error');
   });
 });

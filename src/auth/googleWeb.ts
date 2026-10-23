@@ -2,6 +2,106 @@ import { readGoogleWebClientId } from './config';
 import { requestTokenInPopup } from './googleOAuthPopup';
 import type { GoogleCredential } from './types';
 
+interface TokenClientError {
+  readonly type?: string;
+  readonly message?: string;
+}
+
+interface GoogleIdentity {
+  id: {
+    initialize(config: {
+      client_id: string;
+      callback: (response: { credential?: string }) => void;
+    }): void;
+    prompt(
+      callback?: (notification: { isNotDisplayed(): boolean; isSkippedMoment(): boolean }) => void,
+    ): void;
+  };
+  oauth2?: {
+    initTokenClient(config: {
+      client_id: string;
+      scope: string;
+      callback: (response: { access_token?: string; error?: string }) => void;
+      error_callback?: (error: TokenClientError) => void;
+    }): { requestAccessToken: (opts?: { prompt?: string }) => void };
+  };
+}
+
+export function describeTokenClientError(error: TokenClientError, fallback: string): string {
+  if (error.type === 'popup_failed_to_open') {
+    return 'Your browser blocked the Google window. Allow pop-ups for this site and try again.';
+  }
+  if (error.type === 'popup_closed') {
+    return fallback;
+  }
+  return error.message || fallback;
+}
+
+function googleApi(): GoogleIdentity | undefined {
+  const candidate = (globalThis as { google?: { accounts?: GoogleIdentity } }).google?.accounts;
+  return candidate?.id ? candidate : undefined;
+}
+
+const SCRIPT_UNAVAILABLE = 'Could not load Google Sign-In. Check your connection and try again.';
+const SCRIPT_TIMEOUT_MS = 15_000;
+
+function loadScript(): Promise<void> {
+  if (googleApi()) {
+    return Promise.resolve();
+  }
+  if (typeof document === 'undefined') {
+    return Promise.reject(new Error('Google sign-in is only available in the browser.'));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(SCRIPT_UNAVAILABLE)), SCRIPT_TIMEOUT_MS);
+    const settle = (outcome: () => void) => () => {
+      clearTimeout(timer);
+      outcome();
+    };
+    const succeed = settle(() => resolve());
+    const fail = settle(() => reject(new Error(SCRIPT_UNAVAILABLE)));
+
+    const existing = document.querySelector('script[data-collab-google="true"]');
+    if (existing) {
+      existing.addEventListener('load', succeed);
+      existing.addEventListener('error', fail);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.dataset.collabGoogle = 'true';
+    script.onload = succeed;
+    script.onerror = fail;
+    document.head.appendChild(script);
+  });
+}
+
+function requestAccessToken(api: GoogleIdentity, clientId: string): Promise<string> {
+  const oauth = api.oauth2;
+  if (!oauth) {
+    return Promise.reject(new Error('Could not load Google Sign-In.'));
+  }
+  return new Promise((resolve, reject) => {
+    const cancelled = 'Google sign-in was cancelled.';
+    const client = oauth.initTokenClient({
+      client_id: clientId,
+      scope: 'openid email profile',
+      callback: (response) => {
+        if (response.access_token) {
+          resolve(response.access_token);
+          return;
+        }
+        reject(new Error(response.error || cancelled));
+      },
+      error_callback: (error) => {
+        reject(new Error(describeTokenClientError(error, cancelled)));
+      },
+    });
+    client.requestAccessToken({ prompt: 'select_account' });
+  });
+}
+
 interface ElectronAuth {
   readonly isElectron?: boolean;
   readonly clientId?: string;
@@ -14,7 +114,6 @@ function getElectronAuth(): ElectronAuth | undefined {
   return candidate?.isElectron ? candidate : undefined;
 }
 
-const SIGN_IN_CANCELLED = 'Google sign-in was cancelled.';
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 
 export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): Promise<string> {
@@ -38,7 +137,6 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
     scope: CALENDAR_SCOPE,
     prompt,
     cancelledMessage: 'Google Calendar access was cancelled.',
-    deniedMessage: 'Google Calendar access was not granted.',
   });
   return accessToken;
 }
@@ -57,12 +155,17 @@ export async function requestGoogleCredential(): Promise<GoogleCredential> {
   if (!clientId) {
     throw new Error('Google sign-in is not configured on this deployment.');
   }
-  const { accessToken } = await requestTokenInPopup({
-    clientId,
-    scope: 'openid email profile',
-    prompt: 'select_account',
-    cancelledMessage: SIGN_IN_CANCELLED,
-    deniedMessage: SIGN_IN_CANCELLED,
-  });
-  return { accessToken };
+  const ready = googleApi();
+  if (!ready) {
+    await loadScript();
+  }
+  const api = ready ?? googleApi();
+  if (!api) {
+    throw new Error('Could not load Google Sign-In.');
+  }
+  return { accessToken: await requestAccessToken(api, clientId) };
+}
+
+if (typeof document !== 'undefined') {
+  void loadScript().catch(() => undefined);
 }
