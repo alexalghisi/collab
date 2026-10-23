@@ -97,12 +97,12 @@ export default function App() {
     if (inMeeting && session.roomId) {
       wasInMeeting.current = true;
       syncRoomInLink(session.roomId);
-    } else {
+    } else if (wasInMeeting.current) {
+      // Only a call that ended clears ?room=. On first load the link must stay
+      // until the signed-in resume below has read it, or invite links land on Home.
+      wasInMeeting.current = false;
       syncRoomInLink(null);
-      if (wasInMeeting.current) {
-        wasInMeeting.current = false;
-        setRoomId('');
-      }
+      setRoomId('');
     }
   }, [inMeeting, session.roomId]);
 
