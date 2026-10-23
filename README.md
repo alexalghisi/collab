@@ -60,20 +60,20 @@ The first join after the server has been idle can take about a minute — Render
 
 ## Download & run
 
-Prebuilt binaries are published automatically for every tagged release.
+Prebuilt binaries are published automatically for every tagged release. The current release is **[v1.4.1](https://github.com/alexalghisi/collab/releases/tag/v1.4.1)**. The same app is already running at **[alexalghisi.github.io/collab](https://alexalghisi.github.io/collab)** — open that if you do not want to install anything. The loop above is what you get after sign-in.
 
-1. Open the **[Releases](https://github.com/alexalghisi/collab/releases)** tab of this repository.
+1. Open the **[Releases](https://github.com/alexalghisi/collab/releases/latest)** tab of this repository.
 2. Expand **Assets** on the latest release and download the file for your platform:
 
 | Platform              | Asset                                                                                                                             | How to run                                                                                 |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Android               | [`app-release.apk`](https://github.com/alexalghisi/collab/releases/download/v1.4.0/app-release.apk)                               | Copy to an Android device and open it. Allow "install from unknown sources" when prompted. |
-| iOS                   | [`Collab-unsigned.ipa`](https://github.com/alexalghisi/collab/releases/download/v1.4.0/Collab-unsigned.ipa)                       | Unsigned build — install by sideloading (AltStore / Sideloadly) or use TestFlight (below). |
-| Windows               | [`Collab.Setup.1.4.0.exe`](https://github.com/alexalghisi/collab/releases/download/v1.4.0/Collab.Setup.1.4.0.exe)                 | Run the installer and launch **Collab** from the Start menu.                               |
-| macOS (Apple Silicon) | [`Collab-1.4.0-arm64.dmg`](https://github.com/alexalghisi/collab/releases/download/v1.4.0/Collab-1.4.0-arm64.dmg)                 | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
-| macOS (Intel)         | [`Collab-1.4.0-x64.dmg`](https://github.com/alexalghisi/collab/releases/download/v1.4.0/Collab-1.4.0-x64.dmg)                     | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
-| Linux (AppImage)      | [`Collab-1.4.0.AppImage`](https://github.com/alexalghisi/collab/releases/download/v1.4.0/Collab-1.4.0.AppImage)                   | `chmod +x` the file, then run it. Works on most distributions.                             |
-| Linux (Debian/Ubuntu) | [`collab-desktop_1.4.0_amd64.deb`](https://github.com/alexalghisi/collab/releases/download/v1.4.0/collab-desktop_1.4.0_amd64.deb) | Install with `sudo dpkg -i collab-desktop_1.4.0_amd64.deb`, then launch **Collab**.        |
+| Android               | [`app-release.apk`](https://github.com/alexalghisi/collab/releases/download/v1.4.1/app-release.apk)                               | Copy to an Android device and open it. Allow "install from unknown sources" when prompted. |
+| iOS                   | [`Collab-unsigned.ipa`](https://github.com/alexalghisi/collab/releases/download/v1.4.1/Collab-unsigned.ipa)                       | Unsigned build — install by sideloading (AltStore / Sideloadly) or use TestFlight (below). |
+| Windows               | [`Collab.Setup.1.4.0.exe`](https://github.com/alexalghisi/collab/releases/download/v1.4.1/Collab.Setup.1.4.0.exe)                 | Run the installer and launch **Collab** from the Start menu.                               |
+| macOS (Apple Silicon) | [`Collab-1.4.0-arm64.dmg`](https://github.com/alexalghisi/collab/releases/download/v1.4.1/Collab-1.4.0-arm64.dmg)                 | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
+| macOS (Intel)         | [`Collab-1.4.0-x64.dmg`](https://github.com/alexalghisi/collab/releases/download/v1.4.1/Collab-1.4.0-x64.dmg)                     | Open the `.dmg`, drag **Collab** into Applications, then launch it.                        |
+| Linux (AppImage)      | [`Collab-1.4.0.AppImage`](https://github.com/alexalghisi/collab/releases/download/v1.4.1/Collab-1.4.0.AppImage)                   | `chmod +x` the file, then run it. Works on most distributions.                             |
+| Linux (Debian/Ubuntu) | [`collab-desktop_1.4.0_amd64.deb`](https://github.com/alexalghisi/collab/releases/download/v1.4.1/collab-desktop_1.4.0_amd64.deb) | Install with `sudo dpkg -i collab-desktop_1.4.0_amd64.deb`, then launch **Collab**.        |
 
 > The macOS and Windows builds are unsigned. On macOS, right-click the app and choose **Open** the first time to bypass Gatekeeper. On Windows, choose **More info -> Run anyway** on the SmartScreen prompt.
 
