@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { applyFormattedCode } from '../../code/formatSource';
 import type { CodeLanguage } from '../../code/languages';
@@ -15,6 +15,7 @@ import { cursorClass, remoteCursorCss } from '../../code/remoteCursorStyle';
 import type { CodeRun } from '../../hooks/useCollabSession';
 import type { WorkspaceFile } from '../../code/workspaceFiles';
 import { colors } from '../../theme';
+import { clampEditorFont } from './callLayout';
 import { CodeControls } from './CodeControls';
 import { CodeFileManager, CODE_MAIN_FILE } from './CodeFileManager';
 import { CodeOutput } from './CodeOutput';
@@ -52,6 +53,8 @@ export function CodePanel({
   const [editors, setEditors] = useState<CodePresence[]>(shared.presence());
   const [stdin, setStdin] = useState('');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
+  const [fontSize, setFontSize] = useState(16);
+  const editorHost = useRef<View>(null);
   const bindingRef = useRef<MonacoTextBinding | null>(null);
   const decorationsRef = useRef<DecorationsCollection | null>(null);
   const editorRef = useRef<EditorApi | null>(null);
@@ -101,6 +104,49 @@ export function CodePanel({
   useEffect(() => {
     paintCursors();
   }, [paintCursors]);
+  useEffect(() => {
+    const node = editorHost.current as unknown as HTMLElement | null;
+    if (!node || typeof node.addEventListener !== 'function') {
+      return;
+    }
+    let startDistance = 0;
+    let startSize = fontSize;
+    const distance = (event: TouchEvent): number => {
+      const [a, b] = [event.touches[0], event.touches[1]];
+      if (!a || !b) {
+        return 0;
+      }
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    };
+    const onWheel = (event: WheelEvent): void => {
+      if (!event.ctrlKey) {
+        return;
+      }
+      event.preventDefault();
+      setFontSize((size) => clampEditorFont(size + (event.deltaY < 0 ? 1 : -1)));
+    };
+    const onTouchStart = (event: TouchEvent): void => {
+      if (event.touches.length === 2) {
+        startDistance = distance(event);
+        startSize = fontSize;
+      }
+    };
+    const onTouchMove = (event: TouchEvent): void => {
+      if (event.touches.length !== 2 || startDistance <= 0) {
+        return;
+      }
+      const ratio = distance(event) / startDistance;
+      setFontSize(clampEditorFont(startSize * ratio));
+    };
+    node.addEventListener('wheel', onWheel, { passive: false });
+    node.addEventListener('touchstart', onTouchStart);
+    node.addEventListener('touchmove', onTouchMove);
+    return () => {
+      node.removeEventListener('wheel', onWheel);
+      node.removeEventListener('touchstart', onTouchStart);
+      node.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [fontSize]);
 
   const mount = useCallback<OnMount>(
     (editor, monaco) => {
@@ -132,6 +178,24 @@ export function CodePanel({
         running={running}
         editors={editors}
       />
+      <View style={styles.fontRow}>
+        <Pressable
+          onPress={() => setFontSize((size) => clampEditorFont(size - 2))}
+          accessibilityRole="button"
+          accessibilityLabel="Smaller text"
+          style={styles.fontButton}
+        >
+          <Text style={styles.fontLabel}>A-</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setFontSize((size) => clampEditorFont(size + 2))}
+          accessibilityRole="button"
+          accessibilityLabel="Larger text"
+          style={styles.fontButton}
+        >
+          <Text style={styles.fontLabel}>A+</Text>
+        </Pressable>
+      </View>
       {statement && (
         <ScrollView style={styles.statement} contentContainerStyle={styles.statementContent}>
           <Text style={styles.statementText}>{statement.content}</Text>
@@ -145,14 +209,15 @@ export function CodePanel({
           onSelect={setSelected}
           onChange={onFilesChange}
         />
-        <View style={[styles.editor, openFile ? styles.hidden : null]}>
+        <View ref={editorHost} style={[styles.editor, openFile ? styles.hidden : null]}>
           <Editor
             language={language}
             theme="vs-dark"
             defaultValue=""
             onMount={mount}
             options={{
-              fontSize: 13,
+              fontSize,
+              wordWrap: 'on',
               minimap: { enabled: false },
               scrollBeyondLastLine: false,
               automaticLayout: true,
@@ -162,7 +227,7 @@ export function CodePanel({
         </View>
         {openFile && (
           <TextInput
-            style={styles.fileEditor}
+            style={[styles.fileEditor, { fontSize }]}
             value={openFile.content}
             onChangeText={editFile}
             multiline
@@ -181,6 +246,23 @@ const styles = StyleSheet.create({
   panel: {
     flex: 1,
     backgroundColor: colors.background,
+    minWidth: 0,
+  },
+  fontRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  fontButton: {
+    borderRadius: 8,
+    backgroundColor: colors.surfaceRaised,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  fontLabel: {
+    color: colors.text,
+    fontWeight: '700',
   },
   statement: {
     maxHeight: 180,
