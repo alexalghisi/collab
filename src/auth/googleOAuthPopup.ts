@@ -8,6 +8,10 @@
  * call" in the console. Here the popup is redirected back to this app, which
  * hands the result over through BroadcastChannel / localStorage (same origin,
  * unaffected by COOP) and closes itself — no cross-origin window access at all.
+ *
+ * On phones the window is another tab and the opener is suspended while it is
+ * open, so live messages can be missed. The result therefore stays in
+ * localStorage until the opener claims it on returning to the foreground.
  */
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -31,6 +35,7 @@ export interface OAuthPopupRequest {
   readonly scope: string;
   readonly prompt?: string;
   readonly cancelledMessage: string;
+  readonly deniedMessage: string;
 }
 
 export interface OAuthToken {
@@ -68,6 +73,22 @@ function deliver(result: OAuthRedirectResult): void {
   }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+  } catch {
+    return;
+  }
+}
+
+function readStoredResult(): OAuthRedirectResult | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? (JSON.parse(stored) as OAuthRedirectResult) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredResult(): void {
+  try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     return;
@@ -105,14 +126,14 @@ function randomState(): string {
   return STATE_PREFIX + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function describeError(error: string, cancelled: string): string {
+function describeError(error: string, request: OAuthPopupRequest): string {
   if (error === 'access_denied') {
-    return 'Google Calendar access was not granted.';
+    return request.deniedMessage;
   }
   if (error === 'popup_closed' || error === 'user_cancelled') {
-    return cancelled;
+    return request.cancelledMessage;
   }
-  return error;
+  return error || request.cancelledMessage;
 }
 
 export function requestTokenInPopup(request: OAuthPopupRequest): Promise<OAuthToken> {
@@ -142,6 +163,7 @@ export function requestTokenInPopup(request: OAuthPopupRequest): Promise<OAuthTo
       clearTimeout(cancelTimer);
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('visibilitychange', claimStoredResult);
       channel?.close();
       outcome();
     };
@@ -150,14 +172,17 @@ export function requestTokenInPopup(request: OAuthPopupRequest): Promise<OAuthTo
       if (!result || result.state !== state) {
         return;
       }
+      clearStoredResult();
       if (result.accessToken) {
         const token = result.accessToken;
         finish(() => resolve({ accessToken: token, expiresIn: result.expiresIn }));
         return;
       }
-      const message = describeError(result.error ?? '', request.cancelledMessage);
-      finish(() => reject(new Error(message || request.cancelledMessage)));
+      const message = describeError(result.error ?? '', request);
+      finish(() => reject(new Error(message)));
     };
+
+    const claimStoredResult = () => accept(readStoredResult());
 
     const onStorage = (event: StorageEvent) => {
       if (event.key !== STORAGE_KEY || !event.newValue) {
@@ -173,11 +198,15 @@ export function requestTokenInPopup(request: OAuthPopupRequest): Promise<OAuthTo
     // The opener regains focus when the popup goes away. If no result shows
     // up shortly after, the person closed it.
     const onFocus = () => {
+      claimStoredResult();
+      if (settled) {
+        return;
+      }
       clearTimeout(cancelTimer);
-      cancelTimer = setTimeout(
-        () => finish(() => reject(new Error(request.cancelledMessage))),
-        CANCEL_GRACE_MS,
-      );
+      cancelTimer = setTimeout(() => {
+        claimStoredResult();
+        finish(() => reject(new Error(request.cancelledMessage)));
+      }, CANCEL_GRACE_MS);
     };
 
     // Listen before opening, so a fast redirect is never missed.
@@ -189,6 +218,7 @@ export function requestTokenInPopup(request: OAuthPopupRequest): Promise<OAuthTo
     }
     window.addEventListener('storage', onStorage);
     window.addEventListener('focus', onFocus);
+    window.addEventListener('visibilitychange', claimStoredResult);
     const timeout = setTimeout(
       () => finish(() => reject(new Error(request.cancelledMessage))),
       TIMEOUT_MS,
