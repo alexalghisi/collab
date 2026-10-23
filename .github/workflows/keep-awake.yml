@@ -1,0 +1,21 @@
+name: Keep signaling server awake
+
+# Render's free plan puts the service to sleep after 15 idle minutes, and the
+# first sign-in afterwards waits about a minute for it to boot.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    name: Ping /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping
+        env:
+          SIGNALING_URL: ${{ vars.EXPO_PUBLIC_SIGNALING_URL || 'https://collab-signaling.onrender.com' }}
+        run: curl --fail --silent --show-error --max-time 120 --retry 2 "$SIGNALING_URL/health"
