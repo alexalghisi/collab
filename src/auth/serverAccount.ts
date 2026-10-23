@@ -1,3 +1,4 @@
+import { timeoutSignal } from '../net/timeoutSignal';
 import { SIGNALING_URL } from '../signaling/config';
 import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
 import type { AuthUser, DirectoryPerson, GoogleCredential } from './types';
@@ -48,7 +49,7 @@ async function postAccount(path: string, init?: RequestInit): Promise<AuthSessio
   try {
     response = await fetch(`${SIGNALING_URL}${path}`, {
       ...init,
-      signal: init?.signal ?? AbortSignal.timeout(20_000),
+      signal: init?.signal ?? timeoutSignal(45_000),
     });
   } catch {
     throw new Error(UNREACHABLE);
@@ -116,7 +117,7 @@ export async function restoreAccount(token: string): Promise<AuthUser> {
   try {
     response = await fetch(`${SIGNALING_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(20_000),
+      signal: timeoutSignal(45_000),
     });
   } catch {
     throw new Error('Could not restore your session.');
@@ -163,7 +164,7 @@ async function hostOffersDirectory(): Promise<boolean> {
   try {
     const response = await fetch(`${SIGNALING_URL}/health`, {
       cache: 'no-store',
-      signal: AbortSignal.timeout(4_000),
+      signal: timeoutSignal(4_000),
     });
     if (!response.ok) {
       return false;
@@ -184,7 +185,7 @@ export async function fetchAccountDirectory(token: string): Promise<DirectoryPer
   try {
     response = await fetch(`${SIGNALING_URL}/auth/directory`, {
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(20_000),
+      signal: timeoutSignal(45_000),
     });
   } catch {
     throw new Error(UNREACHABLE);

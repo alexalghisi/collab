@@ -51,8 +51,9 @@ function columnsFor(tileCount: number, width: number): number {
 
 export function MeetingScreen({ session, roomId, displayName, onInvite }: MeetingScreenProps) {
   const { width } = useWindowDimensions();
+  // On a phone a panel covers the whole call, so start with the people in view.
   const [panel, setPanel] = useState<Panel>(() =>
-    session.messages.length > 0 ? 'chat' : 'invite',
+    width < WIDE_LAYOUT_MIN_WIDTH ? null : session.messages.length > 0 ? 'chat' : 'invite',
   );
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [readCount, setReadCount] = useState(0);
@@ -268,7 +269,13 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
         </Pressable>
       )}
 
-      <View style={styles.toolbar}>
+      <ScrollView
+        horizontal={!wide}
+        scrollEnabled={!wide}
+        showsHorizontalScrollIndicator={false}
+        style={styles.toolbarScroll}
+        contentContainerStyle={[styles.toolbar, !wide && styles.toolbarRow]}
+      >
         <ToolbarButton
           icon={session.self.audioMuted ? 'mic-off' : 'mic'}
           label={session.self.audioMuted ? 'Unmute' : 'Mute'}
@@ -335,7 +342,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           onPress={() => togglePanel('files')}
         />
         <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -428,6 +435,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  toolbarScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  toolbarRow: {
+    flexWrap: 'nowrap',
+    justifyContent: 'flex-start',
+    flexGrow: 1,
+  },
   toolbar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -435,8 +453,6 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
 });

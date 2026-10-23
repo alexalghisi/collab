@@ -603,6 +603,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     [createSignaling, patchParticipant, dropParticipant, leave, beginCaptions],
   );
 
+  const enableMicRef = useRef<() => void>(() => undefined);
+  const enableCameraRef = useRef<() => Promise<void>>(async () => undefined);
+
   const join = useCallback(
     async ({ roomId: nextRoomId, displayName, video }: JoinOptions) => {
       unlockAudioPlayback();
@@ -632,7 +635,19 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         video,
       });
 
-      return connectRoom(nextRoomId);
+      const joined = await connectRoom(nextRoomId);
+      if (joined && streamRef.current === stream) {
+        // Joining is the user's tap, so ask for the microphone (and the camera
+        // when they chose video) right away instead of entering the call silent
+        // behind a banner that phones easily hide.
+        if (stream.getAudioTracks().length === 0) {
+          enableMicRef.current();
+        }
+        if (video && stream.getVideoTracks().length === 0) {
+          void enableCameraRef.current();
+        }
+      }
+      return joined;
     },
     [connectRoom],
   );
@@ -702,6 +717,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     await swapLocalVideo(track);
     updateSelf({ videoOff: false });
   }, [swapLocalVideo, updateSelf]);
+
+  enableMicRef.current = toggleMic;
+  enableCameraRef.current = toggleCamera;
 
   const stopScreenShare = useCallback(async () => {
     screenTrackRef.current?.stop();

@@ -1,3 +1,4 @@
+import { timeoutSignal } from '../net/timeoutSignal';
 import { EXECUTION_URL } from './config';
 import { executeInCloud } from './cloudExecute';
 import type { ExecutionRequest, ExecutionResult } from './execution';
@@ -50,7 +51,7 @@ export async function executeOnServer(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(25_000),
+      signal: timeoutSignal(25_000),
     });
   } catch (cause) {
     throw new Error(`the execution service could not be reached: ${(cause as Error).message}`, {
