@@ -41,11 +41,23 @@ The web app already points at that server (`EXPO_PUBLIC_SIGNALING_URL`). You do 
 
 The first join after the server has been idle can take about a minute — Render’s free instance sleeps. A `200` from `/health` means it is awake.
 
+### Problem catalog
+
+`GET https://collaborare.ro/api/problems` answers **404**. collaborare.ro is a separate site, and this repository cannot publish a route there. The problem list that site shows is a public catalog (the same read its own page uses). This signaling server exposes that catalog as JSON and caches it in memory. The app does not scrape HTML while you are in a call.
+
+| Feed         | URL                                                             |
+| ------------ | --------------------------------------------------------------- |
+| Problem list | `GET https://collab-signaling.onrender.com/api/problems`        |
+| One problem  | `GET https://collab-signaling.onrender.com/api/problems/<slug>` |
+
+A browser may call those routes only from `https://alexalghisi.github.io` or from `http://localhost` (any port). Each problem includes its category, time and memory limits, the test count when the catalog has one, the statement, and examples with input and output. The hosted server serves this after the API is deployed; until then the call shows a link to `https://collaborare.ro/probleme/<slug>`.
+
 ---
 
 ## Table of contents
 
 - [Use it now (Zoom-style call)](#use-it-now-zoom-style-call)
+- [Problem catalog](#problem-catalog)
 - [Download & run](#download--run)
 - [Features](#features)
 - [Architecture](#architecture)
