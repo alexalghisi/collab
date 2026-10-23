@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
@@ -9,6 +9,14 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  clampPanelWidth,
+  isCompactProblemLayout,
+  PROBLEMS_PANEL_WIDTH_KEY,
+  readPanelWidth,
+} from '../../collaborare/layout';
+import { useProblemBrowser } from '../../collaborare/useProblemBrowser';
+import { storage } from '../../meeting/storage';
 import { sharedRoomFiles } from '../../files/roomFiles';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
@@ -21,6 +29,7 @@ import { DevicePanel } from './DevicePanel';
 import { FilesPanel } from './FilesPanel';
 import { InvitePanel } from './InvitePanel';
 import { CodePanel } from './CodePanel';
+import { ProblemsPanel } from './ProblemsPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
 import { ToolbarButton } from './ToolbarButton';
@@ -38,6 +47,7 @@ type Panel = 'participants' | 'chat' | 'invite' | 'files' | 'devices' | null;
 type Stage = 'grid' | 'whiteboard' | 'code';
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
+const DEFAULT_PROBLEM_WIDTH = 380;
 const PANEL_WIDTH = 340;
 /** Tile width in the strip shown above the whiteboard. */
 const STRIP_TILE_WIDTH = 180;
@@ -59,8 +69,14 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   );
   const [reactionsOpen, setReactionsOpen] = useState(false);
   const [readCount, setReadCount] = useState(0);
+  const [problemsOpen, setProblemsOpen] = useState(true);
+  const [mobileProblem, setMobileProblem] = useState(false);
+  const [problemWidth, setProblemWidth] = useState(DEFAULT_PROBLEM_WIDTH);
+  const [stageWidth, setStageWidth] = useState(width);
+  const problems = useProblemBrowser(session);
 
   const stage: Stage = session.settings.stage;
+  const compactProblems = isCompactProblemLayout(width);
   const wide = width >= WIDE_LAYOUT_MIN_WIDTH;
   const gridWidth = wide && panel ? width - PANEL_WIDTH : width;
   const tileCount = session.participants.length + 1;
@@ -86,6 +102,60 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   const toggleStage = (next: Exclude<Stage, 'grid'>): void => {
     session.updateSettings({ stage: stage === next ? 'grid' : next });
   };
+
+  useEffect(() => {
+    setProblemWidth(readPanelWidth(storage.read(PROBLEMS_PANEL_WIDTH_KEY), width));
+  }, [width]);
+
+  const resizeProblems = (delta: number): void => {
+    setProblemWidth((current) => {
+      const next = clampPanelWidth(current + delta, stageWidth || width);
+      storage.write(PROBLEMS_PANEL_WIDTH_KEY, String(next));
+      return next;
+    });
+  };
+
+  const problemPanel = (
+    <ProblemsPanel
+      problems={problems.problems}
+      loading={problems.loading}
+      error={problems.error}
+      stale={problems.stale}
+      categories={problems.categories}
+      grades={problems.grades}
+      levels={problems.levels}
+      text={problems.text}
+      category={problems.category}
+      olympGrade={problems.olympGrade}
+      olympLevel={problems.olympLevel}
+      slug={problems.slug}
+      detail={problems.detail}
+      detailLoading={problems.detailLoading}
+      detailError={problems.detailError}
+      followHost={problems.followHost}
+      isHost={problems.isHost}
+      history={problems.history}
+      verdicts={problems.verdicts}
+      examplesRunning={problems.examplesRunning}
+      confirming={problems.confirming}
+      onText={problems.setText}
+      onCategory={problems.setCategory}
+      onOlympGrade={problems.setOlympGrade}
+      onOlympLevel={problems.setOlympLevel}
+      onSelect={problems.select}
+      onPrev={problems.prev}
+      onNext={problems.next}
+      onRandom={problems.random}
+      onFollowHost={problems.setFollowHost}
+      onLoad={problems.requestLoad}
+      onConfirmLoad={problems.confirmLoad}
+      onRunExamples={problems.runExamples}
+      onClose={() => {
+        setProblemsOpen(false);
+        setMobileProblem(false);
+      }}
+    />
+  );
 
   const rows: ParticipantRow[] = [
     {
@@ -186,14 +256,64 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
               />
             ) : (
               session.code && (
-                <CodePanel
-                  document={session.code}
-                  runs={session.runs}
-                  files={session.workspaceFiles}
-                  selfPeerId={session.selfPeerId}
-                  onRun={session.runCode}
-                  onFilesChange={session.updateWorkspaceFiles}
-                />
+                <View
+                  style={styles.codeRow}
+                  onLayout={(event) => setStageWidth(event.nativeEvent.layout.width)}
+                >
+                  {compactProblems ? (
+                    <View style={styles.codePane}>
+                      <View style={styles.problemTabs} accessibilityRole="tablist">
+                        <ProblemTab
+                          label="Code"
+                          selected={!mobileProblem}
+                          onPress={() => setMobileProblem(false)}
+                        />
+                        <ProblemTab
+                          label="Problemă"
+                          selected={mobileProblem}
+                          onPress={() => setMobileProblem(true)}
+                        />
+                      </View>
+                      {mobileProblem ? (
+                        problemPanel
+                      ) : (
+                        <CodePanel
+                          document={session.code}
+                          runs={session.runs}
+                          files={session.workspaceFiles}
+                          selfPeerId={session.selfPeerId}
+                          onRun={session.runCode}
+                          onFilesChange={session.updateWorkspaceFiles}
+                          stdinSeed={problems.stdinSeed}
+                        />
+                      )}
+                    </View>
+                  ) : (
+                    <>
+                      <View style={styles.codePane}>
+                        <CodePanel
+                          document={session.code}
+                          runs={session.runs}
+                          files={session.workspaceFiles}
+                          selfPeerId={session.selfPeerId}
+                          onRun={session.runCode}
+                          onFilesChange={session.updateWorkspaceFiles}
+                          stdinSeed={problems.stdinSeed}
+                        />
+                      </View>
+                      {problemsOpen && (
+                        <>
+                          <ProblemResizeHandle onDrag={resizeProblems} />
+                          <View
+                            style={{ width: clampPanelWidth(problemWidth, stageWidth || width) }}
+                          >
+                            {problemPanel}
+                          </View>
+                        </>
+                      )}
+                    </>
+                  )}
+                </View>
               )
             )}
           </View>
@@ -345,6 +465,24 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           onPress={() => toggleStage('code')}
         />
         <ToolbarButton
+          icon="library-outline"
+          label="Probleme"
+          active={stage === 'code' && (compactProblems ? mobileProblem : problemsOpen)}
+          onPress={() => {
+            if (stage !== 'code') {
+              session.updateSettings({ stage: 'code' });
+              setProblemsOpen(true);
+              setMobileProblem(true);
+              return;
+            }
+            if (compactProblems) {
+              setMobileProblem((open) => !open);
+              return;
+            }
+            setProblemsOpen((open) => !open);
+          }}
+        />
+        <ToolbarButton
           icon="people"
           label="Participants"
           active={panel === 'participants'}
@@ -373,6 +511,72 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
         <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
       </ScrollView>
     </View>
+  );
+}
+
+function ProblemTab({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      style={[styles.problemTab, selected && styles.problemTabSelected]}
+    >
+      <Text style={styles.problemTabText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function ProblemResizeHandle({ onDrag }: { onDrag: (delta: number) => void }) {
+  const host = useRef<View>(null);
+  useEffect(() => {
+    const node = host.current as unknown as HTMLElement | null;
+    if (!node || typeof node.addEventListener !== 'function' || typeof window === 'undefined') {
+      return;
+    }
+    let dragging = false;
+    let last = 0;
+    const down = (event: PointerEvent): void => {
+      dragging = true;
+      last = event.clientX;
+      node.setPointerCapture?.(event.pointerId);
+    };
+    const move = (event: PointerEvent): void => {
+      if (!dragging) {
+        return;
+      }
+      const delta = last - event.clientX;
+      last = event.clientX;
+      onDrag(delta);
+    };
+    const up = (): void => {
+      dragging = false;
+    };
+    node.addEventListener('pointerdown', down);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => {
+      node.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [onDrag]);
+  return (
+    <View
+      ref={host}
+      accessibilityRole="adjustable"
+      accessibilityLabel="Resize problems panel"
+      style={styles.resizeHandle}
+    />
   );
 }
 
@@ -423,6 +627,40 @@ const styles = StyleSheet.create({
   },
   stage: {
     flex: 1,
+    minWidth: 0,
+  },
+  codeRow: {
+    flex: 1,
+    flexDirection: 'row',
+    minWidth: 0,
+  },
+  codePane: {
+    flex: 1,
+    minWidth: 0,
+  },
+  problemTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  problemTab: {
+    borderRadius: 999,
+    backgroundColor: colors.surfaceRaised,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  problemTabSelected: {
+    backgroundColor: colors.primary,
+  },
+  problemTabText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  resizeHandle: {
+    width: 8,
+    backgroundColor: colors.border,
   },
   stripScroll: {
     flexGrow: 0,

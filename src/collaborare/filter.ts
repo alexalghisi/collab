@@ -97,6 +97,26 @@ export function formatTimeLimit(timeLimitMs: number | null): string | null {
   return `${text} s`;
 }
 
+export function olympiadGrades(problems: readonly ProblemSummary[]): number[] {
+  const grades = new Set<number>();
+  for (const problem of problems) {
+    if (isListedProblem(problem) && problem.olympGrade !== null) {
+      grades.add(problem.olympGrade);
+    }
+  }
+  return [...grades].sort((left, right) => left - right);
+}
+
+export function olympiadLevels(problems: readonly ProblemSummary[]): string[] {
+  const levels = new Set<string>();
+  for (const problem of problems) {
+    if (isListedProblem(problem) && problem.olympLevel) {
+      levels.add(problem.olympLevel);
+    }
+  }
+  return [...levels].sort((left, right) => left.localeCompare(right, 'ro'));
+}
+
 export function formatMemoryLimit(memoryLimitKb: number | null): string | null {
   if (memoryLimitKb === null || memoryLimitKb <= 0) {
     return null;

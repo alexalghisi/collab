@@ -67,12 +67,24 @@ describe('room snapshot', () => {
       messages: thread,
       strokes: board,
       transcript: captions,
+      problem: {
+        host: { slug: null, history: [], updatedAt: 0 },
+        followHost: true,
+        localSlug: null,
+        localHistory: [],
+      },
     });
     expect(loadChatHistory('room-1')).toEqual(thread);
     expect(loadRoomSnapshot('room-2')).toEqual({
       messages: [],
       strokes: [],
       transcript: [],
+      problem: {
+        host: { slug: null, history: [], updatedAt: 0 },
+        followHost: true,
+        localSlug: null,
+        localHistory: [],
+      },
     });
   });
 
