@@ -1,3 +1,4 @@
+import { timeoutSignal } from '../net/timeoutSignal';
 import { isLoopbackSignalingUrl } from '../signaling/wake';
 import { DEFAULT_ICE_SERVERS, type IceServerConfig } from './config';
 
@@ -70,7 +71,7 @@ async function readJson<T>(
   method = 'GET',
 ): Promise<IceServerConfig[] | null> {
   try {
-    const response = await fetchImpl(url, { method, signal: AbortSignal.timeout(ICE_WAIT_MS) });
+    const response = await fetchImpl(url, { method, signal: timeoutSignal(ICE_WAIT_MS) });
     if (!response.ok) {
       return null;
     }

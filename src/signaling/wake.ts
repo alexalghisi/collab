@@ -1,8 +1,9 @@
+import { timeoutSignal } from '../net/timeoutSignal';
 import { SignalingUnavailableError } from './SignalingChannel';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
-export const REMOTE_WAKE_MS = 75_000;
+export const REMOTE_WAKE_MS = 120_000;
 
 export interface WakeOptions {
   fetchImpl?: typeof fetch;
@@ -50,7 +51,7 @@ async function pollHealth(url: string, options: WakeOptions): Promise<void> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? REMOTE_WAKE_MS;
   const pauseMs = options.pauseMs ?? 1_000;
-  const probeTimeoutMs = options.probeTimeoutMs ?? 4_000;
+  const probeTimeoutMs = options.probeTimeoutMs ?? 10_000;
   const deadline = Date.now() + timeoutMs;
   const health = `${url.replace(/\/$/, '')}/health`;
   for (;;) {
@@ -59,7 +60,7 @@ async function pollHealth(url: string, options: WakeOptions): Promise<void> {
       ready = (
         await fetchImpl(health, {
           cache: 'no-store',
-          signal: AbortSignal.timeout(probeTimeoutMs),
+          signal: timeoutSignal(probeTimeoutMs),
         })
       ).ok;
     } catch {

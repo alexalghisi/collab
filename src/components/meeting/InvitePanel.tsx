@@ -1,5 +1,5 @@
 import { createElement, useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { InviteError, inviteCopy, parseContact, type ParsedContact } from '../../meeting/contact';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
 import {
@@ -74,7 +74,7 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
 
   return (
     <SidePanel title="Invite" onClose={onClose}>
-      <View style={styles.body}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
         <Text style={styles.lede}>
           Send the join link on WhatsApp or by email. The other person gets a message they can open
           to join this call.
@@ -147,12 +147,15 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
             onPress={() => void copy()}
           />
         </View>
-      </View>
+      </ScrollView>
     </SidePanel>
   );
 }
 
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+  },
   body: {
     padding: 16,
     gap: 12,
