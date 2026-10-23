@@ -1,3 +1,12 @@
+/** Level that counts as talking. A quieter room stays under this. */
+export const SPEAKING_ON = 0.2;
+/** Once someone is talking, the indicator stays until the level falls further. */
+export const SPEAKING_OFF = 0.08;
+
+export function speakingFromLevel(wasSpeaking: boolean, level: number): boolean {
+  return level >= (wasSpeaking ? SPEAKING_OFF : SPEAKING_ON);
+}
+
 export function levelFromSamples(samples: Uint8Array): number {
   if (samples.length === 0) {
     return 0;
