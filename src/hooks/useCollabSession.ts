@@ -11,6 +11,7 @@ import {
 import { runOnHostedCompiler, serverHasNoSandbox } from '../code/hostedRun';
 import { programSource } from '../code/programSource';
 import { mergeWorkspaceFiles, type WorkspaceFile } from '../code/workspaceFiles';
+import type { CatalogItem } from '../collaborare/types';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
@@ -165,6 +166,8 @@ export interface CollabSession {
   askAssistant: (question: string) => void;
   /** Runs the shared document in the sandbox; output reaches the whole room. */
   runCode: (stdin: string, files?: readonly WorkspaceFile[], source?: string) => void;
+  /** Puts a collaborare.ro problem into the shared editor for everyone in the room. */
+  openProblem: (problem: CatalogItem) => void;
   updateWorkspaceFiles: (files: WorkspaceFile[]) => void;
   // Host only.
   updateSettings: (patch: Partial<RoomSettings>) => void;
@@ -1245,6 +1248,31 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.emit('room:settings', next);
   }, []);
 
+  const openProblem = useCallback(
+    (problem: CatalogItem) => {
+      if (problem.kind !== 'problem') {
+        return;
+      }
+      const shared = codeRef.current;
+      if (shared) {
+        shared.setLanguage('cpp');
+        shared.replaceText(problem.starter);
+        console.info('[collab] problem', problem.slug);
+      }
+      const statement = `# ${problem.title}\n\n${problem.category}${problem.topic ? ` · ${problem.topic}` : ''}\n${problem.limits}\n\n${problem.statement}\n\n${problem.url}\n`;
+      setWorkspaceFiles((current) => {
+        const next = [
+          { name: 'enunt.md', content: statement },
+          ...current.filter((file) => file.name !== 'enunt.md'),
+        ];
+        signalingRef.current?.emit('code:files', next);
+        return next;
+      });
+      updateSettings({ stage: 'code' });
+    },
+    [updateSettings],
+  );
+
   const admit = useCallback((peerId: string) => {
     signalingRef.current?.emit('waiting:decide', { peerId, admit: true });
   }, []);
@@ -1561,6 +1589,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     toggleCaptions,
     askAssistant,
     runCode,
+    openProblem,
     updateWorkspaceFiles,
     updateSettings,
     admit,

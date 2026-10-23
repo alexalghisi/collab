@@ -41,11 +41,25 @@ The web app already points at that server (`EXPO_PUBLIC_SIGNALING_URL`). You do 
 
 The first join after the server has been idle can take about a minute — Render’s free instance sleeps. A `200` from `/health` means it is awake.
 
+### Probleme și anunțuri (collaborare.ro)
+
+During a call, **Probleme** on the toolbar opens the catalog. On a wide screen it is a side drawer. On a phone it is a full-screen sheet from the bottom. Search and the chips filter problems and announcements from [collaborare.ro](https://collaborare.ro). Choosing a problem loads its statement and the C++ starter into the shared **Code** tab, so both people see the same text.
+
+collaborare.ro does not publish a JSON feed. This repo keeps one:
+
+| Feed          | URL                                                                     |
+| ------------- | ----------------------------------------------------------------------- |
+| Whole catalog | `GET https://collab-signaling.onrender.com/collaborare/catalog`         |
+| One problem   | `GET https://collab-signaling.onrender.com/collaborare/problems/<slug>` |
+
+The file behind those routes is [`src/collaborare/catalog.json`](src/collaborare/catalog.json). Refresh it with `npx tsx scripts/fetch-collaborare.ts`.
+
 ---
 
 ## Table of contents
 
 - [Use it now (Zoom-style call)](#use-it-now-zoom-style-call)
+- [Probleme și anunțuri (collaborare.ro)](#probleme-și-anunțuri-collaborarero)
 - [Download & run](#download--run)
 - [Features](#features)
 - [Architecture](#architecture)

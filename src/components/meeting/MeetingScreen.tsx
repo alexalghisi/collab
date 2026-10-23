@@ -19,6 +19,7 @@ import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
 import { DevicePanel } from './DevicePanel';
 import { FilesPanel } from './FilesPanel';
+import { ProblemsPanel } from './ProblemsPanel';
 import { InvitePanel } from './InvitePanel';
 import { CodePanel } from './CodePanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
@@ -34,7 +35,7 @@ export interface MeetingScreenProps {
   onInvite?: CollabSession['sendInvite'];
 }
 
-type Panel = 'participants' | 'chat' | 'invite' | 'files' | 'devices' | null;
+type Panel = 'participants' | 'chat' | 'invite' | 'files' | 'devices' | 'problems' | null;
 type Stage = 'grid' | 'whiteboard' | 'code';
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
@@ -207,7 +208,19 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           </ScrollView>
         )}
 
-        {panel && (
+        {panel === 'problems' && (
+          <View style={wide ? styles.sidePanel : styles.sheet}>
+            <ProblemsPanel
+              onOpen={(problem) => {
+                session.openProblem(problem);
+                setPanel(null);
+              }}
+              onClose={() => setPanel(null)}
+            />
+          </View>
+        )}
+
+        {panel && panel !== 'problems' && (
           <View style={wide ? styles.sidePanel : styles.overlayPanel}>
             {panel === 'participants' && (
               <ParticipantsPanel
@@ -345,6 +358,12 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           onPress={() => toggleStage('code')}
         />
         <ToolbarButton
+          icon="library-outline"
+          label="Probleme"
+          active={panel === 'problems'}
+          onPress={() => togglePanel('problems')}
+        />
+        <ToolbarButton
           icon="people"
           label="Participants"
           active={panel === 'participants'}
@@ -446,6 +465,17 @@ const styles = StyleSheet.create({
   },
   overlayPanel: {
     ...StyleSheet.absoluteFillObject,
+  },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '92%',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: 'hidden',
+    zIndex: 20,
   },
   errorBanner: {
     flexDirection: 'row',
