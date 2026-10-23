@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import type { ExampleVerdict } from '../../collaborare/examples';
 import { CATEGORY_OLYMPIAD, formatMemoryLimit, formatTimeLimit } from '../../collaborare/filter';
-import { readableStatement } from '../../collaborare/readable';
+import { parseStatement, type StatementSpan } from '../../collaborare/markdown';
 import {
   COLLABORARE_SITE,
   problemPageUrl,
@@ -21,8 +21,7 @@ import {
 } from '../../collaborare/types';
 import { colors } from '../../theme';
 
-const SUBMIT_REASON =
-  'Submitting needs a collaborare.ro login. This app cannot reach that judge, so it will not invent a score.';
+const SUBMIT_REASON = 'Submitting needs your collaborare.ro login, so submit on the site.';
 
 export interface ProblemsPanelProps {
   problems: readonly ProblemSummary[];
@@ -163,68 +162,72 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
           </Text>
         </Pressable>
       </View>
-      <TextInput
-        value={text}
-        onChangeText={onText}
-        placeholder="Search problems"
-        placeholderTextColor={colors.textSubtle}
-        style={styles.search}
-        autoCapitalize="none"
-        autoCorrect={false}
-        accessibilityLabel="Search problems"
-      />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chips}
-        style={styles.chipScroll}
-      >
-        {categories.map((item) => (
-          <Pressable
-            key={item.key}
-            onPress={() => onCategory(item.key)}
-            accessibilityRole="button"
-            accessibilityLabel={item.label}
-            accessibilityState={{ selected: category === item.key }}
-            style={[styles.chip, category === item.key && styles.chipActive]}
+      {listing && (
+        <>
+          <TextInput
+            value={text}
+            onChangeText={onText}
+            placeholder="Search problems"
+            placeholderTextColor={colors.textSubtle}
+            style={styles.search}
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Search problems"
+          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chips}
+            style={styles.chipScroll}
           >
-            <Text style={styles.chipText}>{item.label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-      {category === CATEGORY_OLYMPIAD && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
-        >
-          <Chip
-            label="Toate clasele"
-            active={olympGrade === null}
-            onPress={() => onOlympGrade(null)}
-          />
-          {grades.map((grade) => (
-            <Chip
-              key={grade}
-              label={`a ${grade}-a`}
-              active={olympGrade === grade}
-              onPress={() => onOlympGrade(grade)}
-            />
-          ))}
-          <Chip
-            label="Orice etapă"
-            active={olympLevel === null}
-            onPress={() => onOlympLevel(null)}
-          />
-          {levels.map((level) => (
-            <Chip
-              key={level}
-              label={level.toUpperCase()}
-              active={olympLevel === level}
-              onPress={() => onOlympLevel(level)}
-            />
-          ))}
-        </ScrollView>
+            {categories.map((item) => (
+              <Pressable
+                key={item.key}
+                onPress={() => onCategory(item.key)}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+                accessibilityState={{ selected: category === item.key }}
+                style={[styles.chip, category === item.key && styles.chipActive]}
+              >
+                <Text style={styles.chipText}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          {category === CATEGORY_OLYMPIAD && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chips}
+            >
+              <Chip
+                label="Toate clasele"
+                active={olympGrade === null}
+                onPress={() => onOlympGrade(null)}
+              />
+              {grades.map((grade) => (
+                <Chip
+                  key={grade}
+                  label={`a ${grade}-a`}
+                  active={olympGrade === grade}
+                  onPress={() => onOlympGrade(grade)}
+                />
+              ))}
+              <Chip
+                label="Orice etapă"
+                active={olympLevel === null}
+                onPress={() => onOlympLevel(null)}
+              />
+              {levels.map((level) => (
+                <Chip
+                  key={level}
+                  label={level.toUpperCase()}
+                  active={olympLevel === level}
+                  onPress={() => onOlympLevel(level)}
+                />
+              ))}
+            </ScrollView>
+          )}
+        </>
       )}
       {error && (
         <View style={styles.banner}>
@@ -242,9 +245,26 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
         <Text style={styles.note}>Showing the saved list. The catalog could not be refreshed.</Text>
       )}
       <View style={styles.nav}>
-        <NavButton label="Prev" hint="Alt+Left" onPress={onPrev} />
-        <NavButton label="Next" hint="Alt+Right" onPress={onNext} />
-        <NavButton label="Random" hint="Pick another problem" onPress={onRandom} />
+        <NavButton
+          label="◀ Prev"
+          a11yLabel="Previous problem"
+          hint="Alt+Left"
+          onPress={onPrev}
+          disabled={problems.length === 0}
+        />
+        <NavButton
+          label="Next ▶"
+          a11yLabel="Next problem"
+          hint="Alt+Right"
+          onPress={onNext}
+          disabled={problems.length === 0}
+        />
+        <NavButton
+          label="Random"
+          hint="Pick another problem"
+          onPress={onRandom}
+          disabled={problems.length === 0}
+        />
       </View>
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
         {loading && <Text style={styles.note}>Loading problems…</Text>}
@@ -275,9 +295,11 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
         )}
         {!listing && detail && (
           <View>
-            <Text style={styles.title}>{detail.title}</Text>
+            <Text style={styles.title} accessibilityRole="header" aria-level={2}>
+              {detail.title}
+            </Text>
             <Text style={styles.meta}>{limitLine(detail)}</Text>
-            <Text style={styles.statement}>{readableStatement(detail.statement)}</Text>
+            <Statement source={detail.statement} />
             {detail.formulas.map((formula) => (
               <Text key={formula} style={styles.formula} accessibilityLabel={`Formula ${formula}`}>
                 {formula}
@@ -293,21 +315,36 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
               />
             ))}
             {detail.inputFormat !== '' && (
-              <Text style={styles.section}>
-                Input{'\n'}
-                {detail.inputFormat}
-              </Text>
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionTitle} accessibilityRole="header" aria-level={3}>
+                  Input
+                </Text>
+                <Statement source={detail.inputFormat} />
+              </View>
             )}
             {detail.outputFormat !== '' && (
-              <Text style={styles.section}>
-                Output{'\n'}
-                {detail.outputFormat}
-              </Text>
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionTitle} accessibilityRole="header" aria-level={3}>
+                  Output
+                </Text>
+                <Statement source={detail.outputFormat} />
+              </View>
             )}
             {detail.constraints !== '' && (
-              <Text style={styles.section}>
-                Constraints{'\n'}
-                {detail.constraints}
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionTitle} accessibilityRole="header" aria-level={3}>
+                  Constraints
+                </Text>
+                <Statement source={detail.constraints} />
+              </View>
+            )}
+            {verdicts.length > 0 && (
+              <Text
+                style={verdicts.every((item) => item.passed) ? styles.pass : styles.fail}
+                accessibilityRole="summary"
+                accessibilityLiveRegion="polite"
+              >
+                {verdicts.filter((item) => item.passed).length}/{verdicts.length} examples passed
               </Text>
             )}
             {detail.examples.map((example, index) => (
@@ -325,10 +362,18 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
                   <Text style={styles.note}>{example.explanation}</Text>
                 ) : null}
                 {verdicts[index] && (
-                  <Text style={verdicts[index].passed ? styles.pass : styles.fail}>
-                    {verdicts[index].passed ? 'Passed' : 'Failed'}
-                    {verdicts[index].error ? ` — ${verdicts[index].error}` : ''}
-                  </Text>
+                  <View accessibilityLabel={`Example ${index + 1} verdict`}>
+                    <Text style={verdicts[index].passed ? styles.pass : styles.fail}>
+                      {verdicts[index].passed ? 'Passed' : 'Failed'}
+                      {verdicts[index].error ? ` — ${verdicts[index].error}` : ''}
+                    </Text>
+                    {!verdicts[index].passed && !verdicts[index].error && (
+                      <Text style={styles.code}>
+                        Your output{'\n'}
+                        {verdicts[index].actual === '' ? '(empty)' : verdicts[index].actual}
+                      </Text>
+                    )}
+                  </View>
                 )}
               </View>
             ))}
@@ -372,6 +417,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
           label="Back to list"
           hint="Show the problem list"
           onPress={() => setListing(true)}
+          disabled={listing}
         />
         <NavButton
           label="Load into editor"
@@ -397,13 +443,70 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
           disabled
           accessibilityRole="button"
           accessibilityLabel="Submit to collaborare.ro"
+          accessibilityHint={SUBMIT_REASON}
           accessibilityState={{ disabled: true }}
           style={[styles.action, styles.actionDisabled]}
         >
           <Text style={styles.actionText}>Submit to collaborare.ro</Text>
-          <Text style={styles.note}>{SUBMIT_REASON}</Text>
         </Pressable>
+        <Text style={styles.note}>{SUBMIT_REASON}</Text>
       </View>
+    </View>
+  );
+}
+
+function Spans({ spans }: { spans: readonly StatementSpan[] }) {
+  return (
+    <>
+      {spans.map((span, index) => (
+        <Text
+          key={index}
+          style={
+            span.kind === 'code'
+              ? styles.inlineCode
+              : span.kind === 'bold'
+                ? styles.bold
+                : undefined
+          }
+        >
+          {span.text}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+/** A statement in collaborare.ro's Markdown subset: headings, paragraphs, bullets, code. */
+function Statement({ source }: { source: string }) {
+  return (
+    <View>
+      {parseStatement(source).map((block, index) => {
+        if (block.kind === 'code') {
+          return (
+            <Text key={index} style={styles.code}>
+              {block.text}
+            </Text>
+          );
+        }
+        if (block.kind === 'heading') {
+          return (
+            <Text
+              key={index}
+              style={styles.statementHeading}
+              accessibilityRole="header"
+              aria-level={Math.min(6, block.level + 1)}
+            >
+              <Spans spans={block.spans} />
+            </Text>
+          );
+        }
+        return (
+          <Text key={index} style={styles.statement}>
+            {block.kind === 'bullet' ? '•  ' : null}
+            <Spans spans={block.spans} />
+          </Text>
+        );
+      })}
     </View>
   );
 }
@@ -412,7 +515,11 @@ function limitLine(problem: ProblemSummary): string {
   const time = formatTimeLimit(problem.timeLimitMs);
   const memory = formatMemoryLimit(problem.memoryLimitKb);
   const tests = problem.testsCount === null ? null : `${problem.testsCount} tests`;
-  return [problem.topic, problem.source, time, memory, tests].filter(Boolean).join(' · ');
+  // Non-breaking spaces keep "256 MB" and "2 s" on one line in a narrow column.
+  return [problem.topic, problem.source, time, memory, tests]
+    .filter(Boolean)
+    .map((part) => String(part).replace(/ (?=\S+$)/, '\u00a0'))
+    .join(' · ');
 }
 
 function ProblemRow({
@@ -454,11 +561,13 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 
 function NavButton({
   label,
+  a11yLabel,
   hint,
   onPress,
   disabled = false,
 }: {
   label: string;
+  a11yLabel?: string;
   hint: string;
   onPress: () => void;
   disabled?: boolean;
@@ -468,7 +577,7 @@ function NavButton({
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={a11yLabel ?? label}
       accessibilityHint={hint}
       accessibilityState={{ disabled }}
       style={[styles.action, disabled && styles.actionDisabled]}
@@ -617,11 +726,29 @@ const styles = StyleSheet.create({
     marginTop: 8,
     backgroundColor: colors.surfaceRaised,
   },
-  section: {
+  sectionBlock: {
+    marginTop: 12,
+  },
+  sectionTitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  statementHeading: {
     color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  inlineCode: {
+    fontFamily: 'monospace',
     fontSize: 13,
-    lineHeight: 18,
-    marginTop: 10,
+    backgroundColor: colors.background,
+  },
+  bold: {
+    fontWeight: '700',
   },
   example: {
     marginTop: 10,
