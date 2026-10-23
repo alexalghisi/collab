@@ -15,6 +15,9 @@ import { createUserStoreFromEnv } from './auth/store';
 import { verifyToken } from './auth/tokens';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
 import { executionRouter } from './execution/router';
+import { problemsCors } from './collaborare/cors';
+import { problemsRouter } from './collaborare/router';
+import { createProblemCatalog } from './collaborare/source';
 import { filesRouter } from './files/router';
 import { sendAppHome, signalingHealth } from './home';
 import { resolveIceServers } from './ice';
@@ -65,7 +68,14 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '*';
 const WEB_ROOT = join(ROOT, 'dist-web');
 
 const app = express();
-app.use(cors({ origin: CORS_ORIGIN }));
+const openCors = cors({ origin: CORS_ORIGIN });
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/problems')) {
+    next();
+    return;
+  }
+  openCors(req, res, next);
+});
 // Generous enough for a source file and its input, small enough to be no target.
 app.use(express.json({ limit: MAX_CODE_BYTES + MAX_STDIN_BYTES + MAX_WORKSPACE_BYTES + 4096 }));
 
@@ -79,6 +89,7 @@ app.get('/health', (_req, res) => {
 app.get('/ice', async (_req, res) => {
   res.json({ iceServers: await resolveIceServers() });
 });
+app.use('/api/problems', problemsCors, problemsRouter(createProblemCatalog()));
 if (!existsSync(join(WEB_ROOT, 'index.html'))) {
   app.get('/', sendAppHome);
 }
