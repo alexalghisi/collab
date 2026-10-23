@@ -11,6 +11,7 @@ export function VideoTile({
   stream,
   isHost = false,
   mirror = false,
+  quality,
 }: VideoTileProps) {
   const streamUrl = stream ? (stream as unknown as { toURL: () => string }).toURL() : undefined;
   const presentation = videoPresentation(state, mirror);
@@ -30,7 +31,7 @@ export function VideoTile({
           <Text style={styles.avatar}>{label.charAt(0).toUpperCase()}</Text>
         </View>
       )}
-      <TileOverlay label={label} state={state} isHost={isHost} />
+      <TileOverlay label={label} state={state} isHost={isHost} quality={quality} />
     </View>
   );
 }
