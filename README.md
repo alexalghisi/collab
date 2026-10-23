@@ -62,6 +62,12 @@ The browser asks the signaling server for ICE servers (`GET /ice`). The server a
 
 Check it with two devices. Put the laptop on Wi-Fi and the phone on the same Wi-Fi, then switch the phone to mobile data. Both sides should keep a picture. **Reconnecting** means the call is restarting that link. A live 4G pass still has to be done on a real phone; the automated tests cover the relay list, the ICE restart, and the tile grade.
 
+### Voice
+
+The microphone is opened at 48 kHz, mono, with echo cancellation, noise suppression and auto gain. In Chrome the outgoing voice also goes through RNNoise (`@shiguredo/noise-suppression`). **Noise on** is the default; the same button turns it off. Opus is asked for 64 kbps, in-band FEC, no discontinuous transmission, and mono. Your own tile stays muted, and the meter does not play the microphone back, so the room is not fed into itself.
+
+A green border on a tile means that person is speaking. **Speaker** / **Headphones** on the toolbar switches the playback device.
+
 ---
 
 ## Table of contents
