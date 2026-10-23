@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { applyFormattedCode } from '../../code/formatSource';
 import type { CodeLanguage } from '../../code/languages';
@@ -59,6 +59,7 @@ export function CodePanel({
 
   const running = runs.some((run) => run.running && run.byPeerId === selfPeerId);
   const openFile = files.find((file) => file.name === selected) ?? null;
+  const statement = files.find((file) => file.name === 'enunt.md') ?? null;
 
   const editFile = (content: string): void => {
     if (!openFile) {
@@ -131,6 +132,11 @@ export function CodePanel({
         running={running}
         editors={editors}
       />
+      {statement && (
+        <ScrollView style={styles.statement} contentContainerStyle={styles.statementContent}>
+          <Text style={styles.statementText}>{statement.content}</Text>
+        </ScrollView>
+      )}
       <View style={styles.body}>
         <CodeFileManager
           language={language}
@@ -175,6 +181,21 @@ const styles = StyleSheet.create({
   panel: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  statement: {
+    maxHeight: 180,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  statementContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  statementText: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
   },
   body: {
     flex: 1,

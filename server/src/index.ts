@@ -8,6 +8,7 @@ import { Server } from 'socket.io';
 import { MAX_CODE_BYTES, MAX_STDIN_BYTES } from '../../src/code/execution';
 import { MAX_WORKSPACE_BYTES } from '../../src/code/workspaceFiles';
 import { assistantRouter } from './assistant/router';
+import { collaborareRouter } from './collaborare';
 import { searchRouter } from './assistant/searchRouter';
 import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
 import { authRouter } from './auth/router';
@@ -79,6 +80,7 @@ app.get('/health', (_req, res) => {
 app.get('/ice', async (_req, res) => {
   res.json({ iceServers: await resolveIceServers() });
 });
+app.use(collaborareRouter(join(ROOT, 'src', 'collaborare', 'catalog.json')));
 if (!existsSync(join(WEB_ROOT, 'index.html'))) {
   app.get('/', sendAppHome);
 }
