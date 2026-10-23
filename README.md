@@ -54,6 +54,8 @@ collaborare.ro does not publish a JSON feed. This repo keeps one:
 
 The file behind those routes is [`src/collaborare/catalog.json`](src/collaborare/catalog.json). Refresh it with `npx tsx scripts/fetch-collaborare.ts`.
 
+On a phone (360, 390 or 768 pixels wide) the Code tab fills the screen. The other person's video shrinks to a thumbnail you can drag. **A-** and **A+** change the editor size, a pinch does the same, and long lines wrap. The toolbar keeps Mute, video, Code, Probleme and Leave on screen; **More** opens the rest, and the bar still scrolls if it needs to.
+
 ---
 
 ## Table of contents
