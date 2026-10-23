@@ -1,3 +1,4 @@
+import { timeoutSignal } from '../net/timeoutSignal';
 import type { CodeLanguage } from './languages';
 import { MAX_OUTPUT_BYTES, type ExecutionRequest, type ExecutionResult } from './execution';
 
@@ -42,7 +43,7 @@ export async function executeInCloud(
         stdin: request.stdin,
         codes: request.files.map((file) => ({ file: file.name, code: file.content })),
       }),
-      signal: AbortSignal.timeout(20_000),
+      signal: timeoutSignal(20_000),
     });
   } catch (cause) {
     throw new Error(`the cloud sandbox could not be reached: ${(cause as Error).message}`, {
