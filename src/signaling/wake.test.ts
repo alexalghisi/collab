@@ -89,6 +89,26 @@ describe('waitUntilSignalingReady', () => {
     expect(cause).toBeInstanceOf(SignalingUnavailableError);
   });
 
+  it('keeps a single health request open until a cold host finishes booting', async () => {
+    const timeouts: number[] = [];
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => {
+      timeouts.push(ms);
+      return timeout(ms);
+    });
+
+    try {
+      await waitUntilSignalingReady('https://signal.example', {
+        fetchImpl: async () => ok(),
+        pauseMs: 1,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(Math.max(...timeouts)).toBeGreaterThanOrEqual(60_000);
+  });
+
   it('gives a sleeping remote host a minute to boot', async () => {
     const scheduled: number[] = [];
     const real = globalThis.setTimeout;
