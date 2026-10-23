@@ -51,7 +51,7 @@ async function pollHealth(url: string, options: WakeOptions): Promise<void> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? REMOTE_WAKE_MS;
   const pauseMs = options.pauseMs ?? 1_000;
-  const probeTimeoutMs = options.probeTimeoutMs ?? 10_000;
+  const probeTimeoutMs = options.probeTimeoutMs ?? timeoutMs;
   const deadline = Date.now() + timeoutMs;
   const health = `${url.replace(/\/$/, '')}/health`;
   for (;;) {
