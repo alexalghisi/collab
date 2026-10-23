@@ -52,7 +52,13 @@ The first join after the server has been idle can take about a minute — Render
 
 A browser may call those routes only from `https://alexalghisi.github.io` or from `http://localhost` (any port). Each problem includes its category, time and memory limits, the test count when the catalog has one, the statement, and examples with input and output. The hosted server serves this after the API is deployed; until then the call shows a link to `https://collaborare.ro/probleme/<slug>`.
 
-During a call, **Probleme** opens the catalog beside the editor.
+During a call, **Probleme** opens the catalog beside the editor. Try it at **[alexalghisi.github.io/collab](https://alexalghisi.github.io/collab/)**.
+
+<p align="center">
+  <img src="./assets/problems-panel.gif" alt="Host picks a problem and the guest follows, Load into editor, Run on examples" width="800" />
+</p>
+
+_Two real browsers in one call (recorded from the e2e stack): the host picks **Suma cifrelor**, steps with Alt+→ / Alt+←, loads a Python starter, and **Run on examples** reports 3/3. The guest's panel follows every change._
 
 ![Problems panel beside the editor](./assets/problems-panel.png)
 
@@ -61,6 +67,8 @@ On a wide screen the column can be dragged and its width is remembered. At 768 p
 ![Problems panel on a phone](./assets/problems-panel-mobile.png)
 
 Search and the chips use the same categories as [collaborare.ro](https://collaborare.ro) (Vectori, Matrice, Backtracking, Programare dinamică, Grafuri, Subiecte oficiale OJI 2026, and the rest of that list). The host's choice is shared live. **Browsing freely** keeps a local choice until **Follow the host** is turned back on. **Load into editor** inserts a C++ or Python starter and the first example as the program input, after asking when the editor is not empty. **Run on examples** sends that program through the same hosted compiler as **Run** and marks each example. **Submit to collaborare.ro** stays disabled: this app is not signed into that judge and does not invent a score. **Open on collaborare.ro** is the fallback when the catalog cannot be loaded. A refresh restores the problem from the room.
+
+Keyboard: **Alt+→** next problem, **Alt+←** previous, Tab through every control (each has a label and a visible focus state). Statements render collaborare.ro's Markdown (headings, `code`, lists), and **Run on examples** prints the output that differed on a failed example.
 
 ---
 
@@ -707,8 +715,12 @@ Every push and pull request runs `.github/workflows/ci.yml`:
 npm run format      # Prettier (check)
 npm run lint        # ESLint
 npm run type-check  # TypeScript (strict, no emit)
-npm test            # Vitest
+npm test            # Vitest: unit (Node) + components (react-native-web in jsdom)
+npm run e2e:build   # export the web app against a local server
+npm run e2e         # Playwright: two browsers in one call
 ```
+
+`npm run e2e` starts `e2e/stack.mjs` (a stand-in for the collaborare.ro catalog, the real signaling server, and the exported app) and drives a host and a guest: the host picks a problem and the guest sees it, Alt+arrows, Load into editor (with the overwrite prompt), Run on examples (pass and fail), free browsing, a refresh, and no console errors.
 
 Tests run on Node against the real modules — the signaling suite starts the
 Socket.IO server on an ephemeral port and drives it through the client
