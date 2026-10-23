@@ -1,5 +1,4 @@
 import { readGoogleWebClientId } from './config';
-import { requestTokenInPopup } from './googleOAuthPopup';
 import type { GoogleCredential } from './types';
 
 interface GoogleIdentity {
@@ -114,7 +113,14 @@ function loadScript(): Promise<void> {
   });
 }
 
-function requestAccessToken(api: GoogleIdentity, clientId: string): Promise<string> {
+function requestAccessToken(
+  api: GoogleIdentity,
+  clientId: string,
+  options: { scope: string; prompt: string; cancelled?: string; denied?: string } = {
+    scope: 'openid email profile',
+    prompt: 'select_account',
+  },
+): Promise<string> {
   const oauth = api.oauth2;
   if (!oauth) {
     return Promise.reject(new Error('Could not load Google Sign-In.'));
@@ -132,20 +138,24 @@ function requestAccessToken(api: GoogleIdentity, clientId: string): Promise<stri
     };
     const client = oauth.initTokenClient({
       client_id: clientId,
-      scope: 'openid email profile',
+      scope: options.scope,
       callback: (response) => {
         const accessToken = response.access_token;
         if (accessToken) {
           finish(() => resolve(accessToken));
           return;
         }
-        finish(() => reject(new Error(response.error || POPUP_CANCELLED)));
+        const message =
+          response.error === 'access_denied' && options.denied
+            ? options.denied
+            : response.error || options.cancelled || POPUP_CANCELLED;
+        finish(() => reject(new Error(message)));
       },
     });
     stopWatching = watchForClosedGoogleWindow((message) =>
       finish(() => reject(new Error(message))),
     );
-    const blocked = openGoogleWindow(() => client.requestAccessToken({ prompt: 'select_account' }));
+    const blocked = openGoogleWindow(() => client.requestAccessToken({ prompt: options.prompt }));
     if (blocked) {
       finish(() => reject(new Error(POPUP_BLOCKED)));
     }
@@ -180,15 +190,24 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
   if (!clientId) {
     throw new Error('Google Calendar is not configured on this deployment.');
   }
-  // Own popup flow instead of the GIS token client: GIS polls popup.closed,
-  // which Google's COOP header turns into console errors on every poll.
-  const { accessToken } = await requestTokenInPopup({
-    clientId,
+  // The GIS token client needs only the app's JavaScript origin in the OAuth
+  // client. A redirect popup would also need https://<host>/collab/ registered
+  // as a redirect URI, and Google answers "Error 400: redirect_uri_mismatch"
+  // when it is not. Sign-in uses the same client and the same window watcher.
+  const ready = googleApi();
+  if (!ready) {
+    await loadScript();
+  }
+  const api = ready ?? googleApi();
+  if (!api) {
+    throw new Error('Could not load Google Sign-In.');
+  }
+  return requestAccessToken(api, clientId, {
     scope: CALENDAR_SCOPE,
     prompt,
-    cancelledMessage: 'Google Calendar access was cancelled.',
+    cancelled: 'Google Calendar access was cancelled.',
+    denied: 'Google Calendar access was not granted.',
   });
-  return accessToken;
 }
 
 export async function requestGoogleCredential(): Promise<GoogleCredential> {
