@@ -56,6 +56,12 @@ The file behind those routes is [`src/collaborare/catalog.json`](src/collaborare
 
 On a phone (360, 390 or 768 pixels wide) the Code tab fills the screen. The other person's video shrinks to a thumbnail you can drag. **A-** and **A+** change the editor size, a pinch does the same, and long lines wrap. The toolbar keeps Mute, video, Code, Probleme and Leave on screen; **More** opens the rest, and the bar still scrolls if it needs to.
 
+### Video on Wi-Fi and on mobile data
+
+The browser asks the signaling server for ICE servers (`GET /ice`). The server adds a TURN relay, on UDP and on TCP, when Twilio is not configured. The page does not call the TURN host itself: that request is cross-origin and was leaving a phone on 4G with STUN only, which is why the two sides sometimes saw each other and sometimes did not. If the link drops, the call restarts ICE. Each remote tile shows **Good**, **Fair**, **Poor**, or **Reconnecting**.
+
+Check it with two devices. Put the laptop on Wi-Fi and the phone on the same Wi-Fi, then switch the phone to mobile data. Both sides should keep a picture. **Reconnecting** means the call is restarting that link. A live 4G pass still has to be done on a real phone; the automated tests cover the relay list, the ICE restart, and the tile grade.
+
 ---
 
 ## Table of contents

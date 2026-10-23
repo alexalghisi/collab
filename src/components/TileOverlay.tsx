@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PeerState } from '../signaling/events';
 import { colors } from '../theme';
+import { qualityLabel, type LinkQuality } from '../webrtc/linkQuality';
 import { showsPlaceholder } from './tilePlaceholder';
 
 export { showsPlaceholder };
@@ -10,13 +11,23 @@ export interface TileOverlayProps {
   label: string;
   state: PeerState;
   isHost: boolean;
+  quality?: LinkQuality;
 }
 
 /** Status chrome drawn over a video tile: name, host badge, mute, hand, reaction. */
-export function TileOverlay({ label, state, isHost }: TileOverlayProps) {
+export function TileOverlay({ label, state, isHost, quality }: TileOverlayProps) {
   return (
     <>
       <View style={styles.topRow} pointerEvents="none">
+        {quality && (
+          <View
+            style={[styles.pill, styles.qualityPill]}
+            accessibilityLabel={`Connection ${qualityLabel(quality)}`}
+          >
+            <View style={[styles.qualityDot, { backgroundColor: qualityColor(quality) }]} />
+            <Text style={styles.pillText}>{qualityLabel(quality)}</Text>
+          </View>
+        )}
         {state.handRaised && (
           <View style={[styles.pill, styles.pillWarning]}>
             <Ionicons name="hand-left" size={14} color={colors.background} />
@@ -51,6 +62,16 @@ export function TileOverlay({ label, state, isHost }: TileOverlayProps) {
   );
 }
 
+function qualityColor(quality: LinkQuality): string {
+  if (quality === 'good') {
+    return colors.success;
+  }
+  if (quality === 'fair') {
+    return colors.warning;
+  }
+  return colors.danger;
+}
+
 const styles = StyleSheet.create({
   topRow: {
     position: 'absolute',
@@ -76,6 +97,14 @@ const styles = StyleSheet.create({
   },
   pillHost: {
     backgroundColor: colors.surfaceRaised,
+  },
+  qualityPill: {
+    backgroundColor: 'rgba(17, 24, 39, 0.72)',
+  },
+  qualityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   pillText: {
     color: colors.text,
