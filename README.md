@@ -470,7 +470,14 @@ In Google Cloud Console → APIs & Services → Credentials, create an OAuth 2.0
 - `http://localhost:8081` (Expo web)
 - `https://<user>.github.io` (GitHub Pages)
 
-Authorized redirect URIs can match those origins. Enable the People API if
+Authorized redirect URIs — the app page itself, because sign-in and Calendar
+both open Google in a window that returns to it (on phones, another tab):
+
+- `http://localhost:8081/` (Expo web)
+- `https://<user>.github.io/collab/` (GitHub Pages)
+
+Google answers `redirect_uri_mismatch` until these match exactly, trailing
+slash included. Enable the People API if
 Google asks for it. Calendar sync uses the same Web client. The Calendar screen
 opens the **Google Calendar API** library page for that client when Google
 answers `accessNotConfigured`; press Enable, then **Sync now**. The first Google
