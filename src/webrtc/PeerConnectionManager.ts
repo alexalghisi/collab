@@ -192,6 +192,11 @@ export class PeerConnectionManager {
     const senders = Object.fromEntries(
       MEDIA_KINDS.map((kind) => {
         const track = this.localStream.getTracks().find((candidate) => candidate.kind === kind);
+        console.info('[collab] addTrack', {
+          peerId,
+          kind,
+          readyState: track?.readyState ?? 'none',
+        });
         const sender = track
           ? connection.addTrack(track, this.localStream)
           : connection.addTransceiver(kind, { direction: 'sendrecv', streams: [this.localStream] })
@@ -211,6 +216,12 @@ export class PeerConnectionManager {
 
     connection.addEventListener('track', (event) => {
       event.track.enabled = true;
+      console.info('[collab] remote track', {
+        peerId,
+        kind: event.track.kind,
+        readyState: event.track.readyState,
+        muted: event.track.muted,
+      });
       for (const existing of [...remoteStream.getTracks()]) {
         if (existing === event.track) {
           continue;
@@ -347,6 +358,11 @@ export class PeerConnectionManager {
   ): Promise<void> {
     const sender = entry.senders[kind];
     const hadTrack = sender.track != null;
+    console.info('[collab] replaceTrack', {
+      peerId,
+      kind,
+      readyState: track?.readyState ?? 'none',
+    });
     await sender.replaceTrack(track);
     if (kind === 'audio') {
       await tuneAudioSender(sender);

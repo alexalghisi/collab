@@ -1,6 +1,8 @@
 export interface MediaConstraintsOptions {
   readonly video: boolean;
   readonly audio: boolean;
+  readonly videoDeviceId?: string;
+  readonly audioDeviceId?: string;
 }
 
 /**
@@ -85,11 +87,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function withDevice(
+  constraints: MediaTrackConstraints,
+  deviceId: string | undefined,
+): MediaTrackConstraints {
+  if (!deviceId) {
+    return constraints;
+  }
+  return { ...constraints, deviceId: { exact: deviceId } };
+}
+
 async function openUserMedia(
   video: boolean | MediaTrackConstraints,
   audio: boolean | MediaTrackConstraints,
   timeoutMs: number,
 ): Promise<MediaStream> {
+  console.info('[collab] getUserMedia', { video, audio });
   const pending = navigator.mediaDevices.getUserMedia({
     video,
     audio,
@@ -123,9 +136,14 @@ async function openDevices(
   video: boolean | MediaTrackConstraints,
   audio: boolean,
   timeoutMs: number,
+  audioDeviceId?: string,
 ): Promise<MediaStream> {
   try {
-    return await openUserMedia(video, audio ? AUDIO_CONSTRAINTS : false, timeoutMs);
+    return await openUserMedia(
+      video,
+      audio ? withDevice(AUDIO_CONSTRAINTS, audioDeviceId) : false,
+      timeoutMs,
+    );
   } catch (cause) {
     // Only loosen the microphone once the camera ask is already the loose one.
     // A strict camera failure must stay a camera failure, or the retry loop
@@ -142,15 +160,21 @@ async function openDevices(
   }
 }
 
-async function openCamera(audio: boolean, timeoutMs: number): Promise<MediaStream> {
+async function openCamera(
+  audio: boolean,
+  timeoutMs: number,
+  audioDeviceId?: string,
+  video: boolean | MediaTrackConstraints = CAMERA_CONSTRAINTS,
+): Promise<MediaStream> {
   try {
-    return await openDevices(CAMERA_CONSTRAINTS, audio, timeoutMs);
+    return await openDevices(video, audio, timeoutMs, audioDeviceId);
   } catch (cause) {
     // A stuck prompt is still open; a second getUserMedia would wait on it too.
-    if (isMediaTimeout(cause)) {
+    if (isMediaTimeout(cause) || video === true) {
       throw cause;
     }
-    return openDevices(true, audio, timeoutMs);
+    console.info('[collab] camera constraints rejected, retrying with video true');
+    return openDevices(true, audio, timeoutMs, audioDeviceId);
   }
 }
 
@@ -158,14 +182,15 @@ export async function acquireLocalStream(
   options: MediaConstraintsOptions,
   timeoutMs = MEDIA_WAIT_MS,
 ): Promise<MediaStream> {
+  const video = options.video ? withDevice(CAMERA_CONSTRAINTS, options.videoDeviceId) : false;
   if (!options.video) {
-    return openDevices(false, options.audio, timeoutMs);
+    return openDevices(false, options.audio, timeoutMs, options.audioDeviceId);
   }
-  return openCamera(options.audio, timeoutMs);
+  return openCamera(options.audio, timeoutMs, options.audioDeviceId, video);
 }
 
-export async function acquireMicrophoneTrack(): Promise<MediaStreamTrack> {
-  const stream = await openDevices(false, true, MEDIA_WAIT_MS);
+export async function acquireMicrophoneTrack(deviceId?: string): Promise<MediaStreamTrack> {
+  const stream = await openDevices(false, true, MEDIA_WAIT_MS, deviceId);
   const track = stream.getAudioTracks()[0];
   if (!track) {
     throw new Error('no-microphone');
@@ -195,9 +220,18 @@ export async function acquireJoinStream(
   }
 }
 
-export async function acquireCameraTrack(): Promise<MediaStreamTrack> {
-  const stream = await openCamera(false, MEDIA_WAIT_MS);
-  return stream.getVideoTracks()[0];
+export async function acquireCameraTrack(deviceId?: string): Promise<MediaStreamTrack> {
+  const stream = await openCamera(
+    false,
+    MEDIA_WAIT_MS,
+    undefined,
+    withDevice(CAMERA_CONSTRAINTS, deviceId),
+  );
+  const track = stream.getVideoTracks()[0];
+  if (!track) {
+    throw new Error('no-camera');
+  }
+  return track;
 }
 
 export async function acquireScreenTrack(): Promise<MediaStreamTrack> {
