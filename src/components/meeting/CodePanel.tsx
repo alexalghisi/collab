@@ -26,6 +26,8 @@ export interface CodePanelProps {
   selfPeerId: string | null;
   onRun: (stdin: string, files: WorkspaceFile[], source?: string) => void;
   onFilesChange: (files: WorkspaceFile[]) => void;
+  /** Example input for the problem loaded into the editor. */
+  stdinSeed?: { readonly token: number; readonly value: string } | null;
 }
 
 const STYLE_ELEMENT_ID = 'collab-remote-cursors';
@@ -47,10 +49,11 @@ export function CodePanel({
   selfPeerId,
   onRun,
   onFilesChange,
+  stdinSeed,
 }: CodePanelProps) {
   const [language, setLanguage] = useState<CodeLanguage>(shared.language);
   const [editors, setEditors] = useState<CodePresence[]>(shared.presence());
-  const [stdin, setStdin] = useState('');
+  const [stdin, setStdin] = useState(stdinSeed?.value ?? '');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
   const bindingRef = useRef<MonacoTextBinding | null>(null);
   const decorationsRef = useRef<DecorationsCollection | null>(null);
@@ -92,6 +95,11 @@ export function CodePanel({
   );
   useEffect(() => shared.onPresence(paintCursors), [shared, paintCursors]);
   useEffect(() => () => bindingRef.current?.destroy(), []);
+  useEffect(() => {
+    if (stdinSeed) {
+      setStdin(stdinSeed.value);
+    }
+  }, [stdinSeed]);
   useEffect(() => {
     if (selected !== CODE_MAIN_FILE && !files.some((file) => file.name === selected)) {
       setSelected(CODE_MAIN_FILE);
