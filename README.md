@@ -52,6 +52,16 @@ The first join after the server has been idle can take about a minute — Render
 
 A browser may call those routes only from `https://alexalghisi.github.io` or from `http://localhost` (any port). Each problem includes its category, time and memory limits, the test count when the catalog has one, the statement, and examples with input and output. The hosted server serves this after the API is deployed; until then the call shows a link to `https://collaborare.ro/probleme/<slug>`.
 
+During a call, **Probleme** opens the catalog beside the editor.
+
+![Problems panel beside the editor](./assets/problems-panel.png)
+
+On a wide screen the column can be dragged and its width is remembered. At 768 pixels and below, **Code** and **Problemă** are tabs so the page does not scroll sideways. A 390px-wide frame looks like this:
+
+![Problems panel on a phone](./assets/problems-panel-mobile.png)
+
+Search and the chips use the same categories as [collaborare.ro](https://collaborare.ro) (Vectori, Matrice, Backtracking, Programare dinamică, Grafuri, Subiecte oficiale OJI 2026, and the rest of that list). The host's choice is shared live. **Browsing freely** keeps a local choice until **Follow the host** is turned back on. **Load into editor** inserts a C++ or Python starter and the first example as the program input, after asking when the editor is not empty. **Run on examples** sends that program through the same hosted compiler as **Run** and marks each example. **Submit to collaborare.ro** stays disabled: this app is not signed into that judge and does not invent a score. **Open on collaborare.ro** is the fallback when the catalog cannot be loaded. A refresh restores the problem from the room.
+
 ---
 
 ## Table of contents

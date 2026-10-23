@@ -46,6 +46,13 @@ import {
 } from '../files/upload';
 import { firebaseStorage } from '../firebase/app';
 import { sendContactInvite } from '../meeting/sendInvite';
+import { isProblemSlug } from '../collaborare/map';
+import {
+  EMPTY_SHARED_PROBLEM,
+  normalizeSharedProblem,
+  publishProblem,
+  sameSharedProblem,
+} from '../collaborare/sync';
 import { normalizeTranscriptSegment } from '../transcript/segments';
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -56,6 +63,7 @@ import {
   type PeerInfo,
   type PeerState,
   type RoomSettings,
+  type SharedProblem,
   type Stroke,
   type WaitingPeer,
 } from './events';
@@ -103,6 +111,7 @@ interface RoomDoc {
   readonly hostPeerId: string;
   readonly settings?: RoomSettings;
   readonly workspaceFiles?: WorkspaceFile[];
+  readonly problem?: SharedProblem;
 }
 
 /** Room state as seen by a joiner, with defaults filled in. */
@@ -110,6 +119,7 @@ interface RoomSnapshot {
   readonly hostPeerId: string;
   readonly settings: RoomSettings;
   readonly workspaceFiles: WorkspaceFile[];
+  readonly problem: SharedProblem;
   readonly code: string | null;
 }
 
@@ -185,6 +195,7 @@ class FirestoreChannel implements SignalingChannel {
   private joinedAt = 0;
   private lastSettings = DEFAULT_ROOM_SETTINGS;
   private lastSentWorkspaceFiles: readonly WorkspaceFile[] = [];
+  private lastProblem: SharedProblem = EMPTY_SHARED_PROBLEM;
   private readonly pageHide = {
     handler: () => this.disconnect(),
     attach: () => window.addEventListener('pagehide', this.pageHide.handler),
@@ -259,6 +270,14 @@ class FirestoreChannel implements SignalingChannel {
     'code:files': (files) => {
       this.lastSentWorkspaceFiles = files;
       void setDoc(this.room, { workspaceFiles: files }, { merge: true });
+    },
+    'problem:select': (slug) => {
+      if (!this.isHost || !isProblemSlug(slug)) {
+        return;
+      }
+      const next = publishProblem(this.lastProblem, slug, Date.now());
+      this.lastProblem = next;
+      void setDoc(this.room, { problem: next }, { merge: true });
     },
     'assistant:ask': (ask) => {
       void this.askAssistant(ask);
@@ -475,14 +494,32 @@ class FirestoreChannel implements SignalingChannel {
       if (data?.hostPeerId) {
         const hostDoc = await transaction.get(doc(this.participants, data.hostPeerId));
         if (hostDoc.exists()) {
-          return { hostPeerId: data.hostPeerId, settings, workspaceFiles, code: null };
+          return {
+            hostPeerId: data.hostPeerId,
+            settings,
+            workspaceFiles,
+            problem: normalizeSharedProblem(data.problem),
+            code: null,
+          };
         }
       }
       if (!claim) {
-        return { hostPeerId: '', settings, workspaceFiles, code: null };
+        return {
+          hostPeerId: '',
+          settings,
+          workspaceFiles,
+          problem: normalizeSharedProblem(data?.problem),
+          code: null,
+        };
       }
       transaction.set(this.room, { hostPeerId: this.peerId }, { merge: true });
-      return { hostPeerId: this.peerId, settings, workspaceFiles, code: null };
+      return {
+        hostPeerId: this.peerId,
+        settings,
+        workspaceFiles,
+        problem: normalizeSharedProblem(data?.problem),
+        code: null,
+      };
     });
   }
 
@@ -535,6 +572,7 @@ class FirestoreChannel implements SignalingChannel {
     hostPeerId,
     settings,
     workspaceFiles,
+    problem,
     code,
   }: RoomSnapshot): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -565,6 +603,7 @@ class FirestoreChannel implements SignalingChannel {
               }
               peers.push(toPeerInfo(participant));
             }
+            this.lastProblem = problem;
             this.emitter.dispatch('room:joined', {
               selfPeerId: this.peerId,
               selfJoinedAt: this.joinedAt,
@@ -577,6 +616,7 @@ class FirestoreChannel implements SignalingChannel {
               messages: [],
               boardFiles: [],
               workspaceFiles,
+              problem,
             });
             for (const participant of snapshot.docs) {
               if (participant.id === this.peerId) {
@@ -630,6 +670,11 @@ class FirestoreChannel implements SignalingChannel {
       if (!sameWorkspaceFiles(workspaceFiles, this.lastSentWorkspaceFiles)) {
         this.lastSentWorkspaceFiles = workspaceFiles;
         this.emitter.dispatch('code:files', workspaceFiles);
+      }
+      const problem = normalizeSharedProblem(data?.problem);
+      if (!sameSharedProblem(problem, this.lastProblem)) {
+        this.lastProblem = problem;
+        this.emitter.dispatch('problem:state', problem);
       }
     });
     this.unsubscribers.push(unsubscribe);
