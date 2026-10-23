@@ -48,13 +48,41 @@ function stubGoogle(response: TokenResponse): GoogleStub {
   return stub;
 }
 
-function stubGoogleWindowFailure(error: { type?: string; message?: string }): void {
+function stubWindow(open: (() => Window | null) | null): {
+  fire(name: 'blur' | 'focus'): void;
+} {
+  const listeners = new Map<string, Array<() => void>>();
+  vi.stubGlobal('window', {
+    addEventListener: (name: string, listener: () => void) => {
+      const list = listeners.get(name) ?? [];
+      list.push(listener);
+      listeners.set(name, list);
+    },
+    removeEventListener: (name: string, listener: () => void) => {
+      const list = listeners.get(name) ?? [];
+      listeners.set(
+        name,
+        list.filter((item) => item !== listener),
+      );
+    },
+    open: open ?? (() => ({}) as Window),
+  });
+  return {
+    fire: (name) => {
+      for (const listener of listeners.get(name) ?? []) {
+        listener();
+      }
+    },
+  };
+}
+
+function stubGoogleThatOpens(open: () => void): void {
   (globalThis as GoogleGlobal).google = {
     accounts: {
       id: { initialize: () => undefined, prompt: () => undefined },
       oauth2: {
-        initTokenClient: (config: { error_callback?: (value: unknown) => void }) => ({
-          requestAccessToken: () => config.error_callback?.(error),
+        initTokenClient: () => ({
+          requestAccessToken: () => open(),
         }),
       },
     },
@@ -175,10 +203,24 @@ describe('requestGoogleCredential', () => {
 
   it('opens the OAuth account picker and returns an access token', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    let errorCallback: unknown = 'unset';
     const stub = stubGoogle({ access_token: 'ya29.login' });
+    const google = (globalThis as GoogleGlobal).google as {
+      accounts: {
+        oauth2: {
+          initTokenClient: (config: { error_callback?: unknown }) => unknown;
+        };
+      };
+    };
+    const init = google.accounts.oauth2.initTokenClient;
+    google.accounts.oauth2.initTokenClient = (config) => {
+      errorCallback = config.error_callback;
+      return init(config);
+    };
 
     await expect(requestGoogleCredential()).resolves.toEqual({ accessToken: 'ya29.login' });
     expect(stub.asked).toEqual([{ scope: 'openid email profile', prompt: 'select_account' }]);
+    expect(errorCallback).toBeUndefined();
   });
 
   it('opens the account picker in the same turn once Google is loaded', () => {
@@ -227,15 +269,28 @@ describe('requestGoogleCredential', () => {
   });
 
   it('gives up when someone closes the Google window instead of waiting on it', async () => {
+    vi.useFakeTimers();
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    stubGoogleWindowFailure({ type: 'popup_closed' });
+    const browser = stubWindow(() => ({}) as Window);
+    stubGoogleThatOpens(() => {
+      window.open('https://accounts.google.com/o/oauth2/v2/auth', 'google', 'popup');
+    });
 
-    await expect(requestGoogleCredential()).rejects.toThrow('Google sign-in was cancelled.');
+    const pending = requestGoogleCredential();
+    const settled = expect(pending).rejects.toThrow('Google sign-in was cancelled.');
+    browser.fire('blur');
+    browser.fire('focus');
+    await vi.advanceTimersByTimeAsync(8_000);
+    await settled;
+    vi.useRealTimers();
   });
 
   it('says so when the browser blocks the Google window', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    stubGoogleWindowFailure({ type: 'popup_failed_to_open' });
+    stubWindow(() => null);
+    stubGoogleThatOpens(() => {
+      window.open('https://accounts.google.com/o/oauth2/v2/auth', 'google', 'popup');
+    });
 
     await expect(requestGoogleCredential()).rejects.toThrow(
       'Your browser blocked the Google window. Allow pop-ups for this site and try again.',
@@ -244,7 +299,7 @@ describe('requestGoogleCredential', () => {
 
   it('passes on whatever Google says about a failure it has no name for', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
-    stubGoogleWindowFailure({ type: 'unknown', message: 'Network error' });
+    stubGoogle({ error: 'Network error' });
 
     await expect(requestGoogleCredential()).rejects.toThrow('Network error');
   });
