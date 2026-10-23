@@ -26,9 +26,11 @@ import {
 } from '../meeting/snapshot';
 import { SIGNALING_URL } from '../signaling/config';
 import { createSpeechCapture } from '../transcript/speech';
-import { resumePlayback, unlockAudioPlayback } from '../webrtc/attachMedia';
+import { resumePlayback, retargetSpeakers, unlockAudioPlayback } from '../webrtc/attachMedia';
 import { onAppResumed } from '../webrtc/appFocus';
+import { cameraOn, describeMediaFailure, microphoneOn, trackIsLive } from '../webrtc/captureState';
 import { watchCapture } from '../webrtc/captureWatch';
+import { listMediaDevices, watchDeviceChanges, type ListedDevice } from '../webrtc/devices';
 import { loadIceServers } from '../webrtc/loadIceServers';
 import { joinRemotePeer, rememberRemoteStream, syncRoomPeers } from '../webrtc/participants';
 import type { TranscriptSegment } from '../transcript/segments';
@@ -54,9 +56,9 @@ import {
 import { PeerConnectionManager } from '../webrtc/PeerConnectionManager';
 import {
   acquireCameraTrack,
+  acquireLocalStream,
   acquireMicrophoneTrack,
   acquireScreenTrack,
-  toggleTrack,
 } from '../webrtc/media';
 
 export type SessionStatus = 'idle' | 'connecting' | 'waiting' | 'connected' | 'error';
@@ -134,6 +136,11 @@ export interface CollabSession {
   readonly waiting: WaitingPeer[];
   /** Resolves to true once connected, false when media or signaling failed. */
   join: (options: JoinOptions) => Promise<boolean>;
+  /** Asks again for the camera and microphone. Used after a denied or empty capture. */
+  retryMedia: () => Promise<void>;
+  readonly devices: ListedDevice[];
+  readonly selectedDevices: { audioinput: string; videoinput: string; audiooutput: string };
+  chooseDevice: (kind: ListedDevice['kind'], deviceId: string) => Promise<void>;
   /** `keepLive` leaves media so a refresh can put this participant back in the same room. */
   leave: (options?: { keepLive?: boolean }) => void;
   returnToMain: () => void;
@@ -177,6 +184,37 @@ const SIGNALING_ERROR = 'Unable to reach the signaling service.';
 const DENIED_ERROR = 'The host did not let you in.';
 const REMOVED_ERROR = 'You were removed from the meeting by the host.';
 
+function isMediaMessage(message: string | null): boolean {
+  if (!message) {
+    return false;
+  }
+  return (
+    message === MEDIA_ERROR ||
+    message.startsWith('Camera') ||
+    message.startsWith('No camera') ||
+    message.startsWith('The camera')
+  );
+}
+
+function deviceSignature(listed: readonly ListedDevice[]): string {
+  return listed
+    .map((device) => `${device.kind}:${device.deviceId}`)
+    .sort()
+    .join('|');
+}
+
+function capturedDeviceId(track: MediaStreamTrack): string {
+  try {
+    return track.getSettings?.().deviceId ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function mediaTimedOut(cause: unknown): boolean {
+  return cause instanceof Error && cause.message === 'media-timeout';
+}
+
 const breakoutRoomId = (mainRoomId: string, index: number) => `${mainRoomId}-b${index + 1}`;
 
 function joinErrorMessage(cause: unknown): string {
@@ -193,6 +231,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [devices, setDevices] = useState<ListedDevice[]>([]);
+  const [selectedDevices, setSelectedDevices] = useState({
+    audioinput: '',
+    videoinput: '',
+    audiooutput: '',
+  });
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
@@ -231,6 +275,13 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const speechRef = useRef(createSpeechCapture());
   const selfPeerIdRef = useRef<string | null>(null);
   const joinGenerationRef = useRef(0);
+  const wantVideoRef = useRef(true);
+  /** What the user asked for. The published flags also go off when a track dies. */
+  const micEnabledRef = useRef(true);
+  const camEnabledRef = useRef(true);
+  const audioDeviceRef = useRef('');
+  const videoDeviceRef = useRef('');
+  const deviceSignatureRef = useRef('');
   const pendingSubmissions = useRef<ExecutionRequest[]>([]);
   const submissionByRun = useRef(new Map<string, ExecutionRequest>());
 
@@ -603,19 +654,171 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     [createSignaling, patchParticipant, dropParticipant, leave, beginCaptions],
   );
 
-  const enableMicRef = useRef<() => void>(() => undefined);
-  const enableCameraRef = useRef<() => Promise<void>>(async () => undefined);
+  const publishCapture = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream) {
+      return;
+    }
+    const audioMuted = !microphoneOn(stream);
+    const videoOff = selfRef.current.screenSharing ? false : !cameraOn(stream);
+    if (audioMuted === selfRef.current.audioMuted && videoOff === selfRef.current.videoOff) {
+      return;
+    }
+    console.info('[collab] capture state', { audioMuted, videoOff });
+    updateSelf({ audioMuted, videoOff });
+  }, [updateSelf]);
+
+  const refreshDevices = useCallback(async () => {
+    try {
+      const listed = await listMediaDevices();
+      deviceSignatureRef.current = deviceSignature(listed);
+      setDevices(listed);
+      console.info(
+        '[collab] devices',
+        listed.map((device) => `${device.kind}:${device.label}`),
+      );
+    } catch (cause) {
+      console.info('[collab] enumerateDevices failed', cause);
+    }
+  }, []);
+
+  const rememberDevice = useCallback((kind: 'audioinput' | 'videoinput', deviceId: string) => {
+    if (!deviceId) {
+      return;
+    }
+    if (kind === 'audioinput') {
+      audioDeviceRef.current = deviceId;
+    } else {
+      videoDeviceRef.current = deviceId;
+    }
+    setSelectedDevices((current) =>
+      current[kind] === deviceId ? current : { ...current, [kind]: deviceId },
+    );
+  }, []);
+
+  const takeOpenedTracks = useCallback(
+    (opened: MediaStream) => {
+      const stream = streamRef.current;
+      if (!stream) {
+        opened.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const sharing = selfRef.current.screenSharing;
+      const kinds = new Set(opened.getTracks().map((track) => track.kind));
+      if (sharing && kinds.has('video')) {
+        const parked = opened.getVideoTracks()[0];
+        if (parked) {
+          parkedCameraRef.current?.stop();
+          parkedCameraRef.current = parked;
+          kinds.delete('video');
+        }
+      }
+      for (const existing of stream.getTracks()) {
+        if (!kinds.has(existing.kind)) {
+          continue;
+        }
+        existing.stop();
+        stream.removeTrack(existing);
+      }
+      for (const track of opened.getTracks()) {
+        if (!kinds.has(track.kind) || stream.getTracks().includes(track)) {
+          continue;
+        }
+        stream.addTrack(track);
+        console.info('[collab] local track', {
+          kind: track.kind,
+          id: track.id,
+          readyState: track.readyState,
+          enabled: track.enabled,
+          muted: track.muted,
+        });
+        if (track.kind === 'audio') {
+          rememberDevice('audioinput', capturedDeviceId(track));
+        } else {
+          rememberDevice('videoinput', capturedDeviceId(track));
+        }
+      }
+      const audio = stream.getAudioTracks()[0];
+      const videoTrack = stream.getVideoTracks()[0];
+      if (audio && kinds.has('audio')) {
+        void managerRef.current?.replaceAudioTrack(audio);
+      }
+      if (videoTrack && kinds.has('video') && !sharing) {
+        void managerRef.current?.replaceVideoTrack(videoTrack);
+      }
+      publishCapture();
+    },
+    [publishCapture, rememberDevice],
+  );
+
+  const openMeetingMedia = useCallback(
+    async (video: boolean) => {
+      const generation = joinGenerationRef.current;
+      const stillHere = (): boolean =>
+        generation === joinGenerationRef.current && streamRef.current !== null;
+      console.info('[collab] opening camera and microphone', { video, audio: true });
+      const audioDeviceId = audioDeviceRef.current || undefined;
+      const videoDeviceId = videoDeviceRef.current || undefined;
+      let opened: MediaStream;
+      try {
+        opened = await acquireLocalStream({
+          video,
+          audio: true,
+          videoDeviceId,
+          audioDeviceId,
+        });
+      } catch (cause) {
+        console.info('[collab] getUserMedia failed', cause);
+        if (!stillHere()) {
+          return;
+        }
+        if (video && !mediaTimedOut(cause)) {
+          try {
+            opened = await acquireLocalStream({ video: false, audio: true, audioDeviceId });
+          } catch (audioCause) {
+            console.info('[collab] getUserMedia failed', audioCause);
+            if (stillHere()) {
+              setError(describeMediaFailure(audioCause));
+              publishCapture();
+            }
+            return;
+          }
+          if (!stillHere()) {
+            opened.getTracks().forEach((track) => track.stop());
+            return;
+          }
+          setError(describeMediaFailure(cause));
+          takeOpenedTracks(opened);
+          await refreshDevices();
+          return;
+        }
+        setError(describeMediaFailure(cause));
+        publishCapture();
+        return;
+      }
+      if (!stillHere()) {
+        opened.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      takeOpenedTracks(opened);
+      setError((current) => (isMediaMessage(current) ? null : current));
+      await refreshDevices();
+    },
+    [publishCapture, refreshDevices, takeOpenedTracks],
+  );
 
   const join = useCallback(
     async ({ roomId: nextRoomId, displayName, video }: JoinOptions) => {
       unlockAudioPlayback();
-      joinGenerationRef.current += 1;
+      const generation = (joinGenerationRef.current += 1);
+      wantVideoRef.current = video;
+      camEnabledRef.current = video;
+      micEnabledRef.current = true;
       setStatus('connecting');
       setError(null);
 
       const stream = new MediaStream();
       streamRef.current = stream;
-      setLocalStream(stream);
 
       const initialState: PeerState = {
         ...INITIAL_PEER_STATE,
@@ -635,21 +838,25 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         video,
       });
 
-      const joined = await connectRoom(nextRoomId);
-      if (joined && streamRef.current === stream) {
-        // Joining is the user's tap, so ask for the microphone (and the camera
-        // when they chose video) right away instead of entering the call silent
-        // behind a banner that phones easily hide.
-        if (stream.getAudioTracks().length === 0) {
-          enableMicRef.current();
-        }
-        if (video && stream.getVideoTracks().length === 0) {
-          void enableCameraRef.current();
-        }
+      console.info('[collab] join', { roomId: nextRoomId, video, audio: true });
+      await openMeetingMedia(video);
+      if (generation !== joinGenerationRef.current || streamRef.current !== stream) {
+        return false;
       }
-      return joined;
+      const audioLive = microphoneOn(stream);
+      const videoLive = cameraOn(stream);
+      const readyState: PeerState = {
+        ...initialState,
+        audioMuted: !audioLive,
+        videoOff: video ? !videoLive : true,
+      };
+      selfRef.current = readyState;
+      setSelf(readyState);
+      console.info('[collab] capture ready', { audioLive, videoLive });
+      setLocalStream(stream);
+      return connectRoom(nextRoomId);
     },
-    [connectRoom],
+    [connectRoom, openMeetingMedia],
   );
 
   const switchRoom = useCallback(
@@ -672,54 +879,74 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     if (!stream) {
       return;
     }
-    const tracks = stream.getAudioTracks();
-    if (tracks.length === 0) {
-      const generation = joinGenerationRef.current;
-      void (async () => {
-        let track: MediaStreamTrack;
-        try {
-          track = await acquireMicrophoneTrack();
-        } catch {
-          if (generation === joinGenerationRef.current) {
-            setError(MEDIA_ERROR);
-          }
-          return;
-        }
-        if (generation !== joinGenerationRef.current || streamRef.current !== stream) {
-          track.stop();
-          return;
-        }
-        stream.addTrack(track);
-        await managerRef.current?.replaceAudioTrack(track);
-        updateSelf({ audioMuted: false });
-      })();
+    const track = stream.getAudioTracks()[0];
+    if (track && track.readyState === 'live' && track.muted !== true) {
+      track.enabled = !track.enabled;
+      micEnabledRef.current = track.enabled;
+      console.info('[collab] microphone', { enabled: track.enabled, readyState: track.readyState });
+      publishCapture();
       return;
     }
-    const audioMuted = !selfRef.current.audioMuted;
-    toggleTrack(stream, 'audio', !audioMuted);
-    updateSelf({ audioMuted });
-  }, [updateSelf]);
+    micEnabledRef.current = true;
+    const generation = joinGenerationRef.current;
+    void (async () => {
+      let opened: MediaStreamTrack;
+      try {
+        opened = await acquireMicrophoneTrack(audioDeviceRef.current || undefined);
+      } catch (cause) {
+        console.info('[collab] getUserMedia failed', cause);
+        if (generation === joinGenerationRef.current) {
+          setError(describeMediaFailure(cause));
+        }
+        return;
+      }
+      if (generation !== joinGenerationRef.current || streamRef.current !== stream) {
+        opened.stop();
+        return;
+      }
+      takeOpenedTracks(new MediaStream([opened]));
+      setError((current) => (isMediaMessage(current) ? null : current));
+    })();
+  }, [publishCapture, takeOpenedTracks]);
 
   const toggleCamera = useCallback(async () => {
-    if (!selfRef.current.videoOff) {
-      streamRef.current?.getVideoTracks().forEach((track) => track.stop());
-      await swapLocalVideo(null);
-      updateSelf({ videoOff: true });
+    if (selfRef.current.screenSharing) {
       return;
     }
-    let track: MediaStreamTrack;
+    const stream = streamRef.current;
+    if (!stream) {
+      return;
+    }
+    const track = stream.getVideoTracks()[0];
+    if (track && track.readyState === 'live' && track.muted !== true) {
+      track.enabled = !track.enabled;
+      camEnabledRef.current = track.enabled;
+      wantVideoRef.current = track.enabled;
+      console.info('[collab] camera', { enabled: track.enabled, readyState: track.readyState });
+      publishCapture();
+      return;
+    }
+    camEnabledRef.current = true;
+    wantVideoRef.current = true;
+    let opened: MediaStreamTrack;
     try {
-      track = await acquireCameraTrack();
-    } catch {
-      setError(MEDIA_ERROR);
+      opened = await acquireCameraTrack(videoDeviceRef.current || undefined);
+    } catch (cause) {
+      console.info('[collab] getUserMedia failed', cause);
+      setError(describeMediaFailure(cause));
       return;
     }
-    await swapLocalVideo(track);
-    updateSelf({ videoOff: false });
-  }, [swapLocalVideo, updateSelf]);
-
-  enableMicRef.current = toggleMic;
-  enableCameraRef.current = toggleCamera;
+    if (streamRef.current !== stream) {
+      opened.stop();
+      return;
+    }
+    const previous = stream.getVideoTracks();
+    await swapLocalVideo(opened);
+    previous.forEach((old) => old.stop());
+    rememberDevice('videoinput', capturedDeviceId(opened));
+    publishCapture();
+    setError((current) => (isMediaMessage(current) ? null : current));
+  }, [publishCapture, rememberDevice, swapLocalVideo]);
 
   const stopScreenShare = useCallback(async () => {
     screenTrackRef.current?.stop();
@@ -727,7 +954,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     await swapLocalVideo(parkedCameraRef.current);
     parkedCameraRef.current = null;
     updateSelf({ screenSharing: false });
-  }, [swapLocalVideo, updateSelf]);
+    publishCapture();
+  }, [publishCapture, swapLocalVideo, updateSelf]);
 
   const toggleScreenShare = useCallback(async () => {
     if (selfRef.current.screenSharing) {
@@ -746,7 +974,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     parkedCameraRef.current = streamRef.current?.getVideoTracks()[0] ?? null;
     screenTrackRef.current = track;
     await swapLocalVideo(track);
-    updateSelf({ screenSharing: true });
+    updateSelf({ screenSharing: true, videoOff: false });
   }, [stopScreenShare, swapLocalVideo, updateSelf]);
 
   /**
@@ -776,7 +1004,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       stream: localStream,
       microphone: {
         wanted: () => streamRef.current !== null,
-        open: acquireMicrophoneTrack,
+        open: () => acquireMicrophoneTrack(audioDeviceRef.current || undefined),
         adopt: async (track) => {
           const stream = streamRef.current;
           if (!stream) {
@@ -788,19 +1016,29 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
             stream.removeTrack(previous);
           }
           stream.addTrack(track);
+          rememberDevice('audioinput', capturedDeviceId(track));
           await managerRef.current?.replaceAudioTrack(track);
         },
-        enabled: () => !selfRef.current.audioMuted,
+        enabled: () => micEnabledRef.current,
       },
       camera: {
         wanted: () =>
-          streamRef.current !== null && !selfRef.current.videoOff && !selfRef.current.screenSharing,
-        open: acquireCameraTrack,
-        adopt: swapLocalVideo,
-        enabled: () => true,
+          streamRef.current !== null && camEnabledRef.current && !selfRef.current.screenSharing,
+        open: () => acquireCameraTrack(videoDeviceRef.current || undefined),
+        adopt: async (track) => {
+          const previous =
+            streamRef.current?.getVideoTracks().filter((item) => item !== track) ?? [];
+          await swapLocalVideo(track);
+          previous.forEach((item) => item.stop());
+          rememberDevice('videoinput', capturedDeviceId(track));
+        },
+        enabled: () => camEnabledRef.current,
       },
-      onRestored: () => setError((current) => (current === MEDIA_ERROR ? null : current)),
-      onFailed: () => setError(MEDIA_ERROR),
+      onRestored: () => {
+        publishCapture();
+        setError((current) => (isMediaMessage(current) ? null : current));
+      },
+      onFailed: () => setError(describeMediaFailure(new Error('media-timeout'))),
     });
     return () => {
       stopResuming();
@@ -809,7 +1047,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         window.removeEventListener('online', checkLinks);
       }
     };
-  }, [localStream, swapLocalVideo]);
+  }, [localStream, publishCapture, rememberDevice, swapLocalVideo]);
 
   const toggleHand = useCallback(() => {
     updateSelf({ handRaised: !selfRef.current.handRaised });
@@ -1072,6 +1310,209 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     };
   }, [toggleMic, leave, switchRoom]);
 
+  const retryMedia = useCallback(async () => {
+    unlockAudioPlayback();
+    if (!streamRef.current) {
+      streamRef.current = new MediaStream();
+    }
+    await openMeetingMedia(wantVideoRef.current);
+    const stream = streamRef.current;
+    if (stream) {
+      setLocalStream(stream);
+    }
+  }, [openMeetingMedia]);
+
+  const chooseDevice = useCallback(
+    async (kind: ListedDevice['kind'], deviceId: string) => {
+      setSelectedDevices((current) => ({ ...current, [kind]: deviceId }));
+      if (kind === 'audiooutput') {
+        await retargetSpeakers(deviceId);
+        return;
+      }
+      if (kind === 'audioinput') {
+        audioDeviceRef.current = deviceId;
+        const current = streamRef.current?.getAudioTracks()[0];
+        const keepEnabled = current ? current.enabled : true;
+        micEnabledRef.current = keepEnabled;
+        try {
+          const track = await acquireMicrophoneTrack(deviceId);
+          track.enabled = keepEnabled;
+          if (!streamRef.current) {
+            track.stop();
+            return;
+          }
+          takeOpenedTracks(new MediaStream([track]));
+        } catch (cause) {
+          console.info('[collab] getUserMedia failed', cause);
+          setError(describeMediaFailure(cause));
+        }
+        return;
+      }
+      videoDeviceRef.current = deviceId;
+      if (selfRef.current.screenSharing) {
+        try {
+          const track = await acquireCameraTrack(deviceId);
+          parkedCameraRef.current?.stop();
+          parkedCameraRef.current = track;
+        } catch (cause) {
+          console.info('[collab] getUserMedia failed', cause);
+          setError(describeMediaFailure(cause));
+        }
+        return;
+      }
+      const current = streamRef.current?.getVideoTracks()[0];
+      const keepEnabled = current ? current.enabled : true;
+      camEnabledRef.current = keepEnabled;
+      wantVideoRef.current = keepEnabled || wantVideoRef.current;
+      try {
+        const track = await acquireCameraTrack(deviceId);
+        track.enabled = keepEnabled;
+        if (!streamRef.current) {
+          track.stop();
+          return;
+        }
+        const previous = streamRef.current.getVideoTracks();
+        await swapLocalVideo(track);
+        previous.forEach((item) => item.stop());
+        rememberDevice('videoinput', capturedDeviceId(track) || deviceId);
+        publishCapture();
+      } catch (cause) {
+        console.info('[collab] getUserMedia failed', cause);
+        setError(describeMediaFailure(cause));
+      }
+    },
+    [publishCapture, rememberDevice, swapLocalVideo, takeOpenedTracks],
+  );
+
+  useEffect(() => {
+    const stream = localStream;
+    if (!stream) {
+      return;
+    }
+    const detach: Array<() => void> = [];
+    const follow = (track: MediaStreamTrack): void => {
+      const onEvent = (): void => {
+        console.info('[collab] track event', {
+          kind: track.kind,
+          readyState: track.readyState,
+          enabled: track.enabled,
+          muted: track.muted,
+          live: trackIsLive(track),
+        });
+        publishCapture();
+      };
+      track.addEventListener('ended', onEvent);
+      track.addEventListener('mute', onEvent);
+      track.addEventListener('unmute', onEvent);
+      detach.push(() => {
+        track.removeEventListener('ended', onEvent);
+        track.removeEventListener('mute', onEvent);
+        track.removeEventListener('unmute', onEvent);
+      });
+    };
+    stream.getTracks().forEach(follow);
+    const onAdd = (event: Event): void => {
+      const track = (event as MediaStreamTrackEvent).track;
+      if (track) {
+        follow(track);
+      }
+      publishCapture();
+    };
+    const onRemove = (): void => publishCapture();
+    stream.addEventListener('addtrack', onAdd);
+    stream.addEventListener('removetrack', onRemove);
+    return () => {
+      detach.forEach((stop) => stop());
+      stream.removeEventListener('addtrack', onAdd);
+      stream.removeEventListener('removetrack', onRemove);
+    };
+  }, [localStream, publishCapture]);
+
+  useEffect(() => {
+    if (!localStream) {
+      return;
+    }
+    return watchDeviceChanges(() => {
+      void (async () => {
+        let listed: ListedDevice[];
+        try {
+          listed = await listMediaDevices();
+        } catch (cause) {
+          console.info('[collab] enumerateDevices failed', cause);
+          return;
+        }
+        const signature = deviceSignature(listed);
+        setDevices(listed);
+        console.info(
+          '[collab] devicechange',
+          listed.map((device) => device.label),
+        );
+        if (signature === deviceSignatureRef.current) {
+          return;
+        }
+        deviceSignatureRef.current = signature;
+        const stream = streamRef.current;
+        if (!stream) {
+          return;
+        }
+        const audioStill = (id: string) =>
+          !id || listed.some((device) => device.kind === 'audioinput' && device.deviceId === id);
+        const videoStill = (id: string) =>
+          !id || listed.some((device) => device.kind === 'videoinput' && device.deviceId === id);
+        if (!audioStill(audioDeviceRef.current)) {
+          audioDeviceRef.current = '';
+          setSelectedDevices((current) => ({ ...current, audioinput: '' }));
+        }
+        if (!videoStill(videoDeviceRef.current)) {
+          videoDeviceRef.current = '';
+          setSelectedDevices((current) => ({ ...current, videoinput: '' }));
+        }
+        const audio = stream.getAudioTracks()[0];
+        const keepAudio = audio ? audio.enabled : micEnabledRef.current;
+        try {
+          const track = await acquireMicrophoneTrack(audioDeviceRef.current || undefined);
+          track.enabled = keepAudio;
+          if (streamRef.current !== stream) {
+            track.stop();
+          } else {
+            takeOpenedTracks(new MediaStream([track]));
+          }
+        } catch (cause) {
+          console.info('[collab] getUserMedia failed', cause);
+          setError(describeMediaFailure(cause));
+        }
+        const sharing = selfRef.current.screenSharing;
+        const video = sharing ? parkedCameraRef.current : stream.getVideoTracks()[0];
+        if (!video && !wantVideoRef.current) {
+          return;
+        }
+        const keepVideo = video ? video.enabled : camEnabledRef.current;
+        try {
+          const track = await acquireCameraTrack(videoDeviceRef.current || undefined);
+          track.enabled = keepVideo;
+          if (streamRef.current !== stream) {
+            track.stop();
+            return;
+          }
+          if (selfRef.current.screenSharing) {
+            parkedCameraRef.current?.stop();
+            parkedCameraRef.current = track;
+            rememberDevice('videoinput', capturedDeviceId(track));
+            return;
+          }
+          const previous = stream.getVideoTracks();
+          await swapLocalVideo(track);
+          previous.forEach((item) => item.stop());
+          rememberDevice('videoinput', capturedDeviceId(track));
+          publishCapture();
+        } catch (cause) {
+          console.info('[collab] getUserMedia failed', cause);
+          setError(describeMediaFailure(cause));
+        }
+      })();
+    });
+  }, [localStream, publishCapture, rememberDevice, swapLocalVideo, takeOpenedTracks]);
+
   return {
     status,
     error,
@@ -1097,6 +1538,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     settings,
     waiting,
     join,
+    retryMedia,
+    devices,
+    selectedDevices,
+    chooseDevice,
     leave,
     returnToMain,
     toggleMic,

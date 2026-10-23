@@ -13,9 +13,11 @@ import { sharedRoomFiles } from '../../files/roomFiles';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
 import { colors } from '../../theme';
+import { cameraOn, microphoneOn } from '../../webrtc/captureState';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
+import { DevicePanel } from './DevicePanel';
 import { FilesPanel } from './FilesPanel';
 import { InvitePanel } from './InvitePanel';
 import { CodePanel } from './CodePanel';
@@ -32,7 +34,7 @@ export interface MeetingScreenProps {
   onInvite?: CollabSession['sendInvite'];
 }
 
-type Panel = 'participants' | 'chat' | 'invite' | 'files' | null;
+type Panel = 'participants' | 'chat' | 'invite' | 'files' | 'devices' | null;
 type Stage = 'grid' | 'whiteboard' | 'code';
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
@@ -242,6 +244,14 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
                 onClose={() => setPanel(null)}
               />
             )}
+            {panel === 'devices' && (
+              <DevicePanel
+                devices={session.devices}
+                selected={session.selectedDevices}
+                onChoose={(kind, deviceId) => void session.chooseDevice(kind, deviceId)}
+                onClose={() => setPanel(null)}
+              />
+            )}
           </View>
         )}
       </View>
@@ -255,19 +265,32 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
         />
       )}
 
-      {session.localStream !== null && session.localStream.getAudioTracks().length === 0 && (
+      {session.error && (
         <Pressable
-          style={styles.micBanner}
-          onPress={session.toggleMic}
+          style={styles.errorBanner}
+          onPress={() => void session.retryMedia()}
           accessibilityRole="button"
-          accessibilityLabel="Turn on microphone"
+          accessibilityLabel="Try the camera and microphone again"
         >
-          <Ionicons name="mic" size={18} color={colors.text} />
-          <Text style={styles.micBannerText}>
-            Tap to turn on the microphone so others can hear you
-          </Text>
+          <Ionicons name="alert-circle" size={18} color={colors.text} />
+          <Text style={styles.micBannerText}>{session.error}</Text>
         </Pressable>
       )}
+
+      {session.localStream !== null &&
+        session.localStream.getAudioTracks()[0]?.readyState !== 'live' && (
+          <Pressable
+            style={styles.micBanner}
+            onPress={session.toggleMic}
+            accessibilityRole="button"
+            accessibilityLabel="Turn on microphone"
+          >
+            <Ionicons name="mic" size={18} color={colors.text} />
+            <Text style={styles.micBannerText}>
+              Tap to turn on the microphone so others can hear you
+            </Text>
+          </Pressable>
+        )}
 
       <ScrollView
         horizontal={!wide}
@@ -277,15 +300,15 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
         contentContainerStyle={[styles.toolbar, !wide && styles.toolbarRow]}
       >
         <ToolbarButton
-          icon={session.self.audioMuted ? 'mic-off' : 'mic'}
-          label={session.self.audioMuted ? 'Unmute' : 'Mute'}
-          danger={session.self.audioMuted}
+          icon={microphoneOn(session.localStream) ? 'mic' : 'mic-off'}
+          label={microphoneOn(session.localStream) ? 'Mute' : 'Unmute'}
+          danger={!microphoneOn(session.localStream)}
           onPress={session.toggleMic}
         />
         <ToolbarButton
-          icon={session.self.videoOff ? 'videocam-off' : 'videocam'}
-          label={session.self.videoOff ? 'Start video' : 'Stop video'}
-          danger={session.self.videoOff}
+          icon={cameraOn(session.localStream) ? 'videocam' : 'videocam-off'}
+          label={cameraOn(session.localStream) ? 'Stop video' : 'Start video'}
+          danger={!cameraOn(session.localStream)}
           disabled={session.self.screenSharing}
           onPress={() => void session.toggleCamera()}
         />
@@ -340,6 +363,12 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           active={panel === 'files'}
           badge={files.length}
           onPress={() => togglePanel('files')}
+        />
+        <ToolbarButton
+          icon="settings-outline"
+          label="Devices"
+          active={panel === 'devices'}
+          onPress={() => togglePanel('devices')}
         />
         <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
       </ScrollView>
@@ -417,6 +446,18 @@ const styles = StyleSheet.create({
   },
   overlayPanel: {
     ...StyleSheet.absoluteFillObject,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: colors.danger,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   micBanner: {
     flexDirection: 'row',
