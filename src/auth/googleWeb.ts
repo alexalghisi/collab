@@ -2,11 +2,6 @@ import { readGoogleWebClientId } from './config';
 import { requestTokenInPopup } from './googleOAuthPopup';
 import type { GoogleCredential } from './types';
 
-interface TokenClientError {
-  readonly type?: string;
-  readonly message?: string;
-}
-
 interface GoogleIdentity {
   id: {
     initialize(config: {
@@ -22,19 +17,61 @@ interface GoogleIdentity {
       client_id: string;
       scope: string;
       callback: (response: { access_token?: string; error?: string }) => void;
-      error_callback?: (error: TokenClientError) => void;
     }): { requestAccessToken: (opts?: { prompt?: string }) => void };
   };
 }
 
-export function describeTokenClientError(error: TokenClientError, fallback: string): string {
-  if (error.type === 'popup_failed_to_open') {
-    return 'Your browser blocked the Google window. Allow pop-ups for this site and try again.';
+const POPUP_BLOCKED =
+  'Your browser blocked the Google window. Allow pop-ups for this site and try again.';
+const POPUP_CANCELLED = 'Google sign-in was cancelled.';
+const POPUP_CANCEL_GRACE_MS = 8_000;
+
+function watchForClosedGoogleWindow(cancel: (message: string) => void): () => void {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+    return () => undefined;
   }
-  if (error.type === 'popup_closed') {
-    return fallback;
+  let blurred = false;
+  let cancelTimer: ReturnType<typeof setTimeout> | undefined;
+  const onBlur = () => {
+    blurred = true;
+    clearTimeout(cancelTimer);
+  };
+  const onFocus = () => {
+    if (!blurred) {
+      return;
+    }
+    clearTimeout(cancelTimer);
+    cancelTimer = setTimeout(() => cancel(POPUP_CANCELLED), POPUP_CANCEL_GRACE_MS);
+  };
+  window.addEventListener('blur', onBlur);
+  window.addEventListener('focus', onFocus);
+  return () => {
+    clearTimeout(cancelTimer);
+    window.removeEventListener('blur', onBlur);
+    window.removeEventListener('focus', onFocus);
+  };
+}
+
+function openGoogleWindow(open: () => void): boolean {
+  if (typeof window === 'undefined' || typeof window.open !== 'function') {
+    open();
+    return false;
   }
-  return error.message || fallback;
+  const original = window.open;
+  let blocked = false;
+  window.open = (url, target, features) => {
+    const child = original.call(window, url, target, features);
+    if (child === null) {
+      blocked = true;
+    }
+    return child;
+  };
+  try {
+    open();
+  } finally {
+    window.open = original;
+  }
+  return blocked;
 }
 
 function googleApi(): GoogleIdentity | undefined {
@@ -83,22 +120,35 @@ function requestAccessToken(api: GoogleIdentity, clientId: string): Promise<stri
     return Promise.reject(new Error('Could not load Google Sign-In.'));
   }
   return new Promise((resolve, reject) => {
-    const cancelled = 'Google sign-in was cancelled.';
+    let settled = false;
+    let stopWatching = (): void => undefined;
+    const finish = (outcome: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      stopWatching();
+      outcome();
+    };
     const client = oauth.initTokenClient({
       client_id: clientId,
       scope: 'openid email profile',
       callback: (response) => {
-        if (response.access_token) {
-          resolve(response.access_token);
+        const accessToken = response.access_token;
+        if (accessToken) {
+          finish(() => resolve(accessToken));
           return;
         }
-        reject(new Error(response.error || cancelled));
-      },
-      error_callback: (error) => {
-        reject(new Error(describeTokenClientError(error, cancelled)));
+        finish(() => reject(new Error(response.error || POPUP_CANCELLED)));
       },
     });
-    client.requestAccessToken({ prompt: 'select_account' });
+    stopWatching = watchForClosedGoogleWindow((message) =>
+      finish(() => reject(new Error(message))),
+    );
+    const blocked = openGoogleWindow(() => client.requestAccessToken({ prompt: 'select_account' }));
+    if (blocked) {
+      finish(() => reject(new Error(POPUP_BLOCKED)));
+    }
   });
 }
 
