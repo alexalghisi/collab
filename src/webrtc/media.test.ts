@@ -104,6 +104,26 @@ describe('media capture', () => {
     expect(track.contentHint).toBe('motion');
   });
 
+  it('pins the chosen camera and microphone', async () => {
+    const getUserMedia = vi.fn(async () => ({
+      getVideoTracks: () => [],
+      getAudioTracks: () => [],
+    }));
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    await acquireLocalStream({
+      video: true,
+      audio: true,
+      videoDeviceId: 'cam-1',
+      audioDeviceId: 'mic-1',
+    });
+
+    expect(getUserMedia).toHaveBeenCalledWith({
+      video: { ...CAMERA_CONSTRAINTS, deviceId: { exact: 'cam-1' } },
+      audio: { ...AUDIO_CONSTRAINTS, deviceId: { exact: 'mic-1' } },
+    });
+  });
+
   it('leaves the camera out when joining as audio only', async () => {
     const getUserMedia = vi.fn(async () => ({
       getVideoTracks: () => [],

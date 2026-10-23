@@ -48,6 +48,7 @@ function sharedPlaybackContext(): AudioContext | null {
 
 /** Everything currently bound to a stream, so playback can be started again. */
 const bound = new Set<HTMLMediaElement>();
+let speakerId = '';
 
 /**
  * Starts the sound again after a trip to another app. A phone pauses every
@@ -100,7 +101,11 @@ export function attachMediaStream(
       element.muted = false;
       element.volume = 1;
     }
-    void element.play().catch(() => {
+    void element.play().catch((cause) => {
+      console.info('[collab] media play is waiting for a gesture', {
+        tag: element.tagName,
+        cause,
+      });
       if (resume || typeof document === 'undefined') {
         return;
       }
@@ -151,6 +156,22 @@ export function attachMediaStream(
   };
 }
 
+export async function retargetSpeakers(deviceId: string): Promise<void> {
+  speakerId = deviceId;
+  console.info('[collab] speaker', deviceId || 'default');
+  for (const element of bound) {
+    const sink = element as HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> };
+    if (!sink.setSinkId) {
+      continue;
+    }
+    try {
+      await sink.setSinkId(deviceId);
+    } catch (cause) {
+      console.info('[collab] setSinkId failed', cause);
+    }
+  }
+}
+
 export function attachRemoteAudio(stream: MediaStream): () => void {
   const context = sharedPlaybackContext();
   let source: MediaStreamAudioSourceNode | null = null;
@@ -174,6 +195,12 @@ export function attachRemoteAudio(stream: MediaStream): () => void {
   }
   audio.setAttribute('playsinline', '');
   audio.setAttribute('webkit-playsinline', '');
+  const sink = audio as HTMLMediaElement & { setSinkId?: (id: string) => Promise<void> };
+  if (speakerId && sink.setSinkId) {
+    void sink.setSinkId(speakerId).catch((cause) => {
+      console.info('[collab] setSinkId failed', cause);
+    });
+  }
   audio.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
   document.body.appendChild(audio);
   const detach = attachMediaStream(audio, stream);

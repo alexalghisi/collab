@@ -2,17 +2,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PeerState } from '../signaling/events';
 import { colors } from '../theme';
+import { showsPlaceholder } from './tilePlaceholder';
+
+export { showsPlaceholder };
 
 export interface TileOverlayProps {
   label: string;
   state: PeerState;
   isHost: boolean;
-}
-
-/** A tile falls back to the avatar when the camera is off, unless it shows a shared screen. */
-export function showsPlaceholder(state: PeerState, stream: MediaStream | undefined): boolean {
-  const hasVideo = (stream?.getVideoTracks().length ?? 0) > 0;
-  return !hasVideo || (state.videoOff && !state.screenSharing);
 }
 
 /** Status chrome drawn over a video tile: name, host badge, mute, hand, reaction. */
