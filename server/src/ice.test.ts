@@ -1,11 +1,28 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_ICE_SERVERS } from '../../src/webrtc/config';
-import { resolveIceServers } from './ice';
+import { PUBLIC_RELAY_WAIT_MS, resolveIceServers } from './ice';
 
 describe('resolveIceServers', () => {
   it('returns the bundled list when Twilio is not configured and the relay is quiet', async () => {
     const fetchImpl = (async () => new Response('no', { status: 404 })) as typeof fetch;
     await expect(resolveIceServers({}, fetchImpl)).resolves.toEqual([...DEFAULT_ICE_SERVERS]);
+  });
+
+  it('gives up on a relay that never answers instead of holding /ice open', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = ((_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        })) as typeof fetch;
+
+      const pending = resolveIceServers({}, fetchImpl);
+      await vi.advanceTimersByTimeAsync(PUBLIC_RELAY_WAIT_MS);
+
+      await expect(pending).resolves.toEqual([...DEFAULT_ICE_SERVERS]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('adds a TURN relay fetched on the server, including TCP', async () => {

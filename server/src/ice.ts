@@ -1,3 +1,4 @@
+import { timeoutSignal } from '../../src/net/timeoutSignal';
 import { DEFAULT_ICE_SERVERS, type IceServerConfig } from '../../src/webrtc/config';
 
 interface TwilioIceServer {
@@ -8,6 +9,11 @@ interface TwilioIceServer {
 }
 
 const PUBLIC_TURN_URL = 'https://turn.elixir-webrtc.org/?service=turn&username=collab';
+/**
+ * The client gives `/ice` 8 seconds. A relay host that hangs must not use them
+ * all, or the phone gives up and starts the call with STUN only.
+ */
+export const PUBLIC_RELAY_WAIT_MS = 4000;
 
 /** UDP-only relays fail on many mobile networks; ask for TCP on the same host. */
 function withTcpTurn(uris: readonly string[]): string[] {
@@ -22,7 +28,10 @@ function withTcpTurn(uris: readonly string[]): string[] {
 
 async function readPublicRelay(fetchImpl: typeof fetch): Promise<IceServerConfig[] | null> {
   try {
-    const response = await fetchImpl(PUBLIC_TURN_URL, { method: 'POST' });
+    const response = await fetchImpl(PUBLIC_TURN_URL, {
+      method: 'POST',
+      signal: timeoutSignal(PUBLIC_RELAY_WAIT_MS),
+    });
     if (!response.ok) {
       return null;
     }
