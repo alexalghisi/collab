@@ -17,7 +17,19 @@ interface GoogleIdentity {
       scope: string;
       callback: (response: { access_token?: string; error?: string }) => void;
     }): { requestAccessToken: (opts?: { prompt?: string }) => void };
+    initCodeClient?(config: {
+      client_id: string;
+      scope: string;
+      ux_mode: 'popup';
+      callback: (response: { code?: string; error?: string }) => void;
+    }): { requestCode: () => void };
   };
+}
+
+/** Offline consent result: the server redeems the code with redirect_uri "postmessage". */
+export interface CalendarAuthCode {
+  readonly code: string;
+  readonly redirectUri: 'postmessage';
 }
 
 const POPUP_BLOCKED =
@@ -207,6 +219,67 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
     prompt,
     cancelled: 'Google Calendar access was cancelled.',
     denied: 'Google Calendar access was not granted.',
+  });
+}
+
+/**
+ * One-time offline consent for Google Calendar through the GIS code client (web only, not the
+ * desktop shell). The server redeems the code and keeps the refresh token, so access never has
+ * to be granted again. Returns null where only the short-lived token flow exists.
+ */
+export async function requestGoogleCalendarCode(): Promise<CalendarAuthCode | null> {
+  if (getElectronAuth()) {
+    return null;
+  }
+  const clientId = readGoogleWebClientId();
+  if (!clientId) {
+    throw new Error('Google Calendar is not configured on this deployment.');
+  }
+  const ready = googleApi();
+  if (!ready) {
+    await loadScript();
+  }
+  const api = ready ?? googleApi();
+  const initCodeClient = api?.oauth2?.initCodeClient;
+  if (!api?.oauth2 || !initCodeClient) {
+    return null;
+  }
+  const oauth = api.oauth2;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stopWatching = (): void => undefined;
+    const finish = (outcome: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      stopWatching();
+      outcome();
+    };
+    const client = initCodeClient.call(oauth, {
+      client_id: clientId,
+      scope: CALENDAR_SCOPE,
+      ux_mode: 'popup',
+      callback: (response) => {
+        const code = response.code;
+        if (code) {
+          finish(() => resolve({ code, redirectUri: 'postmessage' }));
+          return;
+        }
+        const message =
+          response.error === 'access_denied'
+            ? 'Google Calendar access was not granted.'
+            : response.error || 'Google Calendar access was cancelled.';
+        finish(() => reject(new Error(message)));
+      },
+    });
+    stopWatching = watchForClosedGoogleWindow(() =>
+      finish(() => reject(new Error('Google Calendar access was cancelled.'))),
+    );
+    const blocked = openGoogleWindow(() => client.requestCode());
+    if (blocked) {
+      finish(() => reject(new Error(POPUP_BLOCKED)));
+    }
   });
 }
 
