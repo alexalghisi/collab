@@ -1,4 +1,5 @@
 import { buildRtcConfiguration, type IceServerConfig } from './config';
+import { qualityFromStats, type LinkQuality } from './linkQuality';
 import type { PeerInfo } from '../signaling/events';
 import type { SignalingChannel } from '../signaling/SignalingChannel';
 import { playPeerAudio, stopAllPeerAudio, stopPeerAudio } from './remotePlayback';
@@ -15,6 +16,7 @@ export interface PeerConnectionManagerOptions {
    * short-lived, so a call that drops after an hour cannot reuse the old ones.
    */
   readonly reloadIceServers?: () => Promise<readonly IceServerConfig[]>;
+  readonly onLinkQuality?: (peerId: string, quality: LinkQuality) => void;
 }
 
 /** How long a `disconnected` link may stay down before we restart ICE. */
@@ -27,6 +29,8 @@ export const RESTART_BACKOFF_MS: readonly number[] = [0, 2000, 5000, 10_000];
  * restart offer was lost), so a dead link never depends on one side alone.
  */
 export const POLITE_RESTART_DELAY_MS = 4000;
+/** How often each link is graded from packet loss and round-trip time. */
+export const QUALITY_SAMPLE_MS = 2000;
 
 type MediaKind = 'audio' | 'video';
 
@@ -62,6 +66,8 @@ export class PeerConnectionManager {
   private readonly onRemoteStream: (peerId: string, stream: MediaStream) => void;
   private readonly onPeerClosed: (peerId: string) => void;
   private readonly reloadIceServers?: () => Promise<readonly IceServerConfig[]>;
+  private readonly onLinkQuality?: (peerId: string, quality: LinkQuality) => void;
+  private qualityTimer: ReturnType<typeof setInterval> | null = null;
   private configuration: RTCConfiguration;
   private readonly peers = new Map<string, PeerEntry>();
   private readonly earlyIce = new Map<string, RTCIceCandidateInit[]>();
@@ -76,6 +82,7 @@ export class PeerConnectionManager {
     this.onRemoteStream = options.onRemoteStream;
     this.onPeerClosed = options.onPeerClosed;
     this.reloadIceServers = options.reloadIceServers;
+    this.onLinkQuality = options.onLinkQuality;
   }
 
   start(): void {
@@ -134,9 +141,21 @@ export class PeerConnectionManager {
     this.signaling.on('peer:left', (peerId) => {
       this.closePeer(peerId);
     });
+
+    if (this.qualityTimer === null) {
+      const timer = setInterval(() => {
+        void this.sampleQuality();
+      }, QUALITY_SAMPLE_MS);
+      (timer as { unref?: () => void }).unref?.();
+      this.qualityTimer = timer;
+    }
   }
 
   close(): void {
+    if (this.qualityTimer) {
+      clearInterval(this.qualityTimer);
+      this.qualityTimer = null;
+    }
     for (const peerId of [...this.peers.keys()]) {
       this.closePeer(peerId);
     }
@@ -207,10 +226,32 @@ export class PeerConnectionManager {
 
     connection.addEventListener('icecandidate', (event) => {
       if (event.candidate) {
+        console.info('[collab] ice candidate', {
+          peerId,
+          type: event.candidate.type,
+          protocol: event.candidate.protocol,
+        });
         this.signaling.emit('signal:ice', {
           targetPeerId: peerId,
           candidate: event.candidate.toJSON(),
         });
+      }
+    });
+
+    connection.addEventListener('iceconnectionstatechange', () => {
+      const ice = connection.iceConnectionState;
+      console.info('[collab] ice state', { peerId, ice });
+      const current = this.peers.get(peerId);
+      if (!current) {
+        return;
+      }
+      if (ice === 'connected' || ice === 'completed') {
+        current.restarts = 0;
+        this.clearRecovery(current);
+        return;
+      }
+      if (ice === 'disconnected' || ice === 'failed') {
+        this.scheduleRecovery(peerId, current, ice === 'failed' ? 0 : DISCONNECT_GRACE_MS);
       }
     });
 
@@ -441,8 +482,7 @@ export class PeerConnectionManager {
     if (!entry) {
       return;
     }
-    const state = entry.connection.connectionState;
-    if (state !== 'disconnected' && state !== 'failed') {
+    if (!this.linkDown(entry)) {
       return;
     }
     entry.restarts += 1;
@@ -465,6 +505,56 @@ export class PeerConnectionManager {
     }
     // Re-arm in case this restart goes unanswered and the state never changes.
     this.scheduleRecovery(peerId, entry, this.backoff(entry) || RESTART_BACKOFF_MS[1] || 2000);
+  }
+
+  private linkDown(entry: PeerEntry): boolean {
+    const state = entry.connection.connectionState;
+    const ice = entry.connection.iceConnectionState;
+    return (
+      state === 'disconnected' || state === 'failed' || ice === 'disconnected' || ice === 'failed'
+    );
+  }
+
+  private async sampleQuality(): Promise<void> {
+    for (const [peerId, entry] of this.peers) {
+      if (this.linkDown(entry)) {
+        this.onLinkQuality?.(peerId, 'down');
+        continue;
+      }
+      if (typeof entry.connection.getStats !== 'function') {
+        continue;
+      }
+      try {
+        const stats = await entry.connection.getStats();
+        let lost = 0;
+        let received = 0;
+        let rttMs = 0;
+        stats.forEach((report) => {
+          const row = report as {
+            type?: string;
+            kind?: string;
+            packetsLost?: number;
+            packetsReceived?: number;
+            state?: string;
+            nominated?: boolean;
+            currentRoundTripTime?: number;
+          };
+          if (row.type === 'inbound-rtp' && row.kind === 'video') {
+            lost += row.packetsLost ?? 0;
+            received += row.packetsReceived ?? 0;
+          }
+          if (row.type === 'candidate-pair' && row.state === 'succeeded' && row.nominated) {
+            rttMs = (row.currentRoundTripTime ?? 0) * 1000;
+          }
+        });
+        const total = received + lost;
+        const quality = qualityFromStats(total > 0 ? lost / total : 0, rttMs);
+        console.info('[collab] link', { peerId, quality, rttMs });
+        this.onLinkQuality?.(peerId, quality);
+      } catch {
+        // Stats are optional. The call keeps going.
+      }
+    }
   }
 
   private async refreshIceServers(entry: PeerEntry): Promise<void> {
