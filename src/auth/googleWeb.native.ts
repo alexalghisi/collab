@@ -7,3 +7,7 @@ export async function requestGoogleCredential(): Promise<GoogleCredential> {
 export async function requestGoogleCalendarToken(_prompt?: '' | 'consent'): Promise<string> {
   throw new Error('Google Calendar sync is available in the web app.');
 }
+
+export async function requestGoogleCalendarCode(): Promise<null> {
+  return null;
+}
