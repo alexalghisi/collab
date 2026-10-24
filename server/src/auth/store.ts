@@ -8,6 +8,8 @@ export interface StoredUser {
   readonly displayName: string;
   readonly passwordHash: string | null;
   readonly googleSub: string | null;
+  /** Google Calendar offline access (refresh token), kept only in the sealed user store. */
+  readonly calendarRefreshToken?: string | null;
 }
 
 export interface UserFile {
@@ -101,6 +103,30 @@ export class UserStore {
     return updated;
   }
 
+  findByUid(uid: string): StoredUser | undefined {
+    for (const user of this.users.values()) {
+      if (user.uid === uid) {
+        return user;
+      }
+    }
+    return undefined;
+  }
+
+  calendarRefreshToken(uid: string): string | null {
+    return this.findByUid(uid)?.calendarRefreshToken ?? null;
+  }
+
+  /** Stores (or clears, with null) the Google Calendar refresh token of an account. */
+  setCalendarRefreshToken(uid: string, token: string | null): boolean {
+    const user = this.findByUid(uid);
+    if (!user) {
+      return false;
+    }
+    this.users.set(user.email, { ...user, calendarRefreshToken: token });
+    this.save();
+    return true;
+  }
+
   private replace(file: UserFile): void {
     this.users.clear();
     for (const user of file.users ?? []) {
@@ -114,6 +140,8 @@ export class UserStore {
         displayName: typeof user.displayName === 'string' ? user.displayName : email,
         passwordHash: user.passwordHash ?? null,
         googleSub: user.googleSub ?? null,
+        calendarRefreshToken:
+          typeof user.calendarRefreshToken === 'string' ? user.calendarRefreshToken : null,
       });
     }
   }
