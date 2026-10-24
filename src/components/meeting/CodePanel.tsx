@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { applyFormattedCode } from '../../code/formatSource';
 import type { CodeLanguage } from '../../code/languages';
@@ -27,6 +27,8 @@ export interface CodePanelProps {
   selfPeerId: string | null;
   onRun: (stdin: string, files: WorkspaceFile[], source?: string) => void;
   onFilesChange: (files: WorkspaceFile[]) => void;
+  /** Example input for the problem loaded into the editor. */
+  stdinSeed?: { readonly token: number; readonly value: string } | null;
 }
 
 const STYLE_ELEMENT_ID = 'collab-remote-cursors';
@@ -48,10 +50,11 @@ export function CodePanel({
   selfPeerId,
   onRun,
   onFilesChange,
+  stdinSeed,
 }: CodePanelProps) {
   const [language, setLanguage] = useState<CodeLanguage>(shared.language);
   const [editors, setEditors] = useState<CodePresence[]>(shared.presence());
-  const [stdin, setStdin] = useState('');
+  const [stdin, setStdin] = useState(stdinSeed?.value ?? '');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
   const [fontSize, setFontSize] = useState(16);
   const editorHost = useRef<View>(null);
@@ -62,7 +65,6 @@ export function CodePanel({
 
   const running = runs.some((run) => run.running && run.byPeerId === selfPeerId);
   const openFile = files.find((file) => file.name === selected) ?? null;
-  const statement = files.find((file) => file.name === 'enunt.md') ?? null;
 
   const editFile = (content: string): void => {
     if (!openFile) {
@@ -96,6 +98,11 @@ export function CodePanel({
   );
   useEffect(() => shared.onPresence(paintCursors), [shared, paintCursors]);
   useEffect(() => () => bindingRef.current?.destroy(), []);
+  useEffect(() => {
+    if (stdinSeed) {
+      setStdin(stdinSeed.value);
+    }
+  }, [stdinSeed]);
   useEffect(() => {
     if (selected !== CODE_MAIN_FILE && !files.some((file) => file.name === selected)) {
       setSelected(CODE_MAIN_FILE);
@@ -196,11 +203,6 @@ export function CodePanel({
           <Text style={styles.fontLabel}>A+</Text>
         </Pressable>
       </View>
-      {statement && (
-        <ScrollView style={styles.statement} contentContainerStyle={styles.statementContent}>
-          <Text style={styles.statementText}>{statement.content}</Text>
-        </ScrollView>
-      )}
       <View style={styles.body}>
         <CodeFileManager
           language={language}
@@ -263,21 +265,6 @@ const styles = StyleSheet.create({
   fontLabel: {
     color: colors.text,
     fontWeight: '700',
-  },
-  statement: {
-    maxHeight: 180,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  statementContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  statementText: {
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 18,
   },
   body: {
     flex: 1,
