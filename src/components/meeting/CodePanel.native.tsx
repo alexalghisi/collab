@@ -17,6 +17,7 @@ export interface CodePanelProps {
   selfPeerId: string | null;
   onRun: (stdin: string, files: WorkspaceFile[], source?: string) => void;
   onFilesChange: (files: WorkspaceFile[]) => void;
+  stdinSeed?: { readonly token: number; readonly value: string } | null;
 }
 
 /**
@@ -34,11 +35,12 @@ export function CodePanel({
   selfPeerId,
   onRun,
   onFilesChange,
+  stdinSeed,
 }: CodePanelProps) {
   const [text, setText] = useState(shared.text.toString());
   const [language, setLanguage] = useState<CodeLanguage>(shared.language);
   const [editors, setEditors] = useState<CodePresence[]>(shared.presence());
-  const [stdin, setStdin] = useState('');
+  const [stdin, setStdin] = useState(stdinSeed?.value ?? '');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
 
   useEffect(
@@ -50,6 +52,11 @@ export function CodePanel({
     [shared],
   );
   useEffect(() => shared.onPresence(() => setEditors(shared.presence())), [shared]);
+  useEffect(() => {
+    if (stdinSeed) {
+      setStdin(stdinSeed.value);
+    }
+  }, [stdinSeed]);
   useEffect(() => {
     if (selected !== CODE_MAIN_FILE && !files.some((file) => file.name === selected)) {
       setSelected(CODE_MAIN_FILE);
