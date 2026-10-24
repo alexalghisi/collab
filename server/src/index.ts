@@ -11,6 +11,7 @@ import { assistantRouter } from './assistant/router';
 import { searchRouter } from './assistant/searchRouter';
 import { createMeetingAssistant, meetingIndexStore } from './assistant/service';
 import { authRouter } from './auth/router';
+import { calendarRouter } from './calendar/router';
 import { createUserStoreFromEnv } from './auth/store';
 import { verifyToken } from './auth/tokens';
 import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionService';
@@ -94,6 +95,7 @@ if (!existsSync(join(WEB_ROOT, 'index.html'))) {
   app.get('/', sendAppHome);
 }
 app.use(authRouter({ store: userStore, root: ROOT }));
+app.use(calendarRouter({ store: userStore }));
 app.use(executionRouter(execution));
 app.use(assistantRouter(assistant));
 app.use(searchRouter(meetingIndexStore()));
