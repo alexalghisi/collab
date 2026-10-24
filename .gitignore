@@ -42,3 +42,7 @@ yarn-error.*
 *.pem
 
 .cursor/
+
+# Playwright
+test-results/
+playwright-report/
