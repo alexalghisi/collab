@@ -70,3 +70,30 @@ jobs:
         with:
           name: playwright-traces
           path: test-results/
+
+  server-image:
+    name: Server image boots and serves /ice
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Render deploys this exact image. If it crashes on boot, Render silently
+      # keeps the previous build, and calls lose their TURN relay (no audio).
+      - name: Build image
+        run: docker build -f server/Dockerfile -t collab-signaling .
+
+      - name: Boot and probe
+        run: |
+          docker run -d --name signaling -p 4000:4000 collab-signaling
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:4000/health && break
+            sleep 2
+          done
+          curl -fsS http://localhost:4000/health
+          curl -fsS http://localhost:4000/ice | tee ice.json
+          node -e "const b=require('./ice.json'); if(!Array.isArray(b.iceServers)||b.iceServers.length===0) process.exit(1)"
+
+      - name: Server logs
+        if: always()
+        run: docker logs signaling || true
