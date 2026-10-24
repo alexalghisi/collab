@@ -203,6 +203,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
         state={participant.state}
         stream={participant.stream}
         isHost={participant.peerId === session.hostPeerId}
+        quality={session.linkQuality[participant.peerId]}
       />,
     ]),
   ];

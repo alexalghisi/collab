@@ -38,6 +38,7 @@ import { cameraOn, describeMediaFailure, microphoneOn, trackIsLive } from '../we
 import { watchCapture } from '../webrtc/captureWatch';
 import { listMediaDevices, watchDeviceChanges, type ListedDevice } from '../webrtc/devices';
 import { loadIceServers } from '../webrtc/loadIceServers';
+import type { LinkQuality } from '../webrtc/linkQuality';
 import { joinRemotePeer, rememberRemoteStream, syncRoomPeers } from '../webrtc/participants';
 import type { TranscriptSegment } from '../transcript/segments';
 import { normalizeBoardFile } from '../whiteboard/boardFiles';
@@ -113,6 +114,8 @@ export interface CollabSession {
   readonly error: string | null;
   readonly localStream: MediaStream | null;
   readonly participants: RemoteParticipant[];
+  /** Latest link grade for each remote peer. */
+  readonly linkQuality: Readonly<Record<string, LinkQuality>>;
   readonly messages: ChatMessage[];
   readonly strokes: Stroke[];
   readonly boardFiles: BoardFile[];
@@ -249,6 +252,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     audiooutput: '',
   });
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
+  const [linkQuality, setLinkQuality] = useState<Record<string, LinkQuality>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [boardFiles, setBoardFiles] = useState<BoardFile[]>([]);
@@ -315,6 +319,14 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
   const dropParticipant = useCallback((peerId: string) => {
     setParticipants((current) => current.filter((participant) => participant.peerId !== peerId));
+    setLinkQuality((current) => {
+      if (!(peerId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[peerId];
+      return next;
+    });
   }, []);
 
   /** Replaces the outgoing video track locally and on every peer connection. */
@@ -346,6 +358,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
 
     settingsRef.current = DEFAULT_ROOM_SETTINGS;
     setParticipants([]);
+    setLinkQuality({});
     setMessages([]);
     setStrokes([]);
     setBoardFiles([]);
@@ -674,6 +687,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           onRemoteStream: (peerId, remoteStream) =>
             setParticipants((current) => rememberRemoteStream(current, peerId, remoteStream)),
           onPeerClosed: dropParticipant,
+          onLinkQuality: (peerId, quality) => {
+            setLinkQuality((current) =>
+              current[peerId] === quality ? current : { ...current, [peerId]: quality },
+            );
+          },
         });
         manager.start();
         managerRef.current = manager;
@@ -1591,6 +1609,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     error,
     localStream,
     participants,
+    linkQuality,
     messages,
     strokes,
     boardFiles,

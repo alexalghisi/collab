@@ -1,3 +1,4 @@
+import { timeoutSignal } from '../../src/net/timeoutSignal';
 import { DEFAULT_ICE_SERVERS, type IceServerConfig } from '../../src/webrtc/config';
 
 interface TwilioIceServer {
@@ -7,6 +8,54 @@ interface TwilioIceServer {
   readonly credential?: string;
 }
 
+const PUBLIC_TURN_URL = 'https://turn.elixir-webrtc.org/?service=turn&username=collab';
+/**
+ * The client gives `/ice` 8 seconds. A relay host that hangs must not use them
+ * all, or the phone gives up and starts the call with STUN only.
+ */
+export const PUBLIC_RELAY_WAIT_MS = 4000;
+
+/** UDP-only relays fail on many mobile networks; ask for TCP on the same host. */
+function withTcpTurn(uris: readonly string[]): string[] {
+  const urls = new Set(uris);
+  for (const uri of uris) {
+    if (uri.includes('transport=udp')) {
+      urls.add(uri.replace('transport=udp', 'transport=tcp'));
+    }
+  }
+  return [...urls];
+}
+
+async function readPublicRelay(fetchImpl: typeof fetch): Promise<IceServerConfig[] | null> {
+  try {
+    const response = await fetchImpl(PUBLIC_TURN_URL, {
+      method: 'POST',
+      signal: timeoutSignal(PUBLIC_RELAY_WAIT_MS),
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const body = (await response.json()) as {
+      uris?: string[];
+      username?: string;
+      password?: string;
+    };
+    if (!body.uris?.length || !body.username || !body.password) {
+      return null;
+    }
+    return [
+      ...DEFAULT_ICE_SERVERS,
+      {
+        urls: withTcpTurn(body.uris),
+        username: body.username,
+        credential: body.password,
+      },
+    ];
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveIceServers(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
@@ -14,7 +63,7 @@ export async function resolveIceServers(
   const accountSid = env.TWILIO_ACCOUNT_SID?.trim() ?? '';
   const token = env.TWILIO_AUTH_TOKEN?.trim() ?? '';
   if (accountSid === '' || token === '') {
-    return [...DEFAULT_ICE_SERVERS];
+    return (await readPublicRelay(fetchImpl)) ?? [...DEFAULT_ICE_SERVERS];
   }
   try {
     const response = await fetchImpl(
