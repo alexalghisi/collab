@@ -70,6 +70,8 @@ Search and the chips use the same categories as [collaborare.ro](https://collabo
 
 Keyboard: **Alt+→** next problem, **Alt+←** previous, Tab through every control (each has a label and a visible focus state). Statements render collaborare.ro's Markdown (headings, `code`, lists), and **Run on examples** prints the output that differed on a failed example.
 
+On a phone (360, 390 or 768 pixels wide) the Code tab fills the screen. The other person's video shrinks to a thumbnail you can drag. **A-** and **A+** change the editor size, a pinch does the same, and long lines wrap. The toolbar keeps Mute, video, Code, Probleme and Leave on screen; **More** opens the rest, and the bar still scrolls if it needs to.
+
 ---
 
 ## Table of contents

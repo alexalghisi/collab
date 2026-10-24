@@ -28,7 +28,9 @@ import { ChatPanel } from './ChatPanel';
 import { DevicePanel } from './DevicePanel';
 import { FilesPanel } from './FilesPanel';
 import { InvitePanel } from './InvitePanel';
+import { codeFillsScreen, isCompactCall } from './callLayout';
 import { CodePanel } from './CodePanel';
+import { DraggablePip } from './DraggablePip';
 import { ProblemsPanel } from './ProblemsPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
@@ -68,6 +70,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
     width < WIDE_LAYOUT_MIN_WIDTH ? null : session.messages.length > 0 ? 'chat' : 'invite',
   );
   const [reactionsOpen, setReactionsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [readCount, setReadCount] = useState(0);
   const [problemsOpen, setProblemsOpen] = useState(true);
   const [mobileProblem, setMobileProblem] = useState(false);
@@ -78,6 +81,9 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   const stage: Stage = session.settings.stage;
   const compactProblems = isCompactProblemLayout(width);
   const wide = width >= WIDE_LAYOUT_MIN_WIDTH;
+  const compact = isCompactCall(width);
+  const fullCode = codeFillsScreen(width, stage);
+  const showExtraTools = !compact || moreOpen;
   const gridWidth = wide && panel ? width - PANEL_WIDTH : width;
   const tileCount = session.participants.length + 1;
   const cellWidth = `${100 / columnsFor(tileCount, gridWidth)}%` as const;
@@ -205,7 +211,9 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
     <View style={styles.screen}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.roomTitle}>{session.roomId ?? roomId}</Text>
+          <Text style={styles.roomTitle} numberOfLines={1}>
+            {session.roomId ?? roomId}
+          </Text>
           <Text style={styles.roomMeta}>
             {tileCount === 1
               ? 'Only you so far — send the invite on the right'
@@ -236,13 +244,24 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
       <View style={styles.body}>
         {stage !== 'grid' ? (
           <View style={styles.stage}>
-            <ScrollView horizontal style={styles.stripScroll} contentContainerStyle={styles.strip}>
-              {tiles.map(([key, tile]) => (
-                <View key={key} style={[styles.cell, { width: STRIP_TILE_WIDTH }]}>
-                  {tile}
-                </View>
-              ))}
-            </ScrollView>
+            {!fullCode && (
+              <ScrollView
+                horizontal
+                style={styles.stripScroll}
+                contentContainerStyle={styles.strip}
+              >
+                {tiles.map(([key, tile]) => (
+                  <View key={key} style={[styles.cell, { width: STRIP_TILE_WIDTH }]}>
+                    {tile}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            {fullCode && (
+              <DraggablePip>
+                {(tiles.find(([key]) => key !== 'self') ?? tiles[0])?.[1]}
+              </DraggablePip>
+            )}
             {stage === 'whiteboard' ? (
               <Whiteboard
                 strokes={session.strokes}
@@ -432,7 +451,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           disabled={session.self.screenSharing}
           onPress={() => void session.toggleCamera()}
         />
-        {CAN_SHARE_SCREEN && (
+        {showExtraTools && CAN_SHARE_SCREEN && (
           <ToolbarButton
             icon="desktop-outline"
             label={session.self.screenSharing ? 'Stop share' : 'Share screen'}
@@ -440,24 +459,30 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
             onPress={() => void session.toggleScreenShare()}
           />
         )}
-        <ToolbarButton
-          icon={session.self.handRaised ? 'hand-left' : 'hand-left-outline'}
-          label={session.self.handRaised ? 'Lower hand' : 'Raise hand'}
-          active={session.self.handRaised}
-          onPress={session.toggleHand}
-        />
-        <ToolbarButton
-          icon="happy-outline"
-          label="React"
-          active={reactionsOpen}
-          onPress={() => setReactionsOpen((open) => !open)}
-        />
-        <ToolbarButton
-          icon="brush"
-          label="Whiteboard"
-          active={stage === 'whiteboard'}
-          onPress={() => toggleStage('whiteboard')}
-        />
+        {showExtraTools && (
+          <ToolbarButton
+            icon={session.self.handRaised ? 'hand-left' : 'hand-left-outline'}
+            label={session.self.handRaised ? 'Lower hand' : 'Raise hand'}
+            active={session.self.handRaised}
+            onPress={session.toggleHand}
+          />
+        )}
+        {showExtraTools && (
+          <ToolbarButton
+            icon="happy-outline"
+            label="React"
+            active={reactionsOpen}
+            onPress={() => setReactionsOpen((open) => !open)}
+          />
+        )}
+        {showExtraTools && (
+          <ToolbarButton
+            icon="brush"
+            label="Whiteboard"
+            active={stage === 'whiteboard'}
+            onPress={() => toggleStage('whiteboard')}
+          />
+        )}
         <ToolbarButton
           icon="code-slash"
           label="Code"
@@ -482,32 +507,48 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
             setProblemsOpen((open) => !open);
           }}
         />
-        <ToolbarButton
-          icon="people"
-          label="Participants"
-          active={panel === 'participants'}
-          onPress={() => togglePanel('participants')}
-        />
-        <ToolbarButton
-          icon="chatbubble-ellipses"
-          label="Chat"
-          active={panel === 'chat'}
-          badge={unread}
-          onPress={() => togglePanel('chat')}
-        />
-        <ToolbarButton
-          icon="folder-outline"
-          label="Files"
-          active={panel === 'files'}
-          badge={files.length}
-          onPress={() => togglePanel('files')}
-        />
-        <ToolbarButton
-          icon="settings-outline"
-          label="Devices"
-          active={panel === 'devices'}
-          onPress={() => togglePanel('devices')}
-        />
+        {compact && (
+          <ToolbarButton
+            icon="ellipsis-horizontal"
+            label={moreOpen ? 'Less' : 'More'}
+            active={moreOpen}
+            onPress={() => setMoreOpen((open) => !open)}
+          />
+        )}
+        {showExtraTools && (
+          <ToolbarButton
+            icon="people"
+            label="Participants"
+            active={panel === 'participants'}
+            onPress={() => togglePanel('participants')}
+          />
+        )}
+        {showExtraTools && (
+          <ToolbarButton
+            icon="chatbubble-ellipses"
+            label="Chat"
+            active={panel === 'chat'}
+            badge={unread}
+            onPress={() => togglePanel('chat')}
+          />
+        )}
+        {showExtraTools && (
+          <ToolbarButton
+            icon="folder-outline"
+            label="Files"
+            active={panel === 'files'}
+            badge={files.length}
+            onPress={() => togglePanel('files')}
+          />
+        )}
+        {showExtraTools && (
+          <ToolbarButton
+            icon="settings-outline"
+            label="Devices"
+            active={panel === 'devices'}
+            onPress={() => togglePanel('devices')}
+          />
+        )}
         <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
       </ScrollView>
     </View>
@@ -584,6 +625,7 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
