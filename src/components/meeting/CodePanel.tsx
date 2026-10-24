@@ -16,6 +16,7 @@ import type { CodeRun } from '../../hooks/useCollabSession';
 import type { WorkspaceFile } from '../../code/workspaceFiles';
 import { colors } from '../../theme';
 import { clampEditorFont } from './callLayout';
+import { attachEditorZoom, type ZoomTarget } from './editorZoom';
 import { CodeControls } from './CodeControls';
 import { CodeFileManager, CODE_MAIN_FILE } from './CodeFileManager';
 import { CodeOutput } from './CodeOutput';
@@ -57,6 +58,7 @@ export function CodePanel({
   const [stdin, setStdin] = useState(stdinSeed?.value ?? '');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
   const [fontSize, setFontSize] = useState(16);
+  const fontSizeRef = useRef(16);
   const editorHost = useRef<View>(null);
   const bindingRef = useRef<MonacoTextBinding | null>(null);
   const decorationsRef = useRef<DecorationsCollection | null>(null);
@@ -112,48 +114,15 @@ export function CodePanel({
     paintCursors();
   }, [paintCursors]);
   useEffect(() => {
-    const node = editorHost.current as unknown as HTMLElement | null;
+    fontSizeRef.current = fontSize;
+  }, [fontSize]);
+  useEffect(() => {
+    const node = editorHost.current as unknown as ZoomTarget | null;
     if (!node || typeof node.addEventListener !== 'function') {
       return;
     }
-    let startDistance = 0;
-    let startSize = fontSize;
-    const distance = (event: TouchEvent): number => {
-      const [a, b] = [event.touches[0], event.touches[1]];
-      if (!a || !b) {
-        return 0;
-      }
-      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    };
-    const onWheel = (event: WheelEvent): void => {
-      if (!event.ctrlKey) {
-        return;
-      }
-      event.preventDefault();
-      setFontSize((size) => clampEditorFont(size + (event.deltaY < 0 ? 1 : -1)));
-    };
-    const onTouchStart = (event: TouchEvent): void => {
-      if (event.touches.length === 2) {
-        startDistance = distance(event);
-        startSize = fontSize;
-      }
-    };
-    const onTouchMove = (event: TouchEvent): void => {
-      if (event.touches.length !== 2 || startDistance <= 0) {
-        return;
-      }
-      const ratio = distance(event) / startDistance;
-      setFontSize(clampEditorFont(startSize * ratio));
-    };
-    node.addEventListener('wheel', onWheel, { passive: false });
-    node.addEventListener('touchstart', onTouchStart);
-    node.addEventListener('touchmove', onTouchMove);
-    return () => {
-      node.removeEventListener('wheel', onWheel);
-      node.removeEventListener('touchstart', onTouchStart);
-      node.removeEventListener('touchmove', onTouchMove);
-    };
-  }, [fontSize]);
+    return attachEditorZoom(node, () => fontSizeRef.current, setFontSize);
+  }, []);
 
   const mount = useCallback<OnMount>(
     (editor, monaco) => {
