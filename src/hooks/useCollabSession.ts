@@ -11,7 +11,6 @@ import {
 import { runOnHostedCompiler, serverHasNoSandbox } from '../code/hostedRun';
 import { programSource } from '../code/programSource';
 import { mergeWorkspaceFiles, type WorkspaceFile } from '../code/workspaceFiles';
-import type { CatalogItem } from '../collaborare/types';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
@@ -25,6 +24,12 @@ import {
   mergeTranscript,
   saveRoomSnapshot,
 } from '../meeting/snapshot';
+import {
+  INITIAL_PROBLEM_SYNC,
+  normalizeSharedProblem,
+  reduceProblemSync,
+  type ProblemSyncState,
+} from '../collaborare/sync';
 import { SIGNALING_URL } from '../signaling/config';
 import { createSpeechCapture } from '../transcript/speech';
 import { resumePlayback, retargetSpeakers, unlockAudioPlayback } from '../webrtc/attachMedia';
@@ -128,6 +133,11 @@ export interface CollabSession {
   readonly runs: CodeRun[];
   /** Extra files next to the shared program (`date.in`, `date.out`, …). */
   readonly workspaceFiles: WorkspaceFile[];
+  /** Host problem, plus whether this participant is following it. */
+  readonly problemSync: ProblemSyncState;
+  /** Picks a problem. The host shares it unless they are browsing on their own. */
+  chooseProblem: (slug: string) => void;
+  setFollowHost: (follow: boolean) => void;
   readonly self: PeerState;
   readonly selfPeerId: string | null;
   readonly sessionId: string | null;
@@ -177,8 +187,6 @@ export interface CollabSession {
   askAssistant: (question: string) => void;
   /** Runs the shared document in the sandbox; output reaches the whole room. */
   runCode: (stdin: string, files?: readonly WorkspaceFile[], source?: string) => void;
-  /** Puts a collaborare.ro problem into the shared editor for everyone in the room. */
-  openProblem: (problem: CatalogItem) => void;
   updateWorkspaceFiles: (files: WorkspaceFile[]) => void;
   // Host only.
   updateSettings: (patch: Partial<RoomSettings>) => void;
@@ -268,6 +276,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
+  const [problemSync, setProblemSync] = useState<ProblemSyncState>(INITIAL_PROBLEM_SYNC);
+  const problemSyncRef = useRef(problemSync);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [breakoutOf, setBreakoutOf] = useState<string | null>(null);
   const [settings, setSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
@@ -477,6 +487,8 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       setMessages(snapshot.messages);
       setStrokes(snapshot.strokes);
       setTranscript(snapshot.transcript);
+      setProblemSync(snapshot.problem);
+      problemSyncRef.current = snapshot.problem;
 
       const sharedCode = new SharedCodeDocument(signaling, {
         peerId: sessionIdRef.current,
@@ -513,11 +525,34 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         if (room.code) {
           sharedCode.applyState(room.code);
         }
+        const incoming = normalizeSharedProblem(room.problem);
+        const remembered = problemSyncRef.current;
+        const iAmHost = room.hostPeerId === room.selfPeerId;
+        if (iAmHost && incoming.slug === null && remembered.host.slug) {
+          signaling.emit('problem:select', remembered.host.slug);
+        }
+        const hostProblem = incoming.slug ? incoming : remembered.host;
+        const nextProblem = reduceProblemSync(remembered, {
+          type: 'host-state',
+          problem: hostProblem,
+        }).state;
+        problemSyncRef.current = nextProblem;
+        setProblemSync(nextProblem);
+        saveRoomSnapshot(nextRoomId, { problem: nextProblem });
         setSettings(joinedSettings);
         setRoomId(nextRoomId);
         setBreakoutOf(mainRoomId ?? null);
       });
       signaling.on('room:host', setHostPeerId);
+      signaling.on('problem:state', (problem) => {
+        const next = reduceProblemSync(problemSyncRef.current, {
+          type: 'host-state',
+          problem: normalizeSharedProblem(problem),
+        }).state;
+        problemSyncRef.current = next;
+        setProblemSync(next);
+        saveRoomSnapshot(nextRoomId, { problem: next });
+      });
       signaling.on('room:settings', (next) => {
         const settings = normalizeRoomSettings(next, settingsRef.current);
         settingsRef.current = settings;
@@ -1347,37 +1382,47 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     signalingRef.current?.emit('code:files', files);
   }, []);
 
+  const persistProblem = useCallback((next: ProblemSyncState) => {
+    problemSyncRef.current = next;
+    setProblemSync(next);
+    const id = roomIdRef.current;
+    if (id) {
+      saveRoomSnapshot(id, { problem: next });
+    }
+  }, []);
+
+  const chooseProblem = useCallback(
+    (slug: string) => {
+      const isHost = selfPeerIdRef.current !== null && selfPeerIdRef.current === hostPeerId;
+      const result = reduceProblemSync(problemSyncRef.current, {
+        type: 'choose',
+        slug,
+        isHost,
+        now: Date.now(),
+      });
+      persistProblem(result.state);
+      if (result.broadcastSlug) {
+        signalingRef.current?.emit('problem:select', result.broadcastSlug);
+      }
+    },
+    [hostPeerId, persistProblem],
+  );
+
+  const setFollowHost = useCallback(
+    (follow: boolean) => {
+      persistProblem(
+        reduceProblemSync(problemSyncRef.current, { type: 'follow', followHost: follow }).state,
+      );
+    },
+    [persistProblem],
+  );
+
   const updateSettings = useCallback((patch: Partial<RoomSettings>) => {
     const next = normalizeRoomSettings({ ...settingsRef.current, ...patch });
     settingsRef.current = next;
     setSettings(next);
     signalingRef.current?.emit('room:settings', next);
   }, []);
-
-  const openProblem = useCallback(
-    (problem: CatalogItem) => {
-      if (problem.kind !== 'problem') {
-        return;
-      }
-      const shared = codeRef.current;
-      if (shared) {
-        shared.setLanguage('cpp');
-        shared.replaceText(problem.starter);
-        console.info('[collab] problem', problem.slug);
-      }
-      const statement = `# ${problem.title}\n\n${problem.category}${problem.topic ? ` · ${problem.topic}` : ''}\n${problem.limits}\n\n${problem.statement}\n\n${problem.url}\n`;
-      setWorkspaceFiles((current) => {
-        const next = [
-          { name: 'enunt.md', content: statement },
-          ...current.filter((file) => file.name !== 'enunt.md'),
-        ];
-        signalingRef.current?.emit('code:files', next);
-        return next;
-      });
-      updateSettings({ stage: 'code' });
-    },
-    [updateSettings],
-  );
 
   const admit = useCallback((peerId: string) => {
     signalingRef.current?.emit('waiting:decide', { peerId, admit: true });
@@ -1682,6 +1727,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     code,
     runs,
     workspaceFiles,
+    problemSync,
+    chooseProblem,
+    setFollowHost,
     self,
     selfPeerId,
     sessionId,
@@ -1724,7 +1772,6 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     toggleCaptions,
     askAssistant,
     runCode,
-    openProblem,
     updateWorkspaceFiles,
     updateSettings,
     admit,
