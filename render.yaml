@@ -16,6 +16,9 @@ services:
         value: cloud
       - key: GOOGLE_CLIENT_ID
         sync: false
+      # OAuth client secret of the same web client: lets Google Calendar stay connected for good.
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
       - key: AUTH_SECRET
         generateValue: true
       - key: AUTH_STORE_URL
