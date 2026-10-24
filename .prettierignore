@@ -7,6 +7,5 @@ desktop/build
 android
 ios
 package-lock.json
-src/collaborare/catalog.json
 *.gif
 *.png
