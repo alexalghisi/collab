@@ -152,6 +152,13 @@ export interface BoardFile {
   readonly h: number;
 }
 
+/** The problem the room is looking at, plus the slugs opened so far. */
+export interface SharedProblem {
+  readonly slug: string | null;
+  readonly history: readonly string[];
+  readonly updatedAt: number;
+}
+
 export interface RoomJoinedPayload {
   readonly selfPeerId: string;
   readonly selfJoinedAt: number;
@@ -174,6 +181,8 @@ export interface RoomJoinedPayload {
   readonly boardFiles: BoardFile[];
   /** Extra files next to the shared program (`date.in`, `date.out`, …). */
   readonly workspaceFiles: WorkspaceFile[];
+  /** The problem the host last shared. Empty until somebody picks one. */
+  readonly problem: SharedProblem;
 }
 
 export interface OutgoingSdpPayload {
@@ -220,6 +229,8 @@ export interface ClientToServerEvents {
   /** Asks the meeting assistant; the reply is streamed to the whole room. */
   'assistant:ask': (ask: AssistantAsk) => void;
   'room:settings': (settings: RoomSettings) => void;
+  /** Host only. Everyone following the host switches to this problem. */
+  'problem:select': (slug: string) => void;
   'host:command': (payload: HostCommandPayload) => void;
   'waiting:decide': (decision: WaitingDecision) => void;
 }
@@ -250,6 +261,7 @@ export interface ServerToClientEvents {
   'assistant:done': (payload: AssistantDone) => void;
   'assistant:error': (payload: AssistantFailure) => void;
   'room:settings': (settings: RoomSettings) => void;
+  'problem:state': (problem: SharedProblem) => void;
   /** The room has a waiting room; the host has been asked to let us in. */
   'room:waiting': () => void;
   'room:denied': () => void;
