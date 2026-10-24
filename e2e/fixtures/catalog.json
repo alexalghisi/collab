@@ -1,0 +1,107 @@
+[
+  {
+    "slug": "ol5oli-palindrom",
+    "title": "Este palindrom? (OLI 5)",
+    "source": "Antrenament OLI · clasa a 5-a",
+    "topic": "Subprograme",
+    "category": "olimpiada",
+    "time_limit_ms": 2000,
+    "memory_limit_kb": 262144,
+    "tests_count": 20,
+    "difficulty": 1,
+    "olymp_grade": 5,
+    "olymp_level": "oli",
+    "statement": "## Cerință\n\nScrie subprogramul `int palindrom(long long n)` care întoarce 1 dacă n se citește la fel de la stânga la dreapta și invers, altfel 0. Programul principal citește q numere și, pentru fiecare, afișează rezultatul întors de subprogram.\n\nProblemă originală de antrenament în stil OLI, clasa a 5-a, nu este subiect oficial.",
+    "input_format": "Prima linie: q. A doua linie: cele q numere, separate prin spațiu.",
+    "output_format": "q linii; pe linia i, un singur număr pentru al i-lea număr. Nu afișa mesaje suplimentare.",
+    "constraints": "- 1 ≤ q ≤ 100 000\n- 0 ≤ fiecare număr ≤ 10^18\n- Sunt 20 de teste, fiecare valorează 5 puncte.",
+    "hint": "1. Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce 1 dacă n se citește la fel de la stânga la dreapta și invers, altfel 0.\n2. Verifică pe exemple și pe cazurile-limită.\n3. Afișează exact formatul cerut.",
+    "examples": [
+      {
+        "input": "1\n0\n",
+        "output": "1\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce 1 dacă n se citește la fel de la stânga la dreapta și invers, altfel 0. Rezultatul corect pentru acest exemplu este: 1."
+      },
+      {
+        "input": "2\n0 1\n",
+        "output": "1\n1\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce 1 dacă n se citește la fel de la stânga la dreapta și invers, altfel 0. Rezultatul corect pentru acest exemplu este: 1\n1."
+      },
+      {
+        "input": "8\n3791 2036 3626 1847 330 9713 7753 1961\n",
+        "output": "0\n0\n0\n0\n0\n0\n0\n0\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce 1 dacă n se citește la fel de la stânga la dreapta și invers, altfel 0. Rezultatul corect pentru acest exemplu este: 8 linii, începând cu „0”."
+      }
+    ]
+  },
+  {
+    "slug": "ol5oli-produsul-cifrelor",
+    "title": "Produsul cifrelor (OLI 5)",
+    "source": "Antrenament OLI · clasa a 5-a",
+    "topic": "Subprograme",
+    "category": "olimpiada",
+    "time_limit_ms": 2000,
+    "memory_limit_kb": 262144,
+    "tests_count": 20,
+    "difficulty": 1,
+    "olymp_grade": 5,
+    "olymp_level": "oli",
+    "statement": "## Cerință\n\nScrie subprogramul `long long produsCifre(long long n)` care întoarce produsul cifrelor lui n. Programul principal citește q numere și, pentru fiecare, afișează rezultatul întors de subprogram.\n\nProblemă originală de antrenament în stil OLI, clasa a 5-a, nu este subiect oficial.",
+    "input_format": "Prima linie: q. A doua linie: cele q numere, separate prin spațiu.",
+    "output_format": "q linii; pe linia i, un singur număr pentru al i-lea număr. Nu afișa mesaje suplimentare.",
+    "constraints": "- 1 ≤ q ≤ 100 000\n- 0 ≤ fiecare număr ≤ 10^18\n- Sunt 20 de teste, fiecare valorează 5 puncte.",
+    "hint": "1. Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce produsul cifrelor lui n.\n2. Verifică pe exemple și pe cazurile-limită.\n3. Afișează exact formatul cerut.",
+    "examples": [
+      {
+        "input": "1\n0\n",
+        "output": "0\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce produsul cifrelor lui n. Rezultatul corect pentru acest exemplu este: 0."
+      },
+      {
+        "input": "2\n0 1\n",
+        "output": "0\n1\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce produsul cifrelor lui n. Rezultatul corect pentru acest exemplu este: 0\n1."
+      },
+      {
+        "input": "8\n333 1405 2959 2468 527 8886 7478 137\n",
+        "output": "27\n0\n810\n384\n70\n3072\n1568\n21\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce produsul cifrelor lui n. Rezultatul corect pentru acest exemplu este: 8 linii, începând cu „27”."
+      }
+    ]
+  },
+  {
+    "slug": "ol5oli-suma-cifrelor",
+    "title": "Suma cifrelor (OLI 5)",
+    "source": "Antrenament OLI · clasa a 5-a",
+    "topic": "Subprograme",
+    "category": "olimpiada",
+    "time_limit_ms": 2000,
+    "memory_limit_kb": 262144,
+    "tests_count": 20,
+    "difficulty": 1,
+    "olymp_grade": 5,
+    "olymp_level": "oli",
+    "statement": "## Cerință\n\nScrie subprogramul `int sumaCifre(long long n)` care întoarce suma cifrelor lui n. Programul principal citește q numere și, pentru fiecare, afișează rezultatul întors de subprogram.\n\nProblemă originală de antrenament în stil OLI, clasa a 5-a, nu este subiect oficial.",
+    "input_format": "Prima linie: q. A doua linie: cele q numere, separate prin spațiu.",
+    "output_format": "q linii; pe linia i, un singur număr pentru al i-lea număr. Nu afișa mesaje suplimentare.",
+    "constraints": "- 1 ≤ q ≤ 100 000\n- 0 ≤ fiecare număr ≤ 10^18\n- Sunt 20 de teste, fiecare valorează 5 puncte.",
+    "hint": "1. Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce suma cifrelor lui n.\n2. Verifică pe exemple și pe cazurile-limită.\n3. Afișează exact formatul cerut.",
+    "examples": [
+      {
+        "input": "1\n0\n",
+        "output": "0\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce suma cifrelor lui n. Rezultatul corect pentru acest exemplu este: 0."
+      },
+      {
+        "input": "2\n0 1\n",
+        "output": "0\n1\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce suma cifrelor lui n. Rezultatul corect pentru acest exemplu este: 0\n1."
+      },
+      {
+        "input": "8\n4101 1521 9377 7660 1976 9213 2346 7968\n",
+        "output": "6\n9\n26\n19\n23\n15\n15\n30\n",
+        "explanation": "Datele exemplului respectă formatul de intrare. Aplicăm ideea: Scrie întâi subprogramul și testează-l separat pe câteva valori; apoi în main apelează-l pentru fiecare număr citit. Întoarce suma cifrelor lui n. Rezultatul corect pentru acest exemplu este: 8 linii, începând cu „6”."
+      }
+    ]
+  }
+]
