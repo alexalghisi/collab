@@ -24,7 +24,9 @@
     "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e:build": "EXPO_PUBLIC_SIGNALING_URL=http://localhost:4000 expo export --platform web --output-dir dist-web",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.53",
@@ -61,6 +63,9 @@
     "@config-plugins/react-native-webrtc": "^13.0.0",
     "@eslint/js": "^10.0.1",
     "@expo/metro-runtime": "~6.1.2",
+    "@playwright/test": "^1.56.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.2.0",
@@ -68,6 +73,7 @@
     "@types/react": "~19.1.10",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
+    "jsdom": "^26.1.0",
     "prettier": "^3.9.6",
     "tsx": "^4.23.13",
     "typescript": "~5.9.3",

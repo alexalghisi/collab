@@ -17,6 +17,12 @@ import {
 import type { FileAttachment } from '../../src/files/attachments';
 import { normalizeTranscriptSegment, type TranscriptSegment } from '../../src/transcript/segments';
 import { normalizeBoardFile } from '../../src/whiteboard/boardFiles';
+import { isProblemSlug } from '../../src/collaborare/map';
+import {
+  EMPTY_SHARED_PROBLEM,
+  normalizeSharedProblem,
+  publishProblem,
+} from '../../src/collaborare/sync';
 import {
   DEFAULT_ROOM_SETTINGS,
   INITIAL_PEER_STATE,
@@ -28,6 +34,7 @@ import {
   type PeerState,
   type RoomSettings,
   type ServerToClientEvents,
+  type SharedProblem,
   type Stroke,
   type WaitingPeer,
 } from '../../src/signaling/events';
@@ -113,6 +120,7 @@ interface RoomState {
   codeEdited: boolean;
   /** Extra files next to the shared program (`date.in`, `date.out`, …). */
   workspaceFiles: WorkspaceFile[];
+  problem: SharedProblem;
   settings: RoomSettings;
   waiting: Map<string, WaitingPeer>;
   /** Sessions that passed the waiting room (or joined before it was enabled). */
@@ -154,6 +162,7 @@ function roomOf(roomId: string, firstPeerId: string): RoomState {
       code: new Y.Doc(),
       codeEdited: false,
       workspaceFiles: [],
+      problem: EMPTY_SHARED_PROBLEM,
       settings: DEFAULT_ROOM_SETTINGS,
       waiting: new Map(),
       admitted: new Set(),
@@ -213,6 +222,7 @@ async function admit(io: CollabServer, socket: CollabServerSocket, roomId: strin
     messages: room.messages,
     boardFiles: room.boardFiles,
     workspaceFiles: room.workspaceFiles,
+    problem: room.problem,
   });
   socket.to(roomId).emit('peer:joined', { peerId: socket.id, displayName, joinedAt, state });
 }
@@ -644,6 +654,16 @@ function registerSocket(
     if (socket.data.roomId) {
       socket.to(socket.data.roomId).emit('code:awareness', update);
     }
+  });
+
+  socket.on('problem:select', (slug) => {
+    const room = currentRoom();
+    const { roomId } = socket.data;
+    if (!room || !roomId || socket.id !== room.hostPeerId || !isProblemSlug(slug)) {
+      return;
+    }
+    room.problem = publishProblem(room.problem, slug, Date.now());
+    io.to(roomId).emit('problem:state', normalizeSharedProblem(room.problem));
   });
 
   socket.on('code:files', (payload) => {
