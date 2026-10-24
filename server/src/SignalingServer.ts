@@ -273,16 +273,17 @@ async function detachSocket(
   io: CollabServer,
   roomId: string,
   target: CollabServerSocket,
+  keepRoom: boolean,
 ): Promise<void> {
-  const wasHost = rooms.get(roomId)?.hostPeerId === target.id;
   target.emit('session:replaced');
   target.data.roomId = undefined;
   target.data.waitingFor = undefined;
   await target.leave(roomId);
   io.to(roomId).emit('peer:left', target.id);
-  if (!wasHost) {
-    await handleLeave(io, roomId, target.id);
-  }
+  // The host seat was already handed to the incoming socket, so this never
+  // passes the host role to someone else; with a successor joining, an empty
+  // room is not a finished one.
+  await handleLeave(io, roomId, target.id, { keepRoom });
   target.disconnect(true);
 }
 
@@ -294,8 +295,9 @@ async function takeSeat(
   io: CollabServer,
   socket: CollabServerSocket,
   roomId: string,
+  { keepRoom }: { keepRoom: boolean },
 ): Promise<boolean> {
-  const tookAwayHost = await releaseAwaySeats(io, socket, roomId);
+  const tookAwayHost = await releaseAwaySeats(io, socket, roomId, keepRoom);
   const room = rooms.get(roomId);
   if (room) {
     let waitingChanged = false;
@@ -329,7 +331,7 @@ async function takeSeat(
       keepHost = true;
       occupied.hostPeerId = socket.id;
     }
-    await detachSocket(io, roomId, live);
+    await detachSocket(io, roomId, live, keepRoom);
   }
   if (keepHost) {
     const current = rooms.get(roomId);
@@ -373,14 +375,19 @@ function someoneAway(roomId: string, exceptPeerId: string): boolean {
 }
 
 /** Tells the room someone is gone for good, and hands over what they held. */
-async function announceLeave(io: CollabServer, roomId: string, peerId: string): Promise<void> {
+async function announceLeave(
+  io: CollabServer,
+  roomId: string,
+  peerId: string,
+  keepRoom = false,
+): Promise<void> {
   const seat = away.get(peerId);
   if (seat) {
     clearTimeout(seat.timer);
     away.delete(peerId);
   }
   io.to(roomId).emit('peer:left', peerId);
-  await handleLeave(io, roomId, peerId);
+  await handleLeave(io, roomId, peerId, { keepRoom });
 }
 
 /**
@@ -392,6 +399,7 @@ async function releaseAwaySeats(
   io: CollabServer,
   socket: CollabServerSocket,
   roomId: string,
+  keepRoom: boolean,
 ): Promise<boolean> {
   let keepHost = false;
   for (const [peerId, seat] of [...away]) {
@@ -403,15 +411,25 @@ async function releaseAwaySeats(
       keepHost = true;
       room.hostPeerId = socket.id;
     }
-    await announceLeave(io, roomId, peerId);
+    await announceLeave(io, roomId, peerId, keepRoom);
   }
   return keepHost;
 }
 
-async function handleLeave(io: CollabServer, roomId: string, peerId: string): Promise<void> {
+/**
+ * `keepRoom` is set when the leaving socket is being replaced by another one of
+ * the same person that is about to join: the room is momentarily empty, but its
+ * board, chat, code and uploaded files belong to the person coming back.
+ */
+async function handleLeave(
+  io: CollabServer,
+  roomId: string,
+  peerId: string,
+  { keepRoom = false }: { keepRoom?: boolean } = {},
+): Promise<void> {
   const room = rooms.get(roomId);
   const remaining = await listRoomPeers(io, roomId, peerId);
-  if (remaining.length === 0 && someoneAway(roomId, peerId)) {
+  if (remaining.length === 0 && (keepRoom || someoneAway(roomId, peerId))) {
     return;
   }
   if (remaining.length === 0) {
@@ -455,14 +473,14 @@ function registerSocket(
       return;
     }
     if (room && room.settings.waitingRoom && !room.admitted.has(sessionId)) {
-      await takeSeat(io, socket, roomId);
+      await takeSeat(io, socket, roomId, { keepRoom: false });
       socket.data.waitingFor = roomId;
       room.waiting.set(socket.id, { peerId: socket.id, displayName });
       socket.emit('room:waiting');
       notifyWaitingList(io, room);
       return;
     }
-    const keepHost = await takeSeat(io, socket, roomId);
+    const keepHost = await takeSeat(io, socket, roomId, { keepRoom: true });
     await admit(io, socket, roomId);
     if (keepHost) {
       io.to(roomId).emit('room:host', socket.id);
