@@ -4,6 +4,7 @@ import type { PeerState } from '../signaling/events';
 import { colors } from '../theme';
 import { attachMediaStream } from '../webrtc/attachMedia';
 import { cameraOn, microphoneOn } from '../webrtc/captureState';
+import type { LinkQuality } from '../webrtc/linkQuality';
 import { MicMeter } from './MicMeter';
 import { TileOverlay, showsPlaceholder } from './TileOverlay';
 import { videoPresentation, type VideoFit } from './videoPresentation';
@@ -15,6 +16,8 @@ export interface VideoTileProps {
   isHost?: boolean;
   /** Local preview: mirrored and muted so the user does not hear themselves. */
   mirror?: boolean;
+  /** Link grade for a remote participant. Omitted on the local tile. */
+  quality?: LinkQuality;
 }
 
 const videoStyle: CSSProperties = {
@@ -42,6 +45,7 @@ export function VideoTile({
   stream,
   isHost = false,
   mirror = false,
+  quality,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
@@ -90,7 +94,7 @@ export function VideoTile({
         </View>
       )}
       {mirror && <MicMeter track={stream?.getAudioTracks()[0]} />}
-      <TileOverlay label={label} state={state} isHost={isHost} />
+      <TileOverlay label={label} state={state} isHost={isHost} quality={quality} />
     </View>
   );
 }

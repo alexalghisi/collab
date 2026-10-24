@@ -41,7 +41,9 @@ class FakeSender {
 
 class FakePeerConnection {
   connectionState = 'new';
+  iceConnectionState = 'new';
   remoteDescription: RTCSessionDescriptionInit | null = null;
+  readonly getStats = vi.fn(async () => new Map());
   readonly listeners = new Map<string, (event: unknown) => void>();
   readonly createOffer = vi.fn(async (options?: RTCOfferOptions) => ({
     type: 'offer' as const,
@@ -70,6 +72,7 @@ class FakePeerConnection {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -133,6 +136,88 @@ describe('PeerConnectionManager', () => {
         description: { type: 'offer', sdp: 'restart' },
       });
     });
+  });
+
+  it('restarts ICE when the ICE connection fails and grades the link', async () => {
+    vi.useFakeTimers();
+    const connection = new FakePeerConnection();
+    connection.getStats.mockImplementation(async () => {
+      const stats = new Map<string, unknown>();
+      stats.set('inbound', {
+        type: 'inbound-rtp',
+        kind: 'video',
+        packetsLost: 1,
+        packetsReceived: 99,
+      });
+      stats.set('pair', {
+        type: 'candidate-pair',
+        state: 'succeeded',
+        nominated: true,
+        currentRoundTripTime: 0.04,
+      });
+      return stats;
+    });
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return new FakeStream();
+      }),
+    );
+    vi.stubGlobal(
+      'RTCPeerConnection',
+      vi.fn(function RTCPeerConnection() {
+        return connection;
+      }),
+    );
+
+    const handlers = new Map<string, (payload: never) => void>();
+    const signaling = {
+      on: (event: string, handler: (payload: never) => void) => {
+        handlers.set(event, handler);
+      },
+      emit: vi.fn(),
+    };
+    const onLinkQuality = vi.fn();
+    const manager = new PeerConnectionManager({
+      signaling: signaling as never,
+      localStream: new FakeStream() as unknown as MediaStream,
+      onRemoteStream: vi.fn(),
+      onPeerClosed: vi.fn(),
+      onLinkQuality,
+    });
+    manager.start();
+
+    handlers.get('room:joined')?.({
+      selfPeerId: 'self',
+      selfJoinedAt: 2,
+      peers: [
+        {
+          peerId: 'peer-b',
+          displayName: 'Bea',
+          joinedAt: 1,
+          state: INITIAL_PEER_STATE,
+        },
+      ],
+    } as never);
+    await Promise.resolve();
+
+    connection.iceConnectionState = 'failed';
+    connection.listeners.get('iceconnectionstatechange')?.(undefined);
+    await vi.waitFor(() => {
+      expect(connection.createOffer).toHaveBeenLastCalledWith({ iceRestart: true });
+    });
+
+    connection.connectionState = 'connected';
+    connection.iceConnectionState = 'connected';
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(onLinkQuality).toHaveBeenCalledWith('peer-b', 'good');
+
+    connection.iceConnectionState = 'disconnected';
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(onLinkQuality).toHaveBeenCalledWith('peer-b', 'down');
+
+    manager.close();
+    vi.useRealTimers();
   });
 
   it('offers tuned audio and caps the outgoing bitrates', async () => {
