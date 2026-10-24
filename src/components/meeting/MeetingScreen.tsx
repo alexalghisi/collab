@@ -452,6 +452,17 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           disabled={session.self.screenSharing}
           onPress={() => void session.toggleCamera()}
         />
+        <ToolbarButton
+          icon={session.noiseSuppression ? 'pulse' : 'pulse-outline'}
+          label={session.noiseSuppression ? 'Noise on' : 'Noise off'}
+          active={session.noiseSuppression}
+          onPress={session.toggleNoiseSuppression}
+        />
+        <ToolbarButton
+          icon={session.speakerLabel === 'Headphones' ? 'headset' : 'volume-high'}
+          label={session.speakerLabel}
+          onPress={() => void session.cycleSpeaker()}
+        />
         {showExtraTools && CAN_SHARE_SCREEN && (
           <ToolbarButton
             icon="desktop-outline"

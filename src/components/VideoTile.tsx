@@ -5,6 +5,7 @@ import { colors } from '../theme';
 import { attachMediaStream } from '../webrtc/attachMedia';
 import { cameraOn, microphoneOn } from '../webrtc/captureState';
 import type { LinkQuality } from '../webrtc/linkQuality';
+import { useSpeaking } from '../hooks/useSpeaking';
 import { MicMeter } from './MicMeter';
 import { TileOverlay, showsPlaceholder } from './TileOverlay';
 import { videoPresentation, type VideoFit } from './videoPresentation';
@@ -54,6 +55,7 @@ export function VideoTile({
     setVideoElement((current) => (current === node ? current : node));
   }, []);
   const presentation = videoPresentation(state, mirror);
+  const speaking = useSpeaking(stream?.getAudioTracks()[0], !state.audioMuted);
   const videoTrack = stream?.getVideoTracks()[0];
   const trackKey = videoTrack ? `${videoTrack.id}:${videoTrack.readyState}` : '';
 
@@ -80,7 +82,7 @@ export function VideoTile({
   }, [stream, videoRef, videoElement, trackKey, mirror]);
 
   return (
-    <View style={styles.tile}>
+    <View style={[styles.tile, speaking && styles.speaking]}>
       <video
         ref={setVideo}
         autoPlay
@@ -105,6 +107,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 16,
     overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  speaking: {
+    borderColor: colors.success,
   },
   placeholder: {
     ...StyleSheet.absoluteFillObject,
