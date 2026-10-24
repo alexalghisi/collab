@@ -39,6 +39,8 @@ import { watchCapture } from '../webrtc/captureWatch';
 import { listMediaDevices, watchDeviceChanges, type ListedDevice } from '../webrtc/devices';
 import { loadIceServers } from '../webrtc/loadIceServers';
 import type { LinkQuality } from '../webrtc/linkQuality';
+import { openNoiseSuppression } from '../webrtc/noiseSuppression';
+import { nextAudioOutput, outputKindLabel } from '../webrtc/speakers';
 import { joinRemotePeer, rememberRemoteStream, syncRoomPeers } from '../webrtc/participants';
 import type { TranscriptSegment } from '../transcript/segments';
 import { normalizeBoardFile } from '../whiteboard/boardFiles';
@@ -155,6 +157,12 @@ export interface CollabSession {
   readonly devices: ListedDevice[];
   readonly selectedDevices: { audioinput: string; videoinput: string; audiooutput: string };
   chooseDevice: (kind: ListedDevice['kind'], deviceId: string) => Promise<void>;
+  /** RNNoise on the microphone we send. On unless this browser cannot run it. */
+  readonly noiseSuppression: boolean;
+  toggleNoiseSuppression: () => void;
+  /** Switches playback between the speaker and headphones. */
+  cycleSpeaker: () => Promise<void>;
+  readonly speakerLabel: 'Speaker' | 'Headphones';
   /** `keepLive` leaves media so a refresh can put this participant back in the same room. */
   leave: (options?: { keepLive?: boolean }) => void;
   returnToMain: () => void;
@@ -253,6 +261,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   });
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
   const [linkQuality, setLinkQuality] = useState<Record<string, LinkQuality>>({});
+  const [noiseSuppression, setNoiseSuppression] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [boardFiles, setBoardFiles] = useState<BoardFile[]>([]);
@@ -298,6 +307,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const camEnabledRef = useRef(true);
   const audioDeviceRef = useRef('');
   const videoDeviceRef = useRef('');
+  const noiseOnRef = useRef(true);
+  /** Microphone from getUserMedia. Kept alive while a processed copy is sent. */
+  const rawMicRef = useRef<MediaStreamTrack | null>(null);
+  const voiceProcessorRef = useRef<{ stop: () => void } | null>(null);
+  const voiceGenerationRef = useRef(0);
+  const voiceApplyRef = useRef<Promise<void>>(Promise.resolve());
   const deviceSignatureRef = useRef('');
   const pendingSubmissions = useRef<ExecutionRequest[]>([]);
   const submissionByRun = useRef(new Map<string, ExecutionRequest>());
@@ -413,13 +428,17 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         reactionTimerRef.current = null;
       }
 
+      voiceProcessorRef.current?.stop();
+      voiceProcessorRef.current = null;
       for (const track of [
         ...(streamRef.current?.getTracks() ?? []),
+        rawMicRef.current,
         parkedCameraRef.current,
         screenTrackRef.current,
       ]) {
         track?.stop();
       }
+      rawMicRef.current = null;
       streamRef.current = null;
       parkedCameraRef.current = null;
       screenTrackRef.current = null;
@@ -752,6 +771,62 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     );
   }, []);
 
+  const refreshLocalPreview = useCallback(() => {
+    setSelf((current) => ({ ...current }));
+  }, []);
+
+  /**
+   * Puts either the raw microphone or the RNNoise copy onto the local stream
+   * and every peer connection. The raw track is never given to a speaker.
+   */
+  const applyVoice = useCallback(async () => {
+    const generation = (voiceGenerationRef.current += 1);
+    const raw = rawMicRef.current;
+    const stream = streamRef.current;
+    voiceProcessorRef.current?.stop();
+    voiceProcessorRef.current = null;
+    if (!raw || !stream || raw.readyState !== 'live') {
+      return;
+    }
+    let outgoing: MediaStreamTrack = raw;
+    if (noiseOnRef.current) {
+      const processed = await openNoiseSuppression(raw);
+      if (generation !== voiceGenerationRef.current) {
+        processed?.stop();
+        return;
+      }
+      if (processed) {
+        voiceProcessorRef.current = processed;
+        outgoing = processed.track;
+      }
+    }
+    if (generation !== voiceGenerationRef.current || streamRef.current !== stream) {
+      if (outgoing !== raw) {
+        outgoing.stop();
+      }
+      return;
+    }
+    outgoing.enabled = micEnabledRef.current;
+    for (const existing of [...stream.getAudioTracks()]) {
+      if (existing === outgoing) {
+        continue;
+      }
+      stream.removeTrack(existing);
+      if (existing !== raw) {
+        existing.stop();
+      }
+    }
+    if (!stream.getAudioTracks().includes(outgoing)) {
+      stream.addTrack(outgoing);
+    }
+    console.info('[collab] outgoing microphone', {
+      noise: outgoing !== raw,
+      id: outgoing.id,
+    });
+    await managerRef.current?.replaceAudioTrack(outgoing);
+    refreshLocalPreview();
+  }, [refreshLocalPreview]);
+
   const takeOpenedTracks = useCallback(
     (opened: MediaStream) => {
       const stream = streamRef.current;
@@ -761,6 +836,15 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       }
       const sharing = selfRef.current.screenSharing;
       const kinds = new Set(opened.getTracks().map((track) => track.kind));
+      if (kinds.has('audio')) {
+        voiceProcessorRef.current?.stop();
+        voiceProcessorRef.current = null;
+        const nextRaw = opened.getAudioTracks()[0] ?? null;
+        if (rawMicRef.current && rawMicRef.current !== nextRaw) {
+          rawMicRef.current.stop();
+        }
+        rawMicRef.current = nextRaw;
+      }
       if (sharing && kinds.has('video')) {
         const parked = opened.getVideoTracks()[0];
         if (parked) {
@@ -796,7 +880,9 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       }
       const audio = stream.getAudioTracks()[0];
       const videoTrack = stream.getVideoTracks()[0];
-      if (audio && kinds.has('audio')) {
+      if (kinds.has('audio')) {
+        voiceApplyRef.current = applyVoice();
+      } else if (audio) {
         void managerRef.current?.replaceAudioTrack(audio);
       }
       if (videoTrack && kinds.has('video') && !sharing) {
@@ -804,7 +890,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       }
       publishCapture();
     },
-    [publishCapture, rememberDevice],
+    [applyVoice, publishCapture, rememberDevice],
   );
 
   const openMeetingMedia = useCallback(
@@ -845,6 +931,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           }
           setError(describeMediaFailure(cause));
           takeOpenedTracks(opened);
+          await voiceApplyRef.current;
           await refreshDevices();
           return;
         }
@@ -857,6 +944,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         return;
       }
       takeOpenedTracks(opened);
+      await voiceApplyRef.current;
       setError((current) => (isMediaMessage(current) ? null : current));
       await refreshDevices();
     },
@@ -1401,6 +1489,25 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     };
   }, [toggleMic, leave, switchRoom]);
 
+  const toggleNoiseSuppression = useCallback(() => {
+    const next = !noiseOnRef.current;
+    noiseOnRef.current = next;
+    setNoiseSuppression(next);
+    console.info('[collab] noise suppression', { enabled: next });
+    voiceApplyRef.current = applyVoice();
+  }, [applyVoice]);
+
+  const cycleSpeaker = useCallback(async () => {
+    const next = nextAudioOutput(devices, selectedDevices.audiooutput);
+    if (!next) {
+      console.info('[collab] speaker', 'default');
+      return;
+    }
+    setSelectedDevices((current) => ({ ...current, audiooutput: next.deviceId }));
+    await retargetSpeakers(next.deviceId);
+    console.info('[collab] speaker', { label: next.label });
+  }, [devices, selectedDevices.audiooutput]);
+
   const retryMedia = useCallback(async () => {
     unlockAudioPlayback();
     if (!streamRef.current) {
@@ -1637,6 +1744,15 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     devices,
     selectedDevices,
     chooseDevice,
+    noiseSuppression,
+    toggleNoiseSuppression,
+    cycleSpeaker,
+    speakerLabel: outputKindLabel(
+      devices.find(
+        (device) =>
+          device.kind === 'audiooutput' && device.deviceId === selectedDevices.audiooutput,
+      )?.label ?? '',
+    ),
     leave,
     returnToMain,
     toggleMic,

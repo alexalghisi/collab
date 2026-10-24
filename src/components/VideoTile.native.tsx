@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { RTCView } from 'react-native-webrtc';
+import { useSpeaking } from '../hooks/useSpeaking';
 import { colors } from '../theme';
 import { TileOverlay, showsPlaceholder } from './TileOverlay';
 import type { VideoTileProps } from './VideoTile';
@@ -15,9 +16,10 @@ export function VideoTile({
 }: VideoTileProps) {
   const streamUrl = stream ? (stream as unknown as { toURL: () => string }).toURL() : undefined;
   const presentation = videoPresentation(state, mirror);
+  const speaking = useSpeaking(stream?.getAudioTracks()[0], !state.audioMuted);
 
   return (
-    <View style={styles.tile}>
+    <View style={[styles.tile, speaking && styles.speaking]}>
       {streamUrl ? (
         <RTCView
           streamURL={streamUrl}
@@ -42,6 +44,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 16,
     overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  speaking: {
+    borderColor: colors.success,
   },
   video: {
     flex: 1,
