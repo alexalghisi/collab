@@ -64,7 +64,7 @@ export function CalendarScreen({
             <Text style={styles.syncTitle}>Google Calendar</Text>
             <Text style={styles.syncHint}>
               {!google.connected
-                ? 'Connect once. Both calendars stay in sync while this page is open.'
+                ? 'Connect once. New and edited meetings sync both ways, automatically.'
                 : google.paused
                   ? 'Live sync is paused.'
                   : 'Live sync is on: changes in Google Calendar show up here within seconds.'}
