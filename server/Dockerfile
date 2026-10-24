@@ -14,17 +14,12 @@ RUN npm ci --ignore-scripts
 ENV NODE_ENV=production
 ENV EXECUTION_BACKEND=cloud
 
-# The server shares the event contract with the client (src/signaling/events.ts)
-# and the shared editor's update encoding (src/code/updates.ts).
+# The server imports shared modules from src/ (signaling contract, code runner,
+# ICE/TURN config, timeouts, ...). Copy all of src/ so a new shared import can
+# never crash the image on boot: a crashed image keeps Render on the previous
+# build, which served no /ice route and left calls on STUN only (no audio).
 COPY tsconfig.json ./
-COPY src/signaling ./src/signaling
-COPY src/code ./src/code
-COPY src/chat ./src/chat
-COPY src/files ./src/files
-COPY src/meeting ./src/meeting
-COPY src/transcript ./src/transcript
-COPY src/search ./src/search
-COPY src/assistant ./src/assistant
+COPY src ./src
 COPY server ./server
 
 EXPOSE 4000
