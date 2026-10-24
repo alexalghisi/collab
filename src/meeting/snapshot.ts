@@ -4,6 +4,11 @@ import {
   mergeChatHistory,
   saveChatHistory,
 } from '../chat/history';
+import {
+  INITIAL_PROBLEM_SYNC,
+  normalizeProblemSync,
+  type ProblemSyncState,
+} from '../collaborare/sync';
 import type { ChatMessage, Stroke } from '../signaling/events';
 import { normalizeTranscriptSegment, type TranscriptSegment } from '../transcript/segments';
 import { storage } from './storage';
@@ -17,6 +22,7 @@ export interface RoomSnapshot {
   readonly messages: ChatMessage[];
   readonly strokes: Stroke[];
   readonly transcript: TranscriptSegment[];
+  readonly problem: ProblemSyncState;
 }
 
 function isStroke(value: unknown): value is Stroke {
@@ -94,6 +100,7 @@ export function loadRoomSnapshot(roomId: string): RoomSnapshot {
           messages: mergeChatHistory(chatMessagesOf(record.messages), loadChatHistory(roomId)),
           strokes: parseStrokes(record.strokes),
           transcript: mergeTranscript(record.transcript),
+          problem: normalizeProblemSync(record.problem),
         };
       }
     }
@@ -102,12 +109,14 @@ export function loadRoomSnapshot(roomId: string): RoomSnapshot {
       messages: loadChatHistory(roomId),
       strokes: [],
       transcript: [],
+      problem: INITIAL_PROBLEM_SYNC,
     };
   }
   return {
     messages: loadChatHistory(roomId),
     strokes: [],
     transcript: [],
+    problem: INITIAL_PROBLEM_SYNC,
   };
 }
 
@@ -119,6 +128,7 @@ export function saveRoomSnapshot(roomId: string, patch: Partial<RoomSnapshot>): 
       strokes: patch.strokes !== undefined ? mergeStrokes(patch.strokes) : current.strokes,
       transcript:
         patch.transcript !== undefined ? mergeTranscript(patch.transcript) : current.transcript,
+      problem: patch.problem !== undefined ? normalizeProblemSync(patch.problem) : current.problem,
     };
     storage.write(snapshotKey(roomId), JSON.stringify(next));
     saveChatHistory(roomId, next.messages);
