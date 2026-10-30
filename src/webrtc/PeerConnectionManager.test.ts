@@ -272,7 +272,7 @@ describe('PeerConnectionManager', () => {
       const bitrates = connection.senders.map(
         (sender) => sender.parameters.encodings?.[0]?.maxBitrate,
       );
-      expect(bitrates).toEqual([64_000, 2_500_000]);
+      expect(bitrates).toEqual([64_000, 6_000_000]);
     });
   });
 

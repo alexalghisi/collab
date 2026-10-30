@@ -53,8 +53,8 @@ describe('sender tuning', () => {
     const { degradationPreference, encodings } = appliedBy(sender);
     expect(degradationPreference).toBe('maintain-framerate');
     expect(encodings[0]).toMatchObject({
-      maxBitrate: 2_500_000,
-      maxFramerate: 30,
+      maxBitrate: 6_000_000,
+      maxFramerate: 60,
     });
   });
 
@@ -65,7 +65,7 @@ describe('sender tuning', () => {
 
     const { degradationPreference, encodings } = appliedBy(sender);
     expect(degradationPreference).toBe('maintain-resolution');
-    expect(encodings[0]?.maxBitrate).toBe(4_000_000);
+    expect(encodings[0]?.maxBitrate).toBe(8_000_000);
   });
 
   it('puts voice ahead of picture on a tight link', async () => {
@@ -93,15 +93,15 @@ describe('sender tuning', () => {
       {
         rid: 'low',
         scaleResolutionDownBy: 4,
-        maxBitrate: 2_500_000,
-        maxFramerate: 30,
+        maxBitrate: 6_000_000,
+        maxFramerate: 60,
         networkPriority: 'medium',
       },
       {
         rid: 'high',
         scaleResolutionDownBy: 1,
-        maxBitrate: 2_500_000,
-        maxFramerate: 30,
+        maxBitrate: 6_000_000,
+        maxFramerate: 60,
         networkPriority: 'medium',
       },
     ]);

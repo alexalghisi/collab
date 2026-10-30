@@ -156,8 +156,8 @@ describe('call quality over the Socket.IO transport', () => {
         networkPriority: 'high',
       });
       expect(video.parameters.encodings[0]).toEqual({
-        maxBitrate: 2_500_000,
-        maxFramerate: 30,
+        maxBitrate: 6_000_000,
+        maxFramerate: 60,
         networkPriority: 'medium',
       });
       expect(video.parameters.degradationPreference).toBe('maintain-framerate');
