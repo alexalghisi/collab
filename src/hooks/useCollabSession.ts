@@ -34,7 +34,12 @@ import { SIGNALING_URL } from '../signaling/config';
 import { createSpeechCapture } from '../transcript/speech';
 import { resumePlayback, retargetSpeakers, unlockAudioPlayback } from '../webrtc/attachMedia';
 import { onAppResumed } from '../webrtc/appFocus';
-import { cameraOn, describeMediaFailure, microphoneOn, trackIsLive } from '../webrtc/captureState';
+import {
+  cameraOn,
+  describeMediaFailure,
+  microphoneUnmuted,
+  trackIsLive,
+} from '../webrtc/captureState';
 import { watchCapture } from '../webrtc/captureWatch';
 import { listMediaDevices, watchDeviceChanges, type ListedDevice } from '../webrtc/devices';
 import { loadIceServers } from '../webrtc/loadIceServers';
@@ -303,10 +308,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const speechRef = useRef(createSpeechCapture());
   const selfPeerIdRef = useRef<string | null>(null);
   const joinGenerationRef = useRef(0);
-  const wantVideoRef = useRef(true);
+  const wantVideoRef = useRef(false);
   /** What the user asked for. The published flags also go off when a track dies. */
   const micEnabledRef = useRef(true);
-  const camEnabledRef = useRef(true);
+  const camEnabledRef = useRef(false);
   const audioDeviceRef = useRef('');
   const videoDeviceRef = useRef('');
   const noiseOnRef = useRef(true);
@@ -744,7 +749,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     if (!stream) {
       return;
     }
-    const audioMuted = !microphoneOn(stream);
+    const audioMuted = !microphoneUnmuted(stream);
     const videoOff = selfRef.current.screenSharing ? false : !cameraOn(stream);
     if (audioMuted === selfRef.current.audioMuted && videoOff === selfRef.current.videoOff) {
       return;
@@ -1003,7 +1008,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       if (generation !== joinGenerationRef.current || streamRef.current !== stream) {
         return false;
       }
-      const audioLive = microphoneOn(stream);
+      for (const track of stream.getAudioTracks()) {
+        if (track.readyState === 'live') {
+          track.enabled = true;
+        }
+      }
+      const audioLive = microphoneUnmuted(stream);
       const videoLive = cameraOn(stream);
       const readyState: PeerState = {
         ...initialState,
@@ -1040,11 +1050,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       return;
     }
     const track = stream.getAudioTracks()[0];
-    // A live track the OS reports as `muted` (another app grabbed the mic for a
-    // moment) is still ours: re-enable it instead of opening a second capture,
-    // which hangs while the first one holds the device.
+    // A live track stays ours, even when the OS reports it muted. `enabled` is
+    // the mute switch. Opening a second capture while this one holds the
+    // device hangs.
     if (track && track.readyState === 'live') {
-      track.enabled = track.muted ? true : !track.enabled;
+      track.enabled = !track.enabled;
       micEnabledRef.current = track.enabled;
       console.info('[collab] microphone', { enabled: track.enabled, readyState: track.readyState });
       publishCapture();
