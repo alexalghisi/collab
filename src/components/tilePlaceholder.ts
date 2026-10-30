@@ -6,5 +6,5 @@ export function showsPlaceholder(state: PeerState, stream: MediaStream | undefin
   if (state.screenSharing) {
     return false;
   }
-  return !cameraOn(stream);
+  return state.videoOff || !cameraOn(stream);
 }

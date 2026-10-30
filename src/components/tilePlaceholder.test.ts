@@ -25,6 +25,11 @@ describe('showsPlaceholder', () => {
     expect(showsPlaceholder(state(), streamWith(null))).toBe(true);
   });
 
+  it('shows the avatar when the participant turned the camera off, even while frames arrive', () => {
+    const live = streamWith({ readyState: 'live', enabled: true, muted: false });
+    expect(showsPlaceholder(state({ videoOff: true }), live)).toBe(true);
+  });
+
   it('keeps a shared screen visible even when the camera flag is off', () => {
     expect(showsPlaceholder(state({ screenSharing: true, videoOff: true }), streamWith(null))).toBe(
       false,
