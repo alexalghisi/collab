@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   console: {
-    maxHeight: 200,
+    maxHeight: 140,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
