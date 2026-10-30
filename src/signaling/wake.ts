@@ -26,13 +26,27 @@ function pause(ms: number): Promise<void> {
   });
 }
 
-export async function waitUntilSignalingReady(
-  url: string,
-  options: WakeOptions = {},
-): Promise<void> {
+/** One wake-up per server at a time: joining and sign-in share the same wait. */
+const inFlight = new Map<string, Promise<void>>();
+
+export function waitUntilSignalingReady(url: string, options: WakeOptions = {}): Promise<void> {
   if (isLoopbackSignalingUrl(url)) {
-    return;
+    return Promise.resolve();
   }
+  // Injected fetches (tests) and custom timings always run their own wait.
+  if (Object.keys(options).length > 0) {
+    return wake(url, options);
+  }
+  const pending = inFlight.get(url);
+  if (pending) {
+    return pending;
+  }
+  const started = wake(url, options).finally(() => inFlight.delete(url));
+  inFlight.set(url, started);
+  return started;
+}
+
+async function wake(url: string, options: WakeOptions): Promise<void> {
   const timeoutMs = options.timeoutMs ?? REMOTE_WAKE_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_, reject) => {
