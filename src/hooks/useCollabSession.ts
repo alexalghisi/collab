@@ -38,6 +38,8 @@ import { cameraOn, describeMediaFailure, microphoneOn, trackIsLive } from '../we
 import { watchCapture } from '../webrtc/captureWatch';
 import { listMediaDevices, watchDeviceChanges, type ListedDevice } from '../webrtc/devices';
 import { loadIceServers } from '../webrtc/loadIceServers';
+import type { IceServerConfig } from '../webrtc/config';
+import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
 import type { LinkQuality } from '../webrtc/linkQuality';
 import { openNoiseSuppression } from '../webrtc/noiseSuppression';
 import { nextAudioOutput, outputKindLabel } from '../webrtc/speakers';
@@ -458,6 +460,14 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     [disconnectRoom],
   );
 
+  /** ICE servers requested while the camera prompt was open, used once. */
+  const icePrefetchRef = useRef<Promise<readonly IceServerConfig[]> | null>(null);
+  const takeIceServers = useCallback(() => {
+    const pending = icePrefetchRef.current ?? loadIceServers(SIGNALING_URL);
+    icePrefetchRef.current = null;
+    return pending;
+  }, []);
+
   /** Connects the already acquired local media to `nextRoomId`. */
   const connectRoom = useCallback(
     async (nextRoomId: string, mainRoomId?: string) => {
@@ -700,7 +710,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         const manager = new PeerConnectionManager({
           signaling,
           localStream: stream,
-          iceServers: await loadIceServers(SIGNALING_URL),
+          iceServers: await takeIceServers(),
           // Relay credentials expire; a restart an hour in needs fresh ones.
           reloadIceServers: () => loadIceServers(SIGNALING_URL),
           onRemoteStream: (peerId, remoteStream) =>
@@ -726,7 +736,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         return false;
       }
     },
-    [createSignaling, patchParticipant, dropParticipant, leave, beginCaptions],
+    [createSignaling, patchParticipant, dropParticipant, leave, beginCaptions, takeIceServers],
   );
 
   const publishCapture = useCallback(() => {
@@ -983,6 +993,12 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       });
 
       console.info('[collab] join', { roomId: nextRoomId, video, audio: true });
+      // Wake the server and fetch relay servers while the camera prompt is up,
+      // not after it: a sleeping Render instance takes about a minute to boot.
+      if (!isLoopbackSignalingUrl(SIGNALING_URL)) {
+        void waitUntilSignalingReady(SIGNALING_URL).catch(() => undefined);
+      }
+      icePrefetchRef.current = loadIceServers(SIGNALING_URL);
       await openMeetingMedia(video);
       if (generation !== joinGenerationRef.current || streamRef.current !== stream) {
         return false;
