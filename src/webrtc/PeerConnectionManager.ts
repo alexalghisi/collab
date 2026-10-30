@@ -369,7 +369,11 @@ export class PeerConnectionManager {
         continue;
       }
       const negotiated = transceivers.find(
-        (t) => t.mid != null && t.receiver.track?.kind === kind && t !== own && t.currentDirection !== 'stopped',
+        (t) =>
+          t.mid != null &&
+          t.receiver.track?.kind === kind &&
+          t !== own &&
+          t.currentDirection !== 'stopped',
       );
       if (!negotiated) {
         continue;
