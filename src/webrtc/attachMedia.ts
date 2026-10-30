@@ -153,6 +153,7 @@ export function attachMediaStream(
     stream.removeEventListener('addtrack', onChange);
     stream.removeEventListener('removetrack', onChange);
     element.srcObject = null;
+    rememberTracks(element, []);
   };
 }
 

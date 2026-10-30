@@ -71,6 +71,34 @@ describe('attachMediaStream', () => {
     expect(element.play).toHaveBeenCalledTimes(1);
   });
 
+  it('binds the same camera again after the tile let go of it', () => {
+    const playback = { id: 'preview' };
+    const camera = { id: 'cam' };
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStream() {
+        return playback;
+      }),
+    );
+    const element = {
+      tagName: 'VIDEO',
+      srcObject: null as unknown,
+      paused: true,
+      play: vi.fn(async () => undefined),
+    };
+    const stream = {
+      getVideoTracks: () => [camera],
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStream;
+
+    const detach = attachMediaStream(element as unknown as HTMLMediaElement, stream);
+    detach();
+    attachMediaStream(element as unknown as HTMLMediaElement, stream);
+
+    expect(element.srcObject).toBe(playback);
+  });
+
   it('points the tile at a camera that arrives after the element was empty', () => {
     const listeners = new Map<string, () => void>();
     const camera = { id: 'cam' };
