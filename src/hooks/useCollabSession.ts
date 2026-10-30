@@ -1082,10 +1082,20 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     }
     const track = stream.getVideoTracks()[0];
     if (track && track.readyState === 'live' && track.muted !== true) {
-      track.enabled = !track.enabled;
-      camEnabledRef.current = track.enabled;
-      wantVideoRef.current = track.enabled;
-      console.info('[collab] camera', { enabled: track.enabled, readyState: track.readyState });
+      if (track.enabled) {
+        camEnabledRef.current = false;
+        wantVideoRef.current = false;
+        track.enabled = false;
+        track.stop();
+        stream.removeTrack(track);
+        console.info('[collab] camera', { enabled: false, readyState: track.readyState });
+        publishCapture();
+        return;
+      }
+      track.enabled = true;
+      camEnabledRef.current = true;
+      wantVideoRef.current = true;
+      console.info('[collab] camera', { enabled: true, readyState: track.readyState });
       publishCapture();
       return;
     }
