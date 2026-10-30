@@ -46,13 +46,15 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
     }
   };
 
-  const sendEmail = async (): Promise<void> => {
+  const send = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     setStatus(null);
     try {
       const sent = await onSend(contact);
-      setStatus(`Email sent to ${sent.value}.`);
+      setStatus(
+        sent.kind === 'phone' ? `Text sent to ${sent.value}.` : `Email sent to ${sent.value}.`,
+      );
       setContact('');
     } catch (cause) {
       setError(cause instanceof InviteError ? cause.message : 'The invite could not be sent.');
@@ -76,16 +78,14 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
     <SidePanel title="Invite" onClose={onClose}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
         <Text style={styles.lede}>
-          Send the join link on WhatsApp or by email. The other person gets a message they can open
-          to join this call.
+          Send the join link by text message, email, or WhatsApp. The other person gets a message
+          they can open to join this call.
         </Text>
         <TextInput
           style={styles.input}
           value={contact}
           onChangeText={setContact}
-          onSubmitEditing={() =>
-            typed?.kind === 'phone' ? openWhatsApp(contact) : void sendEmail()
-          }
+          onSubmitEditing={() => void send()}
           placeholder="name@email.com or +40 721 123 456"
           placeholderTextColor={colors.textSubtle}
           autoCapitalize="none"
@@ -93,18 +93,19 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
           keyboardType="default"
           editable={!busy}
         />
-        {typed?.kind === 'phone' ? (
+        <Button
+          label={busy ? 'Sending…' : 'Send invite'}
+          icon="send"
+          onPress={() => void send()}
+          disabled={busy || contact.trim() === ''}
+        />
+        {typed?.kind === 'phone' && (
           <Button
             label="Send on WhatsApp"
             icon="logo-whatsapp"
+            variant="secondary"
             onPress={() => openWhatsApp(contact)}
-          />
-        ) : (
-          <Button
-            label={busy ? 'Sending…' : 'Send invite'}
-            icon="send"
-            onPress={() => void sendEmail()}
-            disabled={busy || contact.trim() === ''}
+            disabled={busy}
           />
         )}
         <Button
