@@ -19,6 +19,7 @@ import { ExecutionService, createRunnerFromEnv } from './execution/ExecutionServ
 import { executionRouter } from './execution/router';
 import { problemsCors } from './collaborare/cors';
 import { problemsRouter } from './collaborare/router';
+import recursionProblems from './collaborare/recursion.json';
 import { createProblemCatalog } from './collaborare/source';
 import { filesRouter } from './files/router';
 import { sendAppHome, signalingHealth } from './home';
@@ -91,7 +92,11 @@ app.get('/health', (_req, res) => {
 app.get('/ice', async (_req, res) => {
   res.json({ iceServers: await resolveIceServers() });
 });
-app.use('/api/problems', problemsCors, problemsRouter(createProblemCatalog()));
+app.use(
+  '/api/problems',
+  problemsCors,
+  problemsRouter(createProblemCatalog({ localRows: recursionProblems })),
+);
 if (!existsSync(join(WEB_ROOT, 'index.html'))) {
   app.get('/', sendAppHome);
 }
