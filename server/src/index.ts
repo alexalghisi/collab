@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { startKeepAwake } from './keepAwake';
 import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -151,5 +152,6 @@ void userStore
   .finally(() => {
     httpServer.listen(PORT, () => {
       console.info(`Collab signaling server listening on port ${PORT}`);
+      startKeepAwake(process.env.KEEP_AWAKE_URL ?? process.env.RENDER_EXTERNAL_URL);
     });
   });
