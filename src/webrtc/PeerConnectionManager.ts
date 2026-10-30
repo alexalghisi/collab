@@ -267,7 +267,13 @@ export class PeerConnectionManager {
         if (existing === event.track) {
           continue;
         }
-        if (existing.readyState === 'ended' || existing.id === event.track.id) {
+        // One live track per kind: a renegotiated camera arrives as a new track,
+        // and tiles render getVideoTracks()[0], so the old one must go.
+        if (
+          existing.readyState === 'ended' ||
+          existing.id === event.track.id ||
+          existing.kind === event.track.kind
+        ) {
           remoteStream.removeTrack(existing);
         }
       }
@@ -340,8 +346,53 @@ export class PeerConnectionManager {
     description: RTCSessionDescriptionInit,
   ): Promise<void> {
     await entry.connection.setRemoteDescription(description);
+    if (description.type === 'offer') {
+      await this.bindSendersToOffer(entry);
+    }
     for (const candidate of entry.pendingCandidates.splice(0)) {
       await this.addCandidate(entry, candidate);
+    }
+  }
+
+  /**
+   * A sender made with addTransceiver (no camera/mic yet) is never reused by
+   * setRemoteDescription(offer), so the offer's m-line got a fresh transceiver
+   * and our later replaceTrack went to an unnegotiated one: the other side
+   * never saw our camera. Move each kind onto the negotiated transceiver.
+   */
+  private async bindSendersToOffer(entry: PeerEntry): Promise<void> {
+    const transceivers = entry.connection.getTransceivers?.() ?? [];
+    for (const kind of MEDIA_KINDS) {
+      const current = entry.senders[kind];
+      const own = transceivers.find((t) => t.sender === current);
+      if (own?.mid != null) {
+        continue;
+      }
+      const negotiated = transceivers.find(
+        (t) =>
+          t.mid != null &&
+          t.receiver.track?.kind === kind &&
+          t !== own &&
+          t.currentDirection !== 'stopped',
+      );
+      if (!negotiated) {
+        continue;
+      }
+      negotiated.direction = 'sendrecv';
+      if (current.track) {
+        await negotiated.sender.replaceTrack(current.track);
+      }
+      try {
+        negotiated.sender.setStreams?.(this.localStream);
+      } catch {
+        // Older stacks; the track still flows.
+      }
+      entry.senders[kind] = negotiated.sender;
+      try {
+        own?.stop();
+      } catch {
+        // Already gone.
+      }
     }
   }
 

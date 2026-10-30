@@ -134,8 +134,8 @@ const styles = StyleSheet.create({
   stdin: {
     marginHorizontal: 12,
     marginBottom: 12,
-    minHeight: 120,
-    maxHeight: 240,
+    minHeight: 40,
+    maxHeight: 96,
     color: colors.text,
     fontSize: 13,
     fontFamily: 'monospace',
