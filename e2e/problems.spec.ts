@@ -110,9 +110,9 @@ test('host picks a problem, guest follows; load into editor; run on examples', a
   await expect(guest.getByText('Example 1')).toBeVisible();
 
   // Host changes problem with the keyboard; the guest follows.
-  await host.keyboard.press('Alt+ArrowRight');
-  await expect(host.getByRole('heading', { name: 'Este palindrom? (OLI 5)' })).toBeVisible();
-  await expect(guest.getByRole('heading', { name: 'Este palindrom? (OLI 5)' })).toBeVisible();
+  await host.keyboard.press('Alt+ArrowLeft');
+  await expect(host.getByRole('heading', { name: 'Produsul cifrelor (OLI 5)' })).toBeVisible();
+  await expect(guest.getByRole('heading', { name: 'Produsul cifrelor (OLI 5)' })).toBeVisible();
 
   // Back to "Suma cifrelor" through the list, then load a Python starter.
   await host.getByRole('button', { name: 'Back to list' }).click();
