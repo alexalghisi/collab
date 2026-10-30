@@ -53,7 +53,7 @@ function hintContent(track: MediaStreamTrack, hint: 'motion' | 'detail' | 'speec
 }
 
 /** How long we wait for the permission prompt before joining without that device. */
-export const MEDIA_WAIT_MS = 8_000;
+export const MEDIA_WAIT_MS = 20_000;
 
 function stopTracks(stream: MediaStream): void {
   for (const track of stream.getTracks()) {

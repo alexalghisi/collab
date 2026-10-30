@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     flexDirection: 'row',
-    minHeight: 0,
+    minHeight: 320,
   },
   editor: {
     flex: 1,
