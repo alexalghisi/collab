@@ -10,15 +10,18 @@
 
 export type VideoContent = 'camera' | 'screen';
 
-/** Well above a phone messenger: enough for a sharp 720p face or legible text. */
+/**
+ * Enough for a crisp 1080p face and sharp shared text. The encoder still
+ * backs off on its own when the link cannot carry it.
+ */
 const VIDEO_MAX_BITRATE_BPS: Record<VideoContent, number> = {
-  camera: 2_500_000,
-  screen: 4_000_000,
+  camera: 6_000_000,
+  screen: 8_000_000,
 };
 
 const VIDEO_MAX_FRAMERATE: Record<VideoContent, number> = {
-  camera: 30,
-  screen: 15,
+  camera: 60,
+  screen: 30,
 };
 
 /**
