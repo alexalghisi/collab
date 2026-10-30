@@ -5,6 +5,7 @@ import {
   acquireCameraTrack,
   acquireJoinStream,
   acquireLocalStream,
+  acquireMicrophoneTrack,
   acquireScreenTrack,
 } from './media';
 
@@ -36,12 +37,12 @@ describe('media capture', () => {
     });
   });
 
-  it('asks the camera for 720p at 30 fps', async () => {
+  it('asks the camera for 1080p (up to 4K) at 30–60 fps', async () => {
     expect(CAMERA_CONSTRAINTS).toEqual({
       facingMode: 'user',
-      width: { ideal: 1280, max: 1920 },
-      height: { ideal: 720, max: 1080 },
-      frameRate: { ideal: 30, max: 30 },
+      width: { ideal: 1920, max: 3840 },
+      height: { ideal: 1080, max: 2160 },
+      frameRate: { ideal: 30, max: 60 },
     });
   });
 
@@ -74,7 +75,7 @@ describe('media capture', () => {
     expect(video.contentHint).toBe('motion');
   });
 
-  it('opens any camera when the 720p ask is refused', async () => {
+  it('opens any camera when the 1080p ask is refused', async () => {
     const track = { kind: 'video', contentHint: '' };
     const getUserMedia = vi.fn(async (constraints: { video: unknown }) => {
       if (constraints.video === CAMERA_CONSTRAINTS) {
@@ -220,5 +221,23 @@ describe('media capture', () => {
       audio: false,
     });
     expect(track.contentHint).toBe('detail');
+  });
+
+  it('never runs two captures at once, so unmuting while the camera opens does not hang', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const getUserMedia = vi.fn(async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      return { getVideoTracks: () => [], getAudioTracks: () => [{ kind: 'audio' }] };
+    });
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+
+    await Promise.all([acquireLocalStream({ video: true, audio: true }), acquireMicrophoneTrack()]);
+
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(maxActive).toBe(1);
   });
 });

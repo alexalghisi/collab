@@ -1040,8 +1040,11 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       return;
     }
     const track = stream.getAudioTracks()[0];
-    if (track && track.readyState === 'live' && track.muted !== true) {
-      track.enabled = !track.enabled;
+    // A live track the OS reports as `muted` (another app grabbed the mic for a
+    // moment) is still ours: re-enable it instead of opening a second capture,
+    // which hangs while the first one holds the device.
+    if (track && track.readyState === 'live') {
+      track.enabled = track.muted ? true : !track.enabled;
       micEnabledRef.current = track.enabled;
       console.info('[collab] microphone', { enabled: track.enabled, readyState: track.readyState });
       publishCapture();
