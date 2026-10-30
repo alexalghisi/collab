@@ -34,7 +34,13 @@ import { SIGNALING_URL } from '../signaling/config';
 import { createSpeechCapture } from '../transcript/speech';
 import { resumePlayback, retargetSpeakers, unlockAudioPlayback } from '../webrtc/attachMedia';
 import { onAppResumed } from '../webrtc/appFocus';
-import { cameraOn, describeMediaFailure, microphoneOn, trackIsLive } from '../webrtc/captureState';
+import {
+  cameraOn,
+  cameraTogglePlan,
+  describeMediaFailure,
+  microphoneOn,
+  trackIsLive,
+} from '../webrtc/captureState';
 import { watchCapture } from '../webrtc/captureWatch';
 import { listMediaDevices, watchDeviceChanges, type ListedDevice } from '../webrtc/devices';
 import { loadIceServers } from '../webrtc/loadIceServers';
@@ -307,6 +313,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   /** What the user asked for. The published flags also go off when a track dies. */
   const micEnabledRef = useRef(true);
   const camEnabledRef = useRef(true);
+  const cameraBusyRef = useRef(false);
   const audioDeviceRef = useRef('');
   const videoDeviceRef = useRef('');
   const noiseOnRef = useRef(true);
@@ -1072,8 +1079,16 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     })();
   }, [publishCapture, takeOpenedTracks]);
 
+  const releaseCameraTrack = useCallback((track: MediaStreamTrack | undefined) => {
+    camEnabledRef.current = false;
+    if (track && track.readyState !== 'ended') {
+      track.enabled = false;
+      track.stop();
+    }
+  }, []);
+
   const toggleCamera = useCallback(async () => {
-    if (selfRef.current.screenSharing) {
+    if (selfRef.current.screenSharing || cameraBusyRef.current) {
       return;
     }
     const stream = streamRef.current;
@@ -1081,35 +1096,61 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       return;
     }
     const track = stream.getVideoTracks()[0];
-    if (track && track.readyState === 'live' && track.muted !== true) {
-      track.enabled = !track.enabled;
-      camEnabledRef.current = track.enabled;
-      wantVideoRef.current = track.enabled;
-      console.info('[collab] camera', { enabled: track.enabled, readyState: track.readyState });
+    const plan = cameraTogglePlan(track);
+    if (plan === 'enable' && track) {
+      track.enabled = true;
+      camEnabledRef.current = true;
+      wantVideoRef.current = true;
+      console.info('[collab] camera', { enabled: true, readyState: track.readyState });
       publishCapture();
       return;
     }
-    camEnabledRef.current = true;
-    wantVideoRef.current = true;
-    let opened: MediaStreamTrack;
+    if (plan === 'stop' && track) {
+      wantVideoRef.current = false;
+      releaseCameraTrack(track);
+      console.info('[collab] camera', { enabled: false, readyState: track.readyState });
+      publishCapture();
+      return;
+    }
+    // 'open' starts a camera that is not held. 'reopen' drops a muted track
+    // first: a second getUserMedia while that track is live hangs, and the
+    // button stays on Start video.
+    cameraBusyRef.current = true;
     try {
-      opened = await acquireCameraTrack(videoDeviceRef.current || undefined);
-    } catch (cause) {
-      console.info('[collab] getUserMedia failed', cause);
-      setError(describeMediaFailure(cause));
-      return;
+      if (plan === 'reopen') {
+        releaseCameraTrack(track);
+      }
+      camEnabledRef.current = true;
+      wantVideoRef.current = true;
+      let opened: MediaStreamTrack;
+      try {
+        opened = await acquireCameraTrack(videoDeviceRef.current || undefined);
+      } catch (cause) {
+        console.info('[collab] getUserMedia failed', cause);
+        camEnabledRef.current = false;
+        wantVideoRef.current = false;
+        publishCapture();
+        setError(describeMediaFailure(cause));
+        return;
+      }
+      if (streamRef.current !== stream) {
+        opened.stop();
+        return;
+      }
+      const previous = stream.getVideoTracks();
+      await swapLocalVideo(opened);
+      previous.forEach((old) => {
+        if (old !== opened) {
+          old.stop();
+        }
+      });
+      rememberDevice('videoinput', capturedDeviceId(opened));
+      publishCapture();
+      setError((current) => (isMediaMessage(current) ? null : current));
+    } finally {
+      cameraBusyRef.current = false;
     }
-    if (streamRef.current !== stream) {
-      opened.stop();
-      return;
-    }
-    const previous = stream.getVideoTracks();
-    await swapLocalVideo(opened);
-    previous.forEach((old) => old.stop());
-    rememberDevice('videoinput', capturedDeviceId(opened));
-    publishCapture();
-    setError((current) => (isMediaMessage(current) ? null : current));
-  }, [publishCapture, rememberDevice, swapLocalVideo]);
+  }, [publishCapture, releaseCameraTrack, rememberDevice, swapLocalVideo]);
 
   const stopScreenShare = useCallback(async () => {
     screenTrackRef.current?.stop();
