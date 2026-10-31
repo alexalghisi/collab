@@ -1,7 +1,8 @@
 import { timeoutSignal } from '../net/timeoutSignal';
 import { DEFAULT_ICE_SERVERS, type IceServerConfig } from './config';
 
-const ICE_WAIT_MS = 8000;
+/** Joining must not stall on a slow relay lookup; STUN defaults are fine to start. */
+export const ICE_WAIT_MS = 2500;
 
 /**
  * Asks our signaling server for ICE servers. The browser must not call a
