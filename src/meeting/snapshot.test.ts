@@ -83,6 +83,13 @@ describe('room snapshot', () => {
         followHost: true,
         localSlug: null,
         localHistory: [],
+        localQuery: {
+          text: '',
+          category: '__all',
+          olympGrade: null,
+          olympLevel: null,
+          listing: true,
+        },
       },
     });
     expect(loadChatHistory('room-1')).toEqual(thread);
@@ -106,6 +113,13 @@ describe('room snapshot', () => {
         followHost: true,
         localSlug: null,
         localHistory: [],
+        localQuery: {
+          text: '',
+          category: '__all',
+          olympGrade: null,
+          olympLevel: null,
+          listing: true,
+        },
       },
     });
   });

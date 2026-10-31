@@ -24,6 +24,8 @@ export interface ProblemSyncState {
   readonly followHost: boolean;
   readonly localSlug: string | null;
   readonly localHistory: readonly string[];
+  /** Search, filters, and list-or-detail for a screen that is not following. */
+  readonly localQuery: ProblemListQuery;
 }
 
 export const INITIAL_PROBLEM_SYNC: ProblemSyncState = {
@@ -31,6 +33,7 @@ export const INITIAL_PROBLEM_SYNC: ProblemSyncState = {
   followHost: true,
   localSlug: null,
   localHistory: [],
+  localQuery: EMPTY_PROBLEM_QUERY,
 };
 
 export type ProblemSyncAction =
@@ -197,6 +200,7 @@ export function normalizeProblemSync(value: unknown): ProblemSyncState {
       localSlug && !localHistory.includes(localSlug)
         ? [...localHistory, localSlug].slice(-MAX_PROBLEM_HISTORY)
         : localHistory,
+    localQuery: normalizeProblemQuery(raw.localQuery ?? EMPTY_PROBLEM_QUERY),
   };
 }
 
@@ -233,9 +237,12 @@ export function sameSharedProblem(a: SharedProblem, b: SharedProblem): boolean {
   );
 }
 
-/** The problem on screen is the one the room last published, whoever changed it. */
+/** While following, the room's problem. While browsing freely, this screen's problem. */
 export function visibleProblemSlug(state: ProblemSyncState): string | null {
-  return state.host.slug;
+  if (state.followHost) {
+    return state.host.slug;
+  }
+  return state.localSlug;
 }
 
 function kept(state: ProblemSyncState): ProblemSyncResult {
@@ -257,22 +264,51 @@ export function reduceProblemSync(
     };
   }
   if (action.type === 'follow') {
+    if (action.followHost) {
+      return { state: { ...state, followHost: true }, broadcastSlug: null, publish: null };
+    }
+    // Start free browsing from the problem already on screen.
+    const localSlug = state.host.slug;
     return {
-      state: { ...state, followHost: action.followHost },
+      state: {
+        ...state,
+        followHost: false,
+        localSlug,
+        localHistory: localSlug
+          ? rememberProblem(state.host.history, localSlug)
+          : [...state.host.history],
+        localQuery: state.host.query,
+      },
       broadcastSlug: null,
       publish: null,
     };
   }
   if (action.type === 'query') {
+    const query = normalizeProblemQuery(action.query);
+    if (!state.followHost) {
+      return { state: { ...state, localQuery: query }, broadcastSlug: null, publish: null };
+    }
     const host: SharedProblem = {
       ...state.host,
-      query: normalizeProblemQuery(action.query),
+      query,
       updatedAt: action.now,
     };
     return { state: { ...state, host }, broadcastSlug: host.slug, publish: host };
   }
   if (!isProblemSlug(action.slug)) {
     return kept(state);
+  }
+  if (!state.followHost) {
+    return {
+      state: {
+        ...state,
+        localSlug: action.slug,
+        localHistory: rememberProblem(state.localHistory, action.slug),
+        localQuery: { ...state.localQuery, listing: false },
+      },
+      broadcastSlug: null,
+      publish: null,
+    };
   }
   const host: SharedProblem = {
     ...publishProblem(state.host, action.slug, action.now),

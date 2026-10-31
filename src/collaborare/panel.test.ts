@@ -78,6 +78,46 @@ describe('problem sync', () => {
     expect(next.state.host.query.text).toBe('mat');
   });
 
+  it('keeps a free browse on this screen', () => {
+    const shared = reduceProblemSync(INITIAL_PROBLEM_SYNC, {
+      type: 'choose',
+      slug: 'bucati',
+      isHost: true,
+      now: 10,
+    });
+    const browsing = reduceProblemSync(shared.state, { type: 'follow', followHost: false });
+    expect(visibleProblemSlug(browsing.state)).toBe('bucati');
+
+    const picked = reduceProblemSync(browsing.state, {
+      type: 'choose',
+      slug: 'suma',
+      isHost: false,
+      now: 12,
+    });
+    expect(picked.publish).toBeNull();
+    expect(picked.state.host.slug).toBe('bucati');
+    expect(visibleProblemSlug(picked.state)).toBe('suma');
+
+    const listed = reduceProblemSync(picked.state, {
+      type: 'query',
+      now: 13,
+      query: { ...EMPTY_PROBLEM_QUERY, text: 'pal', listing: true },
+    });
+    expect(listed.publish).toBeNull();
+    expect(listed.state.host.query).toEqual({ ...EMPTY_PROBLEM_QUERY, listing: false });
+    expect(listed.state.localQuery.text).toBe('pal');
+
+    const echoed = reduceProblemSync(listed.state, {
+      type: 'host-state',
+      problem: { ...shared.state.host, slug: 'graf', history: ['graf'], updatedAt: 20 },
+    });
+    expect(visibleProblemSlug(echoed.state)).toBe('suma');
+    expect(echoed.state.host.slug).toBe('graf');
+
+    const following = reduceProblemSync(echoed.state, { type: 'follow', followHost: true });
+    expect(visibleProblemSlug(following.state)).toBe('graf');
+  });
+
   it('lets a guest publish and drops a stale echo of their own edit', () => {
     const published = applyProblemSelect(
       EMPTY_SHARED_PROBLEM,
