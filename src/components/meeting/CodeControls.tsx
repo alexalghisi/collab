@@ -3,6 +3,7 @@ import { CODE_LANGUAGES, LANGUAGE_LABELS, type CodeLanguage } from '../../code/l
 import type { CodePresence } from '../../code/SharedCodeDocument';
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
+import { STDIN_MAX_HEIGHT, stdinFieldHeight } from './stdinField';
 
 export interface CodeControlsProps {
   language: CodeLanguage;
@@ -26,6 +27,7 @@ export function CodeControls({
   running,
   editors,
 }: CodeControlsProps) {
+  const stdinHeight = stdinFieldHeight(stdin);
   return (
     <View style={styles.wrap}>
       <View style={styles.bar}>
@@ -80,12 +82,13 @@ export function CodeControls({
       </View>
 
       <TextInput
-        style={[styles.stdin, { height: stdinHeight(stdin) }]}
+        style={[styles.stdin, { height: stdinHeight }]}
         value={stdin}
         onChangeText={onStdinChange}
         placeholder="Standard input (stdin)"
         placeholderTextColor={colors.textSubtle}
         multiline
+        scrollEnabled={stdinHeight >= STDIN_MAX_HEIGHT}
         textAlignVertical="top"
         accessibilityLabel="Standard input"
       />
@@ -159,9 +162,3 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
-
-/** Grows one line at a time as lines are typed, up to about 14 lines. */
-export function stdinHeight(text: string): number {
-  const lines = text.split('\n').length;
-  return Math.min(20 + 18 * Math.max(1, lines), 272);
-}
