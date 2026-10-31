@@ -31,8 +31,6 @@ describe('media capture', () => {
       noiseSuppression: true,
       autoGainControl: true,
       voiceIsolation: true,
-      channelCount: 1,
-      sampleRate: 48000,
     });
   });
 

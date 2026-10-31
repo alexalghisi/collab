@@ -29,8 +29,6 @@ export const AUDIO_CONSTRAINTS: MediaTrackConstraints & { voiceIsolation?: boole
   noiseSuppression: true,
   autoGainControl: true,
   voiceIsolation: true,
-  channelCount: 1,
-  sampleRate: 48000,
 };
 
 /** Shared text has to stay legible, so resolution beats frame rate here. */
@@ -101,6 +99,7 @@ async function openUserMedia(
   video: boolean | MediaTrackConstraints,
   audio: boolean | MediaTrackConstraints,
   timeoutMs: number,
+  onLate?: LateStream,
 ): Promise<MediaStream> {
   console.info('[collab] getUserMedia', { video, audio });
   const pending = navigator.mediaDevices.getUserMedia({
@@ -111,10 +110,25 @@ async function openUserMedia(
   try {
     stream = await withTimeout(pending, timeoutMs);
   } catch (cause) {
-    // Permission may still land after we gave up; do not keep that capture.
-    void pending.then(stopTracks).catch(() => undefined);
+    if (isMediaTimeout(cause) && onLate) {
+      void pending
+        .then((late) => {
+          console.info('[collab] getUserMedia arrived late');
+          onLate(hintStream(late));
+        })
+        .catch(() => undefined);
+    } else {
+      void pending.then(stopTracks).catch(() => undefined);
+    }
     throw cause;
   }
+  return hintStream(stream);
+}
+
+/** Receives a capture that resolved after its timeout; it must stop the tracks if unused. */
+export type LateStream = (stream: MediaStream) => void;
+
+function hintStream(stream: MediaStream): MediaStream {
   for (const track of stream.getAudioTracks()) {
     hintContent(track, 'speech');
   }
@@ -137,12 +151,14 @@ async function openDevices(
   audio: boolean,
   timeoutMs: number,
   audioDeviceId?: string,
+  onLate?: LateStream,
 ): Promise<MediaStream> {
   try {
     return await openUserMedia(
       video,
       audio ? withDevice(AUDIO_CONSTRAINTS, audioDeviceId) : false,
       timeoutMs,
+      onLate,
     );
   } catch (cause) {
     // Only loosen the microphone once the camera ask is already the loose one.
@@ -156,7 +172,7 @@ async function openDevices(
     ) {
       throw cause;
     }
-    return openUserMedia(video, true, timeoutMs);
+    return openUserMedia(video, true, timeoutMs, onLate);
   }
 }
 
@@ -165,9 +181,10 @@ async function openCamera(
   timeoutMs: number,
   audioDeviceId?: string,
   video: boolean | MediaTrackConstraints = CAMERA_CONSTRAINTS,
+  onLate?: LateStream,
 ): Promise<MediaStream> {
   try {
-    return await openDevices(video, audio, timeoutMs, audioDeviceId);
+    return await openDevices(video, audio, timeoutMs, audioDeviceId, onLate);
   } catch (cause) {
     // A stuck prompt is still open; a second getUserMedia would wait on it too.
     if (isMediaTimeout(cause) || video === true) {
@@ -181,12 +198,13 @@ async function openCamera(
 export async function acquireLocalStream(
   options: MediaConstraintsOptions,
   timeoutMs = MEDIA_WAIT_MS,
+  onLate?: LateStream,
 ): Promise<MediaStream> {
   const video = options.video ? withDevice(CAMERA_CONSTRAINTS, options.videoDeviceId) : false;
   if (!options.video) {
-    return openDevices(false, options.audio, timeoutMs, options.audioDeviceId);
+    return openDevices(false, options.audio, timeoutMs, options.audioDeviceId, onLate);
   }
-  return openCamera(options.audio, timeoutMs, options.audioDeviceId, video);
+  return openCamera(options.audio, timeoutMs, options.audioDeviceId, video, onLate);
 }
 
 export async function acquireMicrophoneTrack(deviceId?: string): Promise<MediaStreamTrack> {
