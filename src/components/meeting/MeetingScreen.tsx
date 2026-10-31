@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import {
   clampPanelWidth,
+  DEFAULT_PANEL_WIDTH,
   isCompactProblemLayout,
   PROBLEMS_PANEL_WIDTH_KEY,
   readPanelWidth,
@@ -49,7 +50,6 @@ type Panel = 'participants' | 'chat' | 'invite' | 'files' | 'devices' | null;
 type Stage = 'grid' | 'whiteboard' | 'code';
 
 const WIDE_LAYOUT_MIN_WIDTH = 900;
-const DEFAULT_PROBLEM_WIDTH = 380;
 const PANEL_WIDTH = 340;
 /** Tile width in the strip shown above the whiteboard. */
 const STRIP_TILE_WIDTH = 180;
@@ -74,8 +74,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   const [readCount, setReadCount] = useState(0);
   const [problemsOpen, setProblemsOpen] = useState(true);
   const [mobileProblem, setMobileProblem] = useState(false);
-  const [problemWidth, setProblemWidth] = useState(DEFAULT_PROBLEM_WIDTH);
-  const [stageWidth, setStageWidth] = useState(width);
+  const [problemWidth, setProblemWidth] = useState(DEFAULT_PANEL_WIDTH);
   const problems = useProblemBrowser(session);
 
   const stage: Stage = session.settings.stage;
@@ -113,9 +112,16 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
     setProblemWidth(readPanelWidth(storage.read(PROBLEMS_PANEL_WIDTH_KEY), width));
   }, [width]);
 
+  const problemsBudget = Math.max(320, width - (wide && panel ? PANEL_WIDTH : 0));
+  const columnWidth = clampPanelWidth(problemWidth, problemsBudget);
+  const problemsDocked =
+    stage === 'code' && !compactProblems && problemsOpen && session.code !== null;
+  const budgetRef = useRef(problemsBudget);
+  budgetRef.current = problemsBudget;
+
   const resizeProblems = (delta: number): void => {
     setProblemWidth((current) => {
-      const next = clampPanelWidth(current + delta, stageWidth || width);
+      const next = clampPanelWidth(current + delta, budgetRef.current);
       storage.write(PROBLEMS_PANEL_WIDTH_KEY, String(next));
       return next;
     });
@@ -144,6 +150,8 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
       verdicts={problems.verdicts}
       examplesRunning={problems.examplesRunning}
       confirming={problems.confirming}
+      listing={problems.listing}
+      onShowList={problems.showList}
       onText={problems.setText}
       onCategory={problems.setCategory}
       onOlympGrade={problems.setOlympGrade}
@@ -210,106 +218,103 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.roomTitle} numberOfLines={1}>
-            {session.roomId ?? roomId}
-          </Text>
-          <Text style={styles.roomMeta}>
-            {tileCount === 1
-              ? 'Only you so far — send the invite on the right'
-              : `${tileCount} participants`}
-            {session.breakoutOf ? ` · breakout room of ${session.breakoutOf}` : ''}
-          </Text>
+      <View style={styles.mainColumn}>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.roomTitle} numberOfLines={1}>
+              {session.roomId ?? roomId}
+            </Text>
+            <Text style={styles.roomMeta}>
+              {tileCount === 1
+                ? 'Only you so far — send the invite on the right'
+                : `${tileCount} participants`}
+              {session.breakoutOf ? ` · breakout room of ${session.breakoutOf}` : ''}
+            </Text>
+          </View>
+          {session.breakoutOf && (
+            <Button
+              label="Return to main room"
+              icon="arrow-undo"
+              variant="secondary"
+              compact
+              onPress={session.returnToMain}
+            />
+          )}
+          <Pressable
+            style={[styles.inviteButton, panel === 'invite' && styles.inviteButtonActive]}
+            onPress={() => togglePanel('invite')}
+            accessibilityRole="button"
+            accessibilityLabel="Invite someone"
+          >
+            <Ionicons name="person-add-outline" size={16} color={colors.text} />
+            <Text style={styles.inviteText}>{INVITE_ACTION_LABEL}</Text>
+          </Pressable>
         </View>
-        {session.breakoutOf && (
-          <Button
-            label="Return to main room"
-            icon="arrow-undo"
-            variant="secondary"
-            compact
-            onPress={session.returnToMain}
-          />
-        )}
-        <Pressable
-          style={[styles.inviteButton, panel === 'invite' && styles.inviteButtonActive]}
-          onPress={() => togglePanel('invite')}
-          accessibilityRole="button"
-          accessibilityLabel="Invite someone"
-        >
-          <Ionicons name="person-add-outline" size={16} color={colors.text} />
-          <Text style={styles.inviteText}>{INVITE_ACTION_LABEL}</Text>
-        </Pressable>
-      </View>
 
-      <View style={styles.body}>
-        {stage !== 'grid' ? (
-          <View style={styles.stage}>
-            {!fullCode && (
-              <ScrollView
-                horizontal
-                style={styles.stripScroll}
-                contentContainerStyle={styles.strip}
-              >
-                {tiles.map(([key, tile]) => (
-                  <View key={key} style={[styles.cell, { width: STRIP_TILE_WIDTH }]}>
-                    {tile}
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-            {fullCode && (
-              <DraggablePip>
-                {(tiles.find(([key]) => key !== 'self') ?? tiles[0])?.[1]}
-              </DraggablePip>
-            )}
-            {stage === 'whiteboard' ? (
-              <Whiteboard
-                strokes={session.strokes}
-                boardFiles={session.boardFiles}
-                selfPeerId={session.selfPeerId}
-                onAddStroke={session.addStroke}
-                onRemoveStrokes={session.removeStrokes}
-                onAddBoardFile={session.addBoardFile}
-                onRemoveBoardFiles={session.removeBoardFiles}
-                onUploadFile={session.shareFile}
-              />
-            ) : (
-              session.code && (
-                <View
-                  style={styles.codeRow}
-                  onLayout={(event) => setStageWidth(event.nativeEvent.layout.width)}
+        <View style={styles.body}>
+          {stage !== 'grid' ? (
+            <View style={styles.stage}>
+              {!fullCode && (
+                <ScrollView
+                  horizontal
+                  style={styles.stripScroll}
+                  contentContainerStyle={styles.strip}
                 >
-                  {compactProblems ? (
-                    <View style={styles.codePane}>
-                      <View style={styles.problemTabs} accessibilityRole="tablist">
-                        <ProblemTab
-                          label="Code"
-                          selected={!mobileProblem}
-                          onPress={() => setMobileProblem(false)}
-                        />
-                        <ProblemTab
-                          label="Problemă"
-                          selected={mobileProblem}
-                          onPress={() => setMobileProblem(true)}
-                        />
-                      </View>
-                      {mobileProblem ? (
-                        problemPanel
-                      ) : (
-                        <CodePanel
-                          document={session.code}
-                          runs={session.runs}
-                          files={session.workspaceFiles}
-                          selfPeerId={session.selfPeerId}
-                          onRun={session.runCode}
-                          onFilesChange={session.updateWorkspaceFiles}
-                          stdinSeed={problems.stdinSeed}
-                        />
-                      )}
+                  {tiles.map(([key, tile]) => (
+                    <View key={key} style={[styles.cell, { width: STRIP_TILE_WIDTH }]}>
+                      {tile}
                     </View>
-                  ) : (
-                    <>
+                  ))}
+                </ScrollView>
+              )}
+              {fullCode && (
+                <DraggablePip>
+                  {(tiles.find(([key]) => key !== 'self') ?? tiles[0])?.[1]}
+                </DraggablePip>
+              )}
+              {stage === 'whiteboard' ? (
+                <Whiteboard
+                  strokes={session.strokes}
+                  boardFiles={session.boardFiles}
+                  selfPeerId={session.selfPeerId}
+                  onAddStroke={session.addStroke}
+                  onRemoveStrokes={session.removeStrokes}
+                  onAddBoardFile={session.addBoardFile}
+                  onRemoveBoardFiles={session.removeBoardFiles}
+                  onUploadFile={session.shareFile}
+                />
+              ) : (
+                session.code && (
+                  <View style={styles.codeRow}>
+                    {compactProblems ? (
+                      <View style={styles.codePane}>
+                        <View style={styles.problemTabs} accessibilityRole="tablist">
+                          <ProblemTab
+                            label="Code"
+                            selected={!mobileProblem}
+                            onPress={() => setMobileProblem(false)}
+                          />
+                          <ProblemTab
+                            label="Problemă"
+                            selected={mobileProblem}
+                            onPress={() => setMobileProblem(true)}
+                          />
+                        </View>
+                        {mobileProblem ? (
+                          problemPanel
+                        ) : (
+                          <CodePanel
+                            document={session.code}
+                            runs={session.runs}
+                            files={session.workspaceFiles}
+                            selfPeerId={session.selfPeerId}
+                            onRun={session.runCode}
+                            onFilesChange={session.updateWorkspaceFiles}
+                            stdinSeed={problems.stdinSeed}
+                          />
+                        )}
+                      </View>
+                    ) : (
                       <View style={styles.codePane}>
                         <CodePanel
                           document={session.code}
@@ -321,248 +326,243 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
                           stdinSeed={problems.stdinSeed}
                         />
                       </View>
-                      {problemsOpen && (
-                        <>
-                          <ProblemResizeHandle onDrag={resizeProblems} />
-                          <View
-                            style={{ width: clampPanelWidth(problemWidth, stageWidth || width) }}
-                          >
-                            {problemPanel}
-                          </View>
-                        </>
-                      )}
-                    </>
-                  )}
+                    )}
+                  </View>
+                )
+              )}
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={styles.grid}>
+              {tiles.map(([key, tile]) => (
+                <View key={key} style={[styles.cell, { width: cellWidth }]}>
+                  {tile}
                 </View>
-              )
-            )}
-          </View>
-        ) : (
-          <ScrollView contentContainerStyle={styles.grid}>
-            {tiles.map(([key, tile]) => (
-              <View key={key} style={[styles.cell, { width: cellWidth }]}>
-                {tile}
-              </View>
-            ))}
-          </ScrollView>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+
+        {reactionsOpen && (
+          <ReactionPicker
+            onPick={(emoji) => {
+              session.sendReaction(emoji);
+              setReactionsOpen(false);
+            }}
+          />
         )}
 
-        {panel && (
-          <View style={wide ? styles.sidePanel : styles.overlayPanel}>
-            {panel === 'participants' && (
-              <ParticipantsPanel
-                rows={rows}
-                host={session.isHost ? session : null}
-                onClose={() => setPanel(null)}
-              />
-            )}
-            {panel === 'chat' && (
-              <ChatPanel
-                messages={session.messages}
-                selfPeerId={session.selfPeerId}
-                selfSessionId={session.sessionId}
-                onSend={session.sendMessage}
-                onEdit={session.editMessage}
-                onDelete={session.deleteMessage}
-                onUpload={session.shareFile}
-                onClose={() => setPanel(null)}
-              />
-            )}
-            {panel === 'invite' && (
-              <InvitePanel
-                roomId={roomId}
-                hostName={displayName}
-                onSend={onInvite ?? session.sendInvite}
-                onClose={() => setPanel(null)}
-              />
-            )}
-            {panel === 'files' && (
-              <FilesPanel
-                files={files}
-                onUpload={session.shareFile}
-                onShare={(file) => session.sendMessage({ text: '', file })}
-                onClose={() => setPanel(null)}
-              />
-            )}
-            {panel === 'devices' && (
-              <DevicePanel
-                devices={session.devices}
-                selected={session.selectedDevices}
-                onChoose={(kind, deviceId) => void session.chooseDevice(kind, deviceId)}
-                onClose={() => setPanel(null)}
-              />
-            )}
-          </View>
-        )}
-      </View>
-
-      {reactionsOpen && (
-        <ReactionPicker
-          onPick={(emoji) => {
-            session.sendReaction(emoji);
-            setReactionsOpen(false);
-          }}
-        />
-      )}
-
-      {session.error && (
-        <Pressable
-          style={styles.errorBanner}
-          onPress={() => void session.retryMedia()}
-          accessibilityRole="button"
-          accessibilityLabel="Try the camera and microphone again"
-        >
-          <Ionicons name="alert-circle" size={18} color={colors.text} />
-          <Text style={styles.micBannerText}>{session.error}</Text>
-        </Pressable>
-      )}
-
-      {session.localStream !== null &&
-        session.localStream.getAudioTracks()[0]?.readyState !== 'live' && (
+        {session.error && (
           <Pressable
-            style={styles.micBanner}
-            onPress={session.toggleMic}
+            style={styles.errorBanner}
+            onPress={() => void session.retryMedia()}
             accessibilityRole="button"
-            accessibilityLabel="Turn on microphone"
+            accessibilityLabel="Try the camera and microphone again"
           >
-            <Ionicons name="mic" size={18} color={colors.text} />
-            <Text style={styles.micBannerText}>
-              Tap to turn on the microphone so others can hear you
-            </Text>
+            <Ionicons name="alert-circle" size={18} color={colors.text} />
+            <Text style={styles.micBannerText}>{session.error}</Text>
           </Pressable>
         )}
 
-      <ScrollView
-        horizontal={!wide}
-        scrollEnabled={!wide}
-        showsHorizontalScrollIndicator={false}
-        style={styles.toolbarScroll}
-        contentContainerStyle={[styles.toolbar, !wide && styles.toolbarRow]}
-      >
-        <ToolbarButton
-          icon={microphoneOn(session.localStream) ? 'mic' : 'mic-off'}
-          label={microphoneOn(session.localStream) ? 'Mute' : 'Unmute'}
-          danger={!microphoneOn(session.localStream)}
-          onPress={session.toggleMic}
-        />
-        <ToolbarButton
-          icon={cameraOn(session.localStream) ? 'videocam' : 'videocam-off'}
-          label={cameraOn(session.localStream) ? 'Stop video' : 'Start video'}
-          danger={!cameraOn(session.localStream)}
-          disabled={session.self.screenSharing}
-          onPress={() => void session.toggleCamera()}
-        />
-        <ToolbarButton
-          icon={session.noiseSuppression ? 'pulse' : 'pulse-outline'}
-          label={session.noiseSuppression ? 'Noise on' : 'Noise off'}
-          active={session.noiseSuppression}
-          onPress={session.toggleNoiseSuppression}
-        />
-        <ToolbarButton
-          icon={session.speakerLabel === 'Headphones' ? 'headset' : 'volume-high'}
-          label={session.speakerLabel}
-          onPress={() => void session.cycleSpeaker()}
-        />
-        {showExtraTools && CAN_SHARE_SCREEN && (
+        {session.localStream !== null &&
+          session.localStream.getAudioTracks()[0]?.readyState !== 'live' && (
+            <Pressable
+              style={styles.micBanner}
+              onPress={session.toggleMic}
+              accessibilityRole="button"
+              accessibilityLabel="Turn on microphone"
+            >
+              <Ionicons name="mic" size={18} color={colors.text} />
+              <Text style={styles.micBannerText}>
+                Tap to turn on the microphone so others can hear you
+              </Text>
+            </Pressable>
+          )}
+
+        <ScrollView
+          horizontal={!wide}
+          scrollEnabled={!wide}
+          showsHorizontalScrollIndicator={false}
+          style={styles.toolbarScroll}
+          contentContainerStyle={[styles.toolbar, !wide && styles.toolbarRow]}
+        >
           <ToolbarButton
-            icon="desktop-outline"
-            label={session.self.screenSharing ? 'Stop share' : 'Share screen'}
-            active={session.self.screenSharing}
-            onPress={() => void session.toggleScreenShare()}
+            icon={microphoneOn(session.localStream) ? 'mic' : 'mic-off'}
+            label={microphoneOn(session.localStream) ? 'Mute' : 'Unmute'}
+            danger={!microphoneOn(session.localStream)}
+            onPress={session.toggleMic}
           />
-        )}
-        {showExtraTools && (
           <ToolbarButton
-            icon={session.self.handRaised ? 'hand-left' : 'hand-left-outline'}
-            label={session.self.handRaised ? 'Lower hand' : 'Raise hand'}
-            active={session.self.handRaised}
-            onPress={session.toggleHand}
+            icon={cameraOn(session.localStream) ? 'videocam' : 'videocam-off'}
+            label={cameraOn(session.localStream) ? 'Stop video' : 'Start video'}
+            danger={!cameraOn(session.localStream)}
+            disabled={session.self.screenSharing}
+            onPress={() => void session.toggleCamera()}
           />
-        )}
-        {showExtraTools && (
           <ToolbarButton
-            icon="happy-outline"
-            label="React"
-            active={reactionsOpen}
-            onPress={() => setReactionsOpen((open) => !open)}
+            icon={session.noiseSuppression ? 'pulse' : 'pulse-outline'}
+            label={session.noiseSuppression ? 'Noise on' : 'Noise off'}
+            active={session.noiseSuppression}
+            onPress={session.toggleNoiseSuppression}
           />
-        )}
-        {showExtraTools && (
           <ToolbarButton
-            icon="brush"
-            label="Whiteboard"
-            active={stage === 'whiteboard'}
-            onPress={() => toggleStage('whiteboard')}
+            icon={session.speakerLabel === 'Headphones' ? 'headset' : 'volume-high'}
+            label={session.speakerLabel}
+            onPress={() => void session.cycleSpeaker()}
           />
-        )}
-        <ToolbarButton
-          icon="code-slash"
-          label="Code"
-          active={stage === 'code'}
-          onPress={() => toggleStage('code')}
-        />
-        <ToolbarButton
-          icon="library-outline"
-          label="Probleme"
-          active={stage === 'code' && (compactProblems ? mobileProblem : problemsOpen)}
-          onPress={() => {
-            if (stage !== 'code') {
-              session.updateSettings({ stage: 'code' });
-              setProblemsOpen(true);
-              setMobileProblem(true);
-              return;
-            }
-            if (compactProblems) {
-              setMobileProblem((open) => !open);
-              return;
-            }
-            setProblemsOpen((open) => !open);
-          }}
-        />
-        {compact && (
+          {showExtraTools && CAN_SHARE_SCREEN && (
+            <ToolbarButton
+              icon="desktop-outline"
+              label={session.self.screenSharing ? 'Stop share' : 'Share screen'}
+              active={session.self.screenSharing}
+              onPress={() => void session.toggleScreenShare()}
+            />
+          )}
+          {showExtraTools && (
+            <ToolbarButton
+              icon={session.self.handRaised ? 'hand-left' : 'hand-left-outline'}
+              label={session.self.handRaised ? 'Lower hand' : 'Raise hand'}
+              active={session.self.handRaised}
+              onPress={session.toggleHand}
+            />
+          )}
+          {showExtraTools && (
+            <ToolbarButton
+              icon="happy-outline"
+              label="React"
+              active={reactionsOpen}
+              onPress={() => setReactionsOpen((open) => !open)}
+            />
+          )}
+          {showExtraTools && (
+            <ToolbarButton
+              icon="brush"
+              label="Whiteboard"
+              active={stage === 'whiteboard'}
+              onPress={() => toggleStage('whiteboard')}
+            />
+          )}
           <ToolbarButton
-            icon="ellipsis-horizontal"
-            label={moreOpen ? 'Less' : 'More'}
-            active={moreOpen}
-            onPress={() => setMoreOpen((open) => !open)}
+            icon="code-slash"
+            label="Code"
+            active={stage === 'code'}
+            onPress={() => toggleStage('code')}
           />
-        )}
-        {showExtraTools && (
           <ToolbarButton
-            icon="people"
-            label="Participants"
-            active={panel === 'participants'}
-            onPress={() => togglePanel('participants')}
+            icon="library-outline"
+            label="Probleme"
+            active={stage === 'code' && (compactProblems ? mobileProblem : problemsOpen)}
+            onPress={() => {
+              if (stage !== 'code') {
+                session.updateSettings({ stage: 'code' });
+                setProblemsOpen(true);
+                setMobileProblem(true);
+                return;
+              }
+              if (compactProblems) {
+                setMobileProblem((open) => !open);
+                return;
+              }
+              setProblemsOpen((open) => !open);
+            }}
           />
-        )}
-        {showExtraTools && (
-          <ToolbarButton
-            icon="chatbubble-ellipses"
-            label="Chat"
-            active={panel === 'chat'}
-            badge={unread}
-            onPress={() => togglePanel('chat')}
-          />
-        )}
-        {showExtraTools && (
-          <ToolbarButton
-            icon="folder-outline"
-            label="Files"
-            active={panel === 'files'}
-            badge={files.length}
-            onPress={() => togglePanel('files')}
-          />
-        )}
-        {showExtraTools && (
-          <ToolbarButton
-            icon="settings-outline"
-            label="Devices"
-            active={panel === 'devices'}
-            onPress={() => togglePanel('devices')}
-          />
-        )}
-        <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
-      </ScrollView>
+          {compact && (
+            <ToolbarButton
+              icon="ellipsis-horizontal"
+              label={moreOpen ? 'Less' : 'More'}
+              active={moreOpen}
+              onPress={() => setMoreOpen((open) => !open)}
+            />
+          )}
+          {showExtraTools && (
+            <ToolbarButton
+              icon="people"
+              label="Participants"
+              active={panel === 'participants'}
+              onPress={() => togglePanel('participants')}
+            />
+          )}
+          {showExtraTools && (
+            <ToolbarButton
+              icon="chatbubble-ellipses"
+              label="Chat"
+              active={panel === 'chat'}
+              badge={unread}
+              onPress={() => togglePanel('chat')}
+            />
+          )}
+          {showExtraTools && (
+            <ToolbarButton
+              icon="folder-outline"
+              label="Files"
+              active={panel === 'files'}
+              badge={files.length}
+              onPress={() => togglePanel('files')}
+            />
+          )}
+          {showExtraTools && (
+            <ToolbarButton
+              icon="settings-outline"
+              label="Devices"
+              active={panel === 'devices'}
+              onPress={() => togglePanel('devices')}
+            />
+          )}
+          <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
+        </ScrollView>
+      </View>
+      {problemsDocked && (
+        <>
+          <ProblemResizeHandle onDrag={resizeProblems} />
+          <View style={[styles.problemsColumn, { width: columnWidth }]}>{problemPanel}</View>
+        </>
+      )}
+      {panel && (
+        <View style={wide ? styles.sidePanel : styles.overlayPanel}>
+          {panel === 'participants' && (
+            <ParticipantsPanel
+              rows={rows}
+              host={session.isHost ? session : null}
+              onClose={() => setPanel(null)}
+            />
+          )}
+          {panel === 'chat' && (
+            <ChatPanel
+              messages={session.messages}
+              selfPeerId={session.selfPeerId}
+              selfSessionId={session.sessionId}
+              onSend={session.sendMessage}
+              onEdit={session.editMessage}
+              onDelete={session.deleteMessage}
+              onUpload={session.shareFile}
+              onClose={() => setPanel(null)}
+            />
+          )}
+          {panel === 'invite' && (
+            <InvitePanel
+              roomId={roomId}
+              hostName={displayName}
+              onSend={onInvite ?? session.sendInvite}
+              onClose={() => setPanel(null)}
+            />
+          )}
+          {panel === 'files' && (
+            <FilesPanel
+              files={files}
+              onUpload={session.shareFile}
+              onShare={(file) => session.sendMessage({ text: '', file })}
+              onClose={() => setPanel(null)}
+            />
+          )}
+          {panel === 'devices' && (
+            <DevicePanel
+              devices={session.devices}
+              selected={session.selectedDevices}
+              onChoose={(kind, deviceId) => void session.chooseDevice(kind, deviceId)}
+              onClose={() => setPanel(null)}
+            />
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -636,8 +636,22 @@ function ProblemResizeHandle({ onDrag }: { onDrag: (delta: number) => void }) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    flexDirection: 'row',
+    height: '100%',
     backgroundColor: colors.background,
     overflow: 'hidden',
+  },
+  mainColumn: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+  },
+  problemsColumn: {
+    alignSelf: 'stretch',
+    height: '100%',
+    minHeight: 0,
+    flexShrink: 0,
   },
   header: {
     flexDirection: 'row',
@@ -714,6 +728,7 @@ const styles = StyleSheet.create({
   },
   resizeHandle: {
     width: 8,
+    alignSelf: 'stretch',
     backgroundColor: colors.border,
   },
   stripScroll: {
@@ -735,6 +750,10 @@ const styles = StyleSheet.create({
   },
   sidePanel: {
     width: PANEL_WIDTH,
+    alignSelf: 'stretch',
+    height: '100%',
+    minHeight: 0,
+    flexShrink: 0,
   },
   overlayPanel: {
     ...StyleSheet.absoluteFillObject,

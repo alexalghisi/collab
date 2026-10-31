@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   Image,
   Linking,
@@ -45,6 +45,8 @@ export interface ProblemsPanelProps {
   verdicts: readonly ExampleVerdict[];
   examplesRunning: boolean;
   confirming: boolean;
+  listing: boolean;
+  onShowList: () => void;
   onText: (text: string) => void;
   onCategory: (key: string) => void;
   onOlympGrade: (grade: number | null) => void;
@@ -83,6 +85,8 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
     verdicts,
     examplesRunning,
     confirming,
+    listing,
+    onShowList,
     onText,
     onCategory,
     onOlympGrade,
@@ -97,13 +101,6 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
     onRunExamples,
     onClose,
   } = props;
-  const [listing, setListing] = useState(slug === null);
-
-  useEffect(() => {
-    if (slug) {
-      setListing(false);
-    }
-  }, [slug]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -416,7 +413,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
         <NavButton
           label="Back to list"
           hint="Show the problem list"
-          onPress={() => setListing(true)}
+          onPress={onShowList}
           disabled={listing}
         />
         <NavButton
@@ -590,7 +587,9 @@ function NavButton({
 const styles = StyleSheet.create({
   panel: {
     flex: 1,
+    height: '100%',
     minWidth: 0,
+    minHeight: 0,
     backgroundColor: colors.surface,
     borderLeftWidth: 1,
     borderLeftColor: colors.border,

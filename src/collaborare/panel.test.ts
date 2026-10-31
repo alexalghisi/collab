@@ -5,9 +5,13 @@ import { clampPanelWidth, isCompactProblemLayout, readPanelWidth } from './layou
 import { readableStatement } from './readable';
 import { problemStarter, shouldConfirmOverwrite } from './starter';
 import {
+  applyProblemSelect,
+  EMPTY_PROBLEM_QUERY,
+  EMPTY_SHARED_PROBLEM,
   INITIAL_PROBLEM_SYNC,
   randomProblem,
   reduceProblemSync,
+  shouldApplySharedProblem,
   stepProblem,
   visibleProblemSlug,
 } from './sync';
@@ -15,7 +19,7 @@ import {
 const problem = { title: 'Bucăți', examples: [{ input: '1\n', output: '1\n' }] };
 
 describe('problem sync', () => {
-  it('broadcasts a host choice and keeps a guest choice local', () => {
+  it('publishes a choice from either person and keeps the list with it', () => {
     const shared = reduceProblemSync(INITIAL_PROBLEM_SYNC, {
       type: 'choose',
       slug: 'bucati',
@@ -23,6 +27,7 @@ describe('problem sync', () => {
       now: 10,
     });
     expect(shared.broadcastSlug).toBe('bucati');
+    expect(shared.publish?.query.listing).toBe(false);
     expect(visibleProblemSlug(shared.state)).toBe('bucati');
 
     const guest = reduceProblemSync(shared.state, {
@@ -31,15 +36,12 @@ describe('problem sync', () => {
       isHost: false,
       now: 11,
     });
-    expect(guest.broadcastSlug).toBeNull();
-    expect(guest.state.followHost).toBe(false);
+    expect(guest.broadcastSlug).toBe('suma');
     expect(visibleProblemSlug(guest.state)).toBe('suma');
-
-    const following = reduceProblemSync(guest.state, { type: 'follow', followHost: true });
-    expect(visibleProblemSlug(following.state)).toBe('bucati');
+    expect(guest.publish?.query).toEqual({ ...EMPTY_PROBLEM_QUERY, listing: false });
   });
 
-  it('applies the host problem without dropping free browsing', () => {
+  it('replaces the problem on screen when the other person picks one', () => {
     const local = reduceProblemSync(INITIAL_PROBLEM_SYNC, {
       type: 'choose',
       slug: 'suma',
@@ -48,10 +50,54 @@ describe('problem sync', () => {
     });
     const next = reduceProblemSync(local.state, {
       type: 'host-state',
-      problem: { slug: 'graf', history: ['graf'], updatedAt: 5 },
+      problem: { ...EMPTY_SHARED_PROBLEM, slug: 'graf', history: ['graf'], updatedAt: 5 },
     });
-    expect(visibleProblemSlug(next.state)).toBe('suma');
+    expect(visibleProblemSlug(next.state)).toBe('graf');
     expect(next.state.host.slug).toBe('graf');
+  });
+
+  it('publishes the same search and filters for the whole room', () => {
+    const next = reduceProblemSync(INITIAL_PROBLEM_SYNC, {
+      type: 'query',
+      now: 4,
+      query: {
+        text: 'mat',
+        category: 'Matrice',
+        olympGrade: 9,
+        olympLevel: 'judet',
+        listing: true,
+      },
+    });
+    expect(next.publish?.query).toEqual({
+      text: 'mat',
+      category: 'Matrice',
+      olympGrade: 9,
+      olympLevel: 'judet',
+      listing: true,
+    });
+    expect(next.state.host.query.text).toBe('mat');
+  });
+
+  it('lets a guest publish and drops a stale echo of their own edit', () => {
+    const published = applyProblemSelect(
+      EMPTY_SHARED_PROBLEM,
+      {
+        slug: 'suma',
+        query: { text: 'su', listing: true },
+        clientEpoch: 2,
+      },
+      'guest',
+      8,
+    );
+    expect(published).toMatchObject({
+      slug: 'suma',
+      byPeerId: 'guest',
+      clientEpoch: 2,
+      query: { text: 'su', listing: true },
+    });
+    expect(shouldApplySharedProblem(published!, 'guest', 3)).toBe(false);
+    expect(shouldApplySharedProblem(published!, 'guest', 2)).toBe(true);
+    expect(shouldApplySharedProblem(published!, 'host', 9)).toBe(true);
   });
 
   it('steps and picks at random inside the filtered list', () => {
@@ -66,11 +112,12 @@ describe('problem sync', () => {
 
 describe('problem panel layout', () => {
   it('clamps the column and treats 768 as a tab', () => {
-    expect(clampPanelWidth(900, 1000)).toBe(500);
+    expect(clampPanelWidth(900, 1000)).toBe(600);
     expect(clampPanelWidth(10, 1000)).toBe(280);
-    expect(clampPanelWidth(Number.NaN, 400)).toBe(200);
+    expect(clampPanelWidth(Number.NaN, 400)).toBe(240);
     expect(readPanelWidth('420', 1000)).toBe(420);
-    expect(readPanelWidth(null, 1000)).toBe(380);
+    expect(readPanelWidth('380', 1000)).toBe(440);
+    expect(readPanelWidth(null, 1000)).toBe(440);
     expect(isCompactProblemLayout(768)).toBe(true);
     expect(isCompactProblemLayout(360)).toBe(true);
     expect(isCompactProblemLayout(769)).toBe(false);

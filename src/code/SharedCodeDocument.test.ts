@@ -151,6 +151,17 @@ describe('SharedCodeDocument', () => {
     expect(ada.document.text.toString()).toBe(linus.document.text.toString());
   });
 
+  it('shows the other person each stdin keystroke', () => {
+    const ada = attach('a', 'Ada');
+    const linus = attach('b', 'Linus');
+
+    ada.document.replaceStdin('4\n5\n');
+    expect(linus.document.stdin.toString()).toBe('4\n5\n');
+
+    linus.document.replaceStdin('9\n');
+    expect(ada.document.stdin.toString()).toBe('9\n');
+  });
+
   it('ignores a replayed update instead of duplicating text', () => {
     const ada = attach('a', 'Ada');
     const linus = attach('b', 'Linus');
