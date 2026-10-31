@@ -84,6 +84,7 @@ function props(overrides: Partial<ProblemsPanelProps> = {}): ProblemsPanelProps 
     onLoad: vi.fn(),
     onConfirmLoad: vi.fn(),
     onRunExamples: vi.fn(),
+    onSubmit: vi.fn(async () => true),
     onClose: vi.fn(),
     ...overrides,
   };

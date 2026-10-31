@@ -72,6 +72,32 @@ describe('catalog source', () => {
     expect(await catalog.detail('Not A Slug')).toBeNull();
   });
 
+  it('serves local rows after the public catalog, which wins on a shared slug', async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      return new Response(JSON.stringify([summaryRow]), { status: 200 });
+    };
+    const catalog = createProblemCatalog({
+      fetchImpl,
+      url: 'https://catalog.test',
+      key: 'test-key',
+      localRows: [
+        { ...summaryRow, title: 'Local duplicate' },
+        {
+          ...summaryRow,
+          slug: 'rec-factorial',
+          title: 'Factorialul',
+          statement: 'Calculează $n!$',
+        },
+      ],
+    });
+    const { problems } = await catalog.list();
+    expect(problems.map((problem) => problem.title)).toEqual(['Bucăți crescătoare', 'Factorialul']);
+    expect((await catalog.detail('rec-factorial'))?.statement).toBe('Calculează $n!$');
+    expect(calls).toBe(1);
+  });
+
   it('does not cache a failed read', async () => {
     let calls = 0;
     const fetchImpl = async () => {
