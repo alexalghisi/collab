@@ -17,11 +17,10 @@ import {
 import type { FileAttachment } from '../../src/files/attachments';
 import { normalizeTranscriptSegment, type TranscriptSegment } from '../../src/transcript/segments';
 import { normalizeBoardFile } from '../../src/whiteboard/boardFiles';
-import { isProblemSlug } from '../../src/collaborare/map';
 import {
+  applyProblemSelect,
   EMPTY_SHARED_PROBLEM,
   normalizeSharedProblem,
-  publishProblem,
 } from '../../src/collaborare/sync';
 import {
   DEFAULT_ROOM_SETTINGS,
@@ -674,13 +673,17 @@ function registerSocket(
     }
   });
 
-  socket.on('problem:select', (slug) => {
+  socket.on('problem:select', (payload) => {
     const room = currentRoom();
     const { roomId } = socket.data;
-    if (!room || !roomId || socket.id !== room.hostPeerId || !isProblemSlug(slug)) {
+    if (!room || !roomId) {
       return;
     }
-    room.problem = publishProblem(room.problem, slug, Date.now());
+    const next = applyProblemSelect(room.problem, payload, socket.id, Date.now());
+    if (!next) {
+      return;
+    }
+    room.problem = next;
     io.to(roomId).emit('problem:state', normalizeSharedProblem(room.problem));
   });
 

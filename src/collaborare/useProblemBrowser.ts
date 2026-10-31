@@ -20,6 +20,7 @@ import {
 } from './starter';
 import { problemPageUrl } from './types';
 import { randomProblem, stepProblem, visibleProblemSlug, type ProblemSyncState } from './sync';
+import type { ProblemListQuery } from '../signaling/events';
 import { useProblemCatalog } from './useProblemCatalog';
 
 export interface ProblemBrowserSession {
@@ -27,15 +28,19 @@ export interface ProblemBrowserSession {
   readonly isHost: boolean;
   readonly code: SharedCodeDocument | null;
   chooseProblem: (slug: string) => void;
+  setProblemQuery: (query: ProblemListQuery) => void;
   setFollowHost: (follow: boolean) => void;
 }
 
 export function useProblemBrowser(session: ProblemBrowserSession) {
   const catalog = useProblemCatalog(SIGNALING_URL);
-  const [text, setText] = useState('');
-  const [category, setCategory] = useState(CATEGORY_ALL);
-  const [olympGrade, setOlympGrade] = useState<number | null>(null);
-  const [olympLevel, setOlympLevel] = useState<string | null>(null);
+  const query = session.problemSync.followHost
+    ? session.problemSync.host.query
+    : session.problemSync.localQuery;
+  const text = query.text;
+  const category = query.category || CATEGORY_ALL;
+  const olympGrade = query.olympGrade;
+  const olympLevel = query.olympLevel;
   const [verdicts, setVerdicts] = useState<readonly ExampleVerdict[]>([]);
   const [examplesRunning, setExamplesRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -71,6 +76,10 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
     setVerdicts([]);
     setConfirming(false);
   }, [slug, catalog.loadDetail]);
+
+  const publishQuery = (patch: Partial<ProblemListQuery>): void => {
+    session.setProblemQuery({ ...query, ...patch });
+  };
 
   const select = (next: string | null): void => {
     if (next) {
@@ -153,16 +162,18 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
     examplesRunning,
     confirming,
     stdinSeed,
-    setText,
+    listing: query.listing,
+    setText: (value: string) => publishQuery({ text: value, listing: true }),
     setCategory: (next: string) => {
-      setCategory(next);
-      if (next !== CATEGORY_OLYMPIAD) {
-        setOlympGrade(null);
-        setOlympLevel(null);
-      }
+      publishQuery({
+        category: next,
+        listing: true,
+        ...(next === CATEGORY_OLYMPIAD ? {} : { olympGrade: null, olympLevel: null }),
+      });
     },
-    setOlympGrade,
-    setOlympLevel,
+    setOlympGrade: (grade: number | null) => publishQuery({ olympGrade: grade, listing: true }),
+    setOlympLevel: (level: string | null) => publishQuery({ olympLevel: level, listing: true }),
+    showList: () => publishQuery({ listing: true }),
     select,
     prev: () =>
       select(

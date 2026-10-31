@@ -26,6 +26,8 @@ export function SidePanel({ title, onClose, children }: SidePanelProps) {
 const styles = StyleSheet.create({
   panel: {
     flex: 1,
+    height: '100%',
+    minHeight: 0,
     backgroundColor: colors.surface,
     borderLeftWidth: 1,
     borderLeftColor: colors.border,

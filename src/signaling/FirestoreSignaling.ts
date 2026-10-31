@@ -46,11 +46,10 @@ import {
 } from '../files/upload';
 import { firebaseStorage } from '../firebase/app';
 import { sendContactInvite } from '../meeting/sendInvite';
-import { isProblemSlug } from '../collaborare/map';
 import {
+  applyProblemSelect,
   EMPTY_SHARED_PROBLEM,
   normalizeSharedProblem,
-  publishProblem,
   sameSharedProblem,
 } from '../collaborare/sync';
 import { normalizeTranscriptSegment } from '../transcript/segments';
@@ -271,11 +270,11 @@ class FirestoreChannel implements SignalingChannel {
       this.lastSentWorkspaceFiles = files;
       void setDoc(this.room, { workspaceFiles: files }, { merge: true });
     },
-    'problem:select': (slug) => {
-      if (!this.isHost || !isProblemSlug(slug)) {
+    'problem:select': (payload) => {
+      const next = applyProblemSelect(this.lastProblem, payload, this.peerId, Date.now());
+      if (!next) {
         return;
       }
-      const next = publishProblem(this.lastProblem, slug, Date.now());
       this.lastProblem = next;
       void setDoc(this.room, { problem: next }, { merge: true });
     },

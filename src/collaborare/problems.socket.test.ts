@@ -25,12 +25,21 @@ describe('a shared problem across two clients', () => {
     const seen: SharedProblem[] = [];
     guest.channel.on('problem:state', (problem) => seen.push(problem));
 
-    guest.channel.emit('problem:select', 'suma');
+    guest.channel.emit('problem:select', {
+      slug: 'suma',
+      query: { text: 'su', category: 'Vectori', listing: true },
+      clientEpoch: 1,
+    });
+    await until(() => seen.some((problem) => problem.slug === 'suma'));
     host.channel.emit('problem:select', 'bucati');
     await until(() => seen.some((problem) => problem.slug === 'bucati'));
 
-    expect(seen.some((problem) => problem.slug === 'suma')).toBe(false);
-    expect(seen.at(-1)).toMatchObject({ slug: 'bucati', history: ['bucati'] });
+    expect(seen.find((problem) => problem.slug === 'suma')?.query).toMatchObject({
+      text: 'su',
+      category: 'Vectori',
+      listing: true,
+    });
+    expect(seen.at(-1)).toMatchObject({ slug: 'bucati', history: ['suma', 'bucati'] });
 
     const late = await server.join('late', 'Grace');
     expect(late.joined.problem.slug).toBe('bucati');

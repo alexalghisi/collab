@@ -79,6 +79,7 @@ export function colorFor(peerId: string): string {
 export class SharedCodeDocument {
   readonly doc = new Y.Doc();
   readonly text = this.doc.getText('code');
+  readonly stdin = this.doc.getText('stdin');
   readonly awareness = new Awareness(this.doc);
   readonly color: string;
 
@@ -213,7 +214,16 @@ export class SharedCodeDocument {
   }
 
   replaceText(next: string): void {
-    const current = this.text.toString();
+    this.replaceYText(this.text, next);
+  }
+
+  /** Replaces the shared standard input so both people see the same keystrokes. */
+  replaceStdin(next: string): void {
+    this.replaceYText(this.stdin, next);
+  }
+
+  private replaceYText(target: Y.Text, next: string): void {
+    const current = target.toString();
     if (next === current) {
       return;
     }
@@ -235,10 +245,10 @@ export class SharedCodeDocument {
     const inserted = next.slice(start, next.length - tail);
     this.doc.transact(() => {
       if (removed > 0) {
-        this.text.delete(start, removed);
+        target.delete(start, removed);
       }
       if (inserted !== '') {
-        this.text.insert(start, inserted);
+        target.insert(start, inserted);
       }
     });
   }
