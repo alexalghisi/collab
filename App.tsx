@@ -119,7 +119,7 @@ export default function App() {
     }
   };
 
-  const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, true);
+  const startMeeting = (meeting: Meeting) => void joinRoom(meeting.roomId, false);
 
   const inviteFromCall = (input: string) =>
     sendCallInvite(input, session.sendInvite, async (emails) => {
@@ -226,7 +226,7 @@ export default function App() {
       .join({
         roomId: linkRoom,
         displayName: name,
-        video: sameRoom?.video ?? true,
+        video: sameRoom?.video ?? false,
       })
       .then((joined) => {
         if (joined) {
