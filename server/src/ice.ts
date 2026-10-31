@@ -10,10 +10,28 @@ interface TwilioIceServer {
 
 const PUBLIC_TURN_URL = 'https://turn.elixir-webrtc.org/?service=turn&username=collab';
 /**
- * The client gives `/ice` 8 seconds. A relay host that hangs must not use them
+ * The client gives `/ice` 2.5 seconds. A relay host that hangs must not use them
  * all, or the phone gives up and starts the call with STUN only.
  */
-export const PUBLIC_RELAY_WAIT_MS = 4000;
+export const PUBLIC_RELAY_WAIT_MS = 2000;
+
+/** Relay credentials last far longer; reuse them so `/ice` answers instantly. */
+export const ICE_CACHE_MS = 10 * 60_000;
+let cached: { at: number; servers: IceServerConfig[] } | null = null;
+
+export function clearIceCache(): void {
+  cached = null;
+}
+
+/** Cached `resolveIceServers`, resolved again once stale. */
+export async function cachedIceServers(): Promise<IceServerConfig[]> {
+  if (cached && Date.now() - cached.at < ICE_CACHE_MS) {
+    return cached.servers;
+  }
+  const servers = await resolveIceServers();
+  cached = { at: Date.now(), servers };
+  return servers;
+}
 
 /** UDP-only relays fail on many mobile networks; ask for TCP on the same host. */
 function withTcpTurn(uris: readonly string[]): string[] {
@@ -73,6 +91,7 @@ export async function resolveIceServers(
         headers: {
           Authorization: `Basic ${Buffer.from(`${accountSid}:${token}`).toString('base64')}`,
         },
+        signal: timeoutSignal(PUBLIC_RELAY_WAIT_MS),
       },
     );
     if (!response.ok) {
