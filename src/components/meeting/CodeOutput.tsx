@@ -1,5 +1,4 @@
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { consoleText } from '../../code/consoleText';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import type { CodeRun } from '../../hooks/useCollabSession';
 import { LANGUAGE_LABELS } from '../../code/languages';
 import { colors } from '../../theme';
@@ -23,9 +22,10 @@ function statusOf(run: CodeRun): { text: string; color: string } {
     : { text: `exit ${run.exitCode}`, color: colors.warning };
 }
 
-/** Every run in the room, whoever started it, newest last. */
+/** The latest run only: who started it, the input they used, and that run's output. */
 export function CodeOutput({ runs }: CodeOutputProps) {
-  if (runs.length === 0) {
+  const run = runs.at(-1);
+  if (!run) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>Output from Run appears here for everyone.</Text>
@@ -33,34 +33,24 @@ export function CodeOutput({ runs }: CodeOutputProps) {
     );
   }
 
+  const status = statusOf(run);
   return (
-    <ScrollView style={styles.console} contentContainerStyle={styles.consoleContent}>
-      {runs.map((run) => {
-        const status = statusOf(run);
-        return (
-          <View key={run.runId} style={styles.run}>
-            <View style={styles.header}>
-              <Text style={styles.author}>
-                {run.byDisplayName} · {LANGUAGE_LABELS[run.language]}
-              </Text>
-              {run.running && <ActivityIndicator size="small" color={colors.textMuted} />}
-              <Text style={[styles.status, { color: status.color }]}>{status.text}</Text>
-            </View>
-            <Text style={styles.streamLabel}>stdin</Text>
-            <Text style={styles.stdout}>{consoleText(run.stdin)}</Text>
-            <Text style={styles.streamLabel}>stdout</Text>
-            <Text style={styles.stdout}>{consoleText(run.stdout)}</Text>
-            <Text style={styles.streamLabel}>stderr</Text>
-            <Text style={styles.stderr}>{consoleText(run.stderr)}</Text>
-            {run.files?.length > 0 && (
-              <Text style={styles.files}>
-                wrote {run.files.map((file) => file.name).join(', ')}
-              </Text>
-            )}
-          </View>
-        );
-      })}
-    </ScrollView>
+    <View style={styles.console}>
+      <View style={styles.header}>
+        <Text style={styles.author}>
+          {run.byDisplayName} · {LANGUAGE_LABELS[run.language]}
+        </Text>
+        {run.running && <ActivityIndicator size="small" color={colors.textMuted} />}
+        <Text style={[styles.status, { color: status.color }]}>{status.text}</Text>
+      </View>
+      <Text style={styles.streamLabel}>input</Text>
+      <Text style={styles.stdout}>{run.stdin === '' ? '(none)' : run.stdin}</Text>
+      {run.stdout !== '' && <Text style={styles.stdout}>{run.stdout}</Text>}
+      {run.stderr !== '' && <Text style={styles.stderr}>{run.stderr}</Text>}
+      {run.files.length > 0 && (
+        <Text style={styles.files}>wrote {run.files.map((file) => file.name).join(', ')}</Text>
+      )}
+    </View>
   );
 }
 
@@ -76,16 +66,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   console: {
-    maxHeight: 140,
+    flexShrink: 0,
+    minHeight: 88,
+    maxHeight: 220,
+    overflow: 'scroll',
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
-  },
-  consoleContent: {
     padding: 12,
-    gap: 12,
-  },
-  run: {
     gap: 4,
   },
   header: {

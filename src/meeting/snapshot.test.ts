@@ -68,10 +68,28 @@ describe('room snapshot', () => {
       strokes: board,
       transcript: captions,
       problem: {
-        host: { slug: null, history: [], updatedAt: 0 },
+        host: {
+          slug: null,
+          history: [],
+          updatedAt: 0,
+          query: {
+            text: '',
+            category: '__all',
+            olympGrade: null,
+            olympLevel: null,
+            listing: true,
+          },
+        },
         followHost: true,
         localSlug: null,
         localHistory: [],
+        localQuery: {
+          text: '',
+          category: '__all',
+          olympGrade: null,
+          olympLevel: null,
+          listing: true,
+        },
       },
     });
     expect(loadChatHistory('room-1')).toEqual(thread);
@@ -80,10 +98,28 @@ describe('room snapshot', () => {
       strokes: [],
       transcript: [],
       problem: {
-        host: { slug: null, history: [], updatedAt: 0 },
+        host: {
+          slug: null,
+          history: [],
+          updatedAt: 0,
+          query: {
+            text: '',
+            category: '__all',
+            olympGrade: null,
+            olympLevel: null,
+            listing: true,
+          },
+        },
         followHost: true,
         localSlug: null,
         localHistory: [],
+        localQuery: {
+          text: '',
+          category: '__all',
+          olympGrade: null,
+          olympLevel: null,
+          listing: true,
+        },
       },
     });
   });

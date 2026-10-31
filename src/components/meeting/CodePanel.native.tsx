@@ -40,7 +40,7 @@ export function CodePanel({
   const [text, setText] = useState(shared.text.toString());
   const [language, setLanguage] = useState<CodeLanguage>(shared.language);
   const [editors, setEditors] = useState<CodePresence[]>(shared.presence());
-  const [stdin, setStdin] = useState(stdinSeed?.value ?? '');
+  const [stdin, setStdin] = useState(() => shared.stdin.toString() || stdinSeed?.value || '');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
 
   useEffect(
@@ -48,15 +48,16 @@ export function CodePanel({
       shared.onChange(() => {
         setText(shared.text.toString());
         setLanguage(shared.language);
+        setStdin(shared.stdin.toString());
       }),
     [shared],
   );
   useEffect(() => shared.onPresence(() => setEditors(shared.presence())), [shared]);
   useEffect(() => {
     if (stdinSeed) {
-      setStdin(stdinSeed.value);
+      shared.replaceStdin(stdinSeed.value);
     }
-  }, [stdinSeed]);
+  }, [stdinSeed, shared]);
   useEffect(() => {
     if (selected !== CODE_MAIN_FILE && !files.some((file) => file.name === selected)) {
       setSelected(CODE_MAIN_FILE);
@@ -72,7 +73,7 @@ export function CodePanel({
         language={language}
         onLanguageChange={(next) => shared.setLanguage(next)}
         stdin={stdin}
-        onStdinChange={setStdin}
+        onStdinChange={(value) => shared.replaceStdin(value)}
         onFormat={() => applyFormattedCode(language, shared, files, openFile, onFilesChange)}
         onRun={() => onRun(stdin, files, text)}
         running={running}

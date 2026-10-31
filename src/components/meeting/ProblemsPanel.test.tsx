@@ -70,6 +70,8 @@ function props(overrides: Partial<ProblemsPanelProps> = {}): ProblemsPanelProps 
     verdicts: [],
     examplesRunning: false,
     confirming: false,
+    listing: overrides.listing ?? overrides.slug == null,
+    onShowList: vi.fn(),
     onText: vi.fn(),
     onCategory: vi.fn(),
     onOlympGrade: vi.fn(),

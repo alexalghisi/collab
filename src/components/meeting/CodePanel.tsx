@@ -55,7 +55,7 @@ export function CodePanel({
 }: CodePanelProps) {
   const [language, setLanguage] = useState<CodeLanguage>(shared.language);
   const [editors, setEditors] = useState<CodePresence[]>(shared.presence());
-  const [stdin, setStdin] = useState(stdinSeed?.value ?? '');
+  const [stdin, setStdin] = useState(() => shared.stdin.toString() || stdinSeed?.value || '');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
   const [fontSize, setFontSize] = useState(16);
   const fontSizeRef = useRef(16);
@@ -94,6 +94,7 @@ export function CodePanel({
     () =>
       shared.onChange(() => {
         setLanguage(shared.language);
+        setStdin(shared.stdin.toString());
         paintCursors();
       }),
     [shared, paintCursors],
@@ -102,9 +103,9 @@ export function CodePanel({
   useEffect(() => () => bindingRef.current?.destroy(), []);
   useEffect(() => {
     if (stdinSeed) {
-      setStdin(stdinSeed.value);
+      shared.replaceStdin(stdinSeed.value);
     }
-  }, [stdinSeed]);
+  }, [stdinSeed, shared]);
   useEffect(() => {
     if (selected !== CODE_MAIN_FILE && !files.some((file) => file.name === selected)) {
       setSelected(CODE_MAIN_FILE);
@@ -142,7 +143,7 @@ export function CodePanel({
         language={language}
         onLanguageChange={(next) => shared.setLanguage(next)}
         stdin={stdin}
-        onStdinChange={setStdin}
+        onStdinChange={(value) => shared.replaceStdin(value)}
         onFormat={() => applyFormattedCode(language, shared, files, openFile, onFilesChange)}
         onRun={() => {
           const typed = editorRef.current?.getModel()?.getValue();
