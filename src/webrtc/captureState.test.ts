@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cameraOn,
+  cameraTogglePlan,
   describeMediaFailure,
   microphoneOn,
   microphoneUnmuted,
@@ -41,6 +42,23 @@ describe('trackIsLive', () => {
     expect(microphoneOn(stream)).toBe(false);
     expect(microphoneUnmuted(stream)).toBe(true);
     expect(microphoneUnmuted(null)).toBe(false);
+  });
+});
+
+describe('cameraTogglePlan', () => {
+  it('stops a camera that is showing and turns a disabled one back on', () => {
+    expect(cameraTogglePlan({ readyState: 'live', enabled: true, muted: false })).toBe('stop');
+    expect(cameraTogglePlan({ readyState: 'live', enabled: false, muted: false })).toBe('enable');
+  });
+
+  it('releases a muted camera before opening another, so Start does not hang', () => {
+    expect(cameraTogglePlan({ readyState: 'live', enabled: true, muted: true })).toBe('reopen');
+    expect(cameraTogglePlan({ readyState: 'live', enabled: false, muted: true })).toBe('reopen');
+  });
+
+  it('opens a camera when the track is missing or already ended', () => {
+    expect(cameraTogglePlan(undefined)).toBe('open');
+    expect(cameraTogglePlan({ readyState: 'ended', enabled: false })).toBe('open');
   });
 });
 
