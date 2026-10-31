@@ -1,5 +1,4 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { consoleText } from '../../code/consoleText';
 import type { CodeRun } from '../../hooks/useCollabSession';
 import { LANGUAGE_LABELS } from '../../code/languages';
 import { colors } from '../../theme';
@@ -23,7 +22,7 @@ function statusOf(run: CodeRun): { text: string; color: string } {
     : { text: `exit ${run.exitCode}`, color: colors.warning };
 }
 
-/** The latest run only. Older runs stay out of the console. */
+/** The latest run only: who started it, the input they used, and that run's output. */
 export function CodeOutput({ runs }: CodeOutputProps) {
   const run = runs.at(-1);
   if (!run) {
@@ -44,14 +43,10 @@ export function CodeOutput({ runs }: CodeOutputProps) {
         {run.running && <ActivityIndicator size="small" color={colors.textMuted} />}
         <Text style={[styles.status, { color: status.color }]}>{status.text}</Text>
       </View>
-      <Text style={styles.streamLabel}>stdout</Text>
-      <Text style={styles.stdout}>{consoleText(run.stdout)}</Text>
-      {run.stderr !== '' && (
-        <>
-          <Text style={styles.streamLabel}>stderr</Text>
-          <Text style={styles.stderr}>{run.stderr}</Text>
-        </>
-      )}
+      <Text style={styles.streamLabel}>input</Text>
+      <Text style={styles.stdout}>{run.stdin === '' ? '(none)' : run.stdin}</Text>
+      {run.stdout !== '' && <Text style={styles.stdout}>{run.stdout}</Text>}
+      {run.stderr !== '' && <Text style={styles.stderr}>{run.stderr}</Text>}
       {run.files.length > 0 && (
         <Text style={styles.files}>wrote {run.files.map((file) => file.name).join(', ')}</Text>
       )}
