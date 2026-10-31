@@ -21,7 +21,8 @@ import {
 } from '../../collaborare/types';
 import { colors } from '../../theme';
 
-const SUBMIT_REASON = 'Submitting needs your collaborare.ro login, so submit on the site.';
+const SUBMIT_HINT =
+  'Copies your code and opens this problem on collaborare.ro, where you are signed in: paste it there and submit.';
 
 export interface ProblemsPanelProps {
   problems: readonly ProblemSummary[];
@@ -57,6 +58,8 @@ export interface ProblemsPanelProps {
   onLoad: () => void;
   onConfirmLoad: (replace: boolean) => void;
   onRunExamples: () => void;
+  /** Copies the editor code and opens the problem on collaborare.ro; resolves true when copied. */
+  onSubmit: () => Promise<boolean>;
   onClose: () => void;
 }
 
@@ -95,9 +98,11 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
     onLoad,
     onConfirmLoad,
     onRunExamples,
+    onSubmit,
     onClose,
   } = props;
   const [listing, setListing] = useState(slug === null);
+  const [submitNote, setSubmitNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (slug) {
@@ -440,16 +445,25 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
           <Text style={styles.actionText}>Open on collaborare.ro</Text>
         </Pressable>
         <Pressable
-          disabled
+          disabled={!detail}
+          onPress={() => {
+            void onSubmit().then((copied) =>
+              setSubmitNote(
+                copied
+                  ? 'Code copied. Paste it in the editor on collaborare.ro and press Submit.'
+                  : 'Opened on collaborare.ro. Copy your code from the editor and submit there.',
+              ),
+            );
+          }}
           accessibilityRole="button"
-          accessibilityLabel="Submit to collaborare.ro"
-          accessibilityHint={SUBMIT_REASON}
-          accessibilityState={{ disabled: true }}
-          style={[styles.action, styles.actionDisabled]}
+          accessibilityLabel="Submit on collaborare.ro"
+          accessibilityHint={SUBMIT_HINT}
+          accessibilityState={{ disabled: !detail }}
+          style={[styles.action, !detail && styles.actionDisabled]}
         >
-          <Text style={styles.actionText}>Submit to collaborare.ro</Text>
+          <Text style={styles.actionText}>Submit on collaborare.ro</Text>
         </Pressable>
-        <Text style={styles.note}>{SUBMIT_REASON}</Text>
+        {submitNote && <Text style={styles.note}>{submitNote}</Text>}
       </View>
     </View>
   );

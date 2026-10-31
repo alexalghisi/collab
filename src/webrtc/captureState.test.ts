@@ -4,6 +4,7 @@ import {
   cameraTogglePlan,
   describeMediaFailure,
   microphoneOn,
+  microphoneUnmuted,
   trackIsLive,
 } from './captureState';
 
@@ -31,6 +32,16 @@ describe('trackIsLive', () => {
     expect(microphoneOn(stream)).toBe(true);
     expect(cameraOn(stream)).toBe(false);
     expect(microphoneOn(null)).toBe(false);
+  });
+
+  it('treats a live enabled microphone as unmuted even when the browser marks it muted', () => {
+    const stream = {
+      getAudioTracks: () => [{ readyState: 'live', enabled: true, muted: true }],
+    } as unknown as MediaStream;
+
+    expect(microphoneOn(stream)).toBe(false);
+    expect(microphoneUnmuted(stream)).toBe(true);
+    expect(microphoneUnmuted(null)).toBe(false);
   });
 });
 
