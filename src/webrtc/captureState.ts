@@ -8,8 +8,39 @@ export function microphoneOn(stream: MediaStream | null | undefined): boolean {
   return trackIsLive(stream?.getAudioTracks()[0]);
 }
 
+/**
+ * The mute switch. A live, enabled track is unmuted even when the browser
+ * reports it `muted` (no samples yet, or another app borrowed it briefly).
+ */
+export function microphoneUnmuted(stream: MediaStream | null | undefined): boolean {
+  const track = stream?.getAudioTracks()[0];
+  return track !== undefined && track.readyState === 'live' && track.enabled;
+}
+
 export function cameraOn(stream: MediaStream | null | undefined): boolean {
   return trackIsLive(stream?.getVideoTracks()[0]);
+}
+
+export type CameraTogglePlan = 'stop' | 'enable' | 'reopen' | 'open';
+
+/**
+ * What Start/Stop video should do.
+ *
+ * A picture that is actually showing stops. A live track that is only disabled
+ * turns back on, so we do not ask the browser for a second camera. A live track
+ * the OS has muted still holds the device: opening another capture queues
+ * behind it and the button never finishes, so that track is released first.
+ */
+export function cameraTogglePlan(
+  track: { readyState: string; enabled: boolean; muted?: boolean } | undefined,
+): CameraTogglePlan {
+  if (!track || track.readyState !== 'live') {
+    return 'open';
+  }
+  if (track.muted === true) {
+    return 'reopen';
+  }
+  return track.enabled ? 'stop' : 'enable';
 }
 
 export function describeMediaFailure(cause: unknown): string {
