@@ -23,7 +23,7 @@ import recursionProblems from './collaborare/recursion.json';
 import { createProblemCatalog } from './collaborare/source';
 import { filesRouter } from './files/router';
 import { sendAppHome, signalingHealth } from './home';
-import { resolveIceServers } from './ice';
+import { cachedIceServers } from './ice';
 import { ReminderBook } from './invite/reminders';
 import { inviteRouter } from './invite/router';
 import { transportFromEnv } from './invite/senders';
@@ -66,6 +66,7 @@ function loadDotEnv(path: string): void {
 
 loadDotEnv(join(ROOT, '.env'));
 
+void cachedIceServers().catch(() => undefined);
 const PORT = Number(process.env.PORT ?? 4000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '*';
 const WEB_ROOT = join(ROOT, 'dist-web');
@@ -90,7 +91,7 @@ app.get('/health', (_req, res) => {
   res.json(signalingHealth(execution.sandbox));
 });
 app.get('/ice', async (_req, res) => {
-  res.json({ iceServers: await resolveIceServers() });
+  res.json({ iceServers: await cachedIceServers() });
 });
 app.use(
   '/api/problems',
