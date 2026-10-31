@@ -80,7 +80,7 @@ export function CodeControls({
       </View>
 
       <TextInput
-        style={styles.stdin}
+        style={[styles.stdin, { height: stdinHeight(stdin) }]}
         value={stdin}
         onChangeText={onStdinChange}
         placeholder="Standard input (stdin)"
@@ -134,8 +134,6 @@ const styles = StyleSheet.create({
   stdin: {
     marginHorizontal: 12,
     marginBottom: 12,
-    minHeight: 40,
-    maxHeight: 96,
     color: colors.text,
     fontSize: 13,
     fontFamily: 'monospace',
@@ -161,3 +159,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
+
+/** Grows one line at a time as lines are typed, up to about 14 lines. */
+export function stdinHeight(text: string): number {
+  const lines = text.split('\n').length;
+  return Math.min(20 + 18 * Math.max(1, lines), 272);
+}
