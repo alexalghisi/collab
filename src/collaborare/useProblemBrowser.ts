@@ -34,7 +34,9 @@ export interface ProblemBrowserSession {
 
 export function useProblemBrowser(session: ProblemBrowserSession) {
   const catalog = useProblemCatalog(SIGNALING_URL);
-  const query = session.problemSync.host.query;
+  const query = session.problemSync.followHost
+    ? session.problemSync.host.query
+    : session.problemSync.localQuery;
   const text = query.text;
   const category = query.category || CATEGORY_ALL;
   const olympGrade = query.olympGrade;
