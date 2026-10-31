@@ -8,6 +8,15 @@ export function microphoneOn(stream: MediaStream | null | undefined): boolean {
   return trackIsLive(stream?.getAudioTracks()[0]);
 }
 
+/**
+ * The mute switch. A live, enabled track is unmuted even when the browser
+ * reports it `muted` (no samples yet, or another app borrowed it briefly).
+ */
+export function microphoneUnmuted(stream: MediaStream | null | undefined): boolean {
+  const track = stream?.getAudioTracks()[0];
+  return track !== undefined && track.readyState === 'live' && track.enabled;
+}
+
 export function cameraOn(stream: MediaStream | null | undefined): boolean {
   return trackIsLive(stream?.getVideoTracks()[0]);
 }
