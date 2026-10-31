@@ -21,7 +21,7 @@ import { sharedRoomFiles } from '../../files/roomFiles';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
 import { colors } from '../../theme';
-import { cameraOn, microphoneOn } from '../../webrtc/captureState';
+import { cameraOn, microphoneUnmuted } from '../../webrtc/captureState';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
@@ -156,6 +156,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
       onLoad={problems.requestLoad}
       onConfirmLoad={problems.confirmLoad}
       onRunExamples={problems.runExamples}
+      onSubmit={problems.submitOnSite}
       onClose={() => {
         setProblemsOpen(false);
         setMobileProblem(false);
@@ -244,97 +245,98 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
 
       <View style={styles.body}>
         {stage !== 'grid' ? (
-          <View style={styles.stage}>
-            {!fullCode && (
-              <ScrollView
-                horizontal
-                style={styles.stripScroll}
-                contentContainerStyle={styles.strip}
-              >
-                {tiles.map(([key, tile]) => (
-                  <View key={key} style={[styles.cell, { width: STRIP_TILE_WIDTH }]}>
-                    {tile}
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-            {fullCode && (
-              <DraggablePip>
-                {(tiles.find(([key]) => key !== 'self') ?? tiles[0])?.[1]}
-              </DraggablePip>
-            )}
-            {stage === 'whiteboard' ? (
-              <Whiteboard
-                strokes={session.strokes}
-                boardFiles={session.boardFiles}
-                selfPeerId={session.selfPeerId}
-                onAddStroke={session.addStroke}
-                onRemoveStrokes={session.removeStrokes}
-                onAddBoardFile={session.addBoardFile}
-                onRemoveBoardFiles={session.removeBoardFiles}
-                onUploadFile={session.shareFile}
-              />
-            ) : (
-              session.code && (
-                <View
-                  style={styles.codeRow}
-                  onLayout={(event) => setStageWidth(event.nativeEvent.layout.width)}
+          <View style={styles.stageRow}>
+            <View style={styles.stage}>
+              {!fullCode && (
+                <ScrollView
+                  horizontal
+                  style={styles.stripScroll}
+                  contentContainerStyle={styles.strip}
                 >
-                  {compactProblems ? (
-                    <View style={styles.codePane}>
-                      <View style={styles.problemTabs} accessibilityRole="tablist">
-                        <ProblemTab
-                          label="Code"
-                          selected={!mobileProblem}
-                          onPress={() => setMobileProblem(false)}
-                        />
-                        <ProblemTab
-                          label="Problemă"
-                          selected={mobileProblem}
-                          onPress={() => setMobileProblem(true)}
-                        />
-                      </View>
-                      {mobileProblem ? (
-                        problemPanel
-                      ) : (
-                        <CodePanel
-                          document={session.code}
-                          runs={session.runs}
-                          files={session.workspaceFiles}
-                          selfPeerId={session.selfPeerId}
-                          onRun={session.runCode}
-                          onFilesChange={session.updateWorkspaceFiles}
-                          stdinSeed={problems.stdinSeed}
-                        />
-                      )}
+                  {tiles.map(([key, tile]) => (
+                    <View key={key} style={[styles.cell, { width: STRIP_TILE_WIDTH }]}>
+                      {tile}
                     </View>
-                  ) : (
-                    <>
+                  ))}
+                </ScrollView>
+              )}
+              {fullCode && (
+                <DraggablePip>
+                  {(tiles.find(([key]) => key !== 'self') ?? tiles[0])?.[1]}
+                </DraggablePip>
+              )}
+              {stage === 'whiteboard' ? (
+                <Whiteboard
+                  strokes={session.strokes}
+                  boardFiles={session.boardFiles}
+                  selfPeerId={session.selfPeerId}
+                  onAddStroke={session.addStroke}
+                  onRemoveStrokes={session.removeStrokes}
+                  onAddBoardFile={session.addBoardFile}
+                  onRemoveBoardFiles={session.removeBoardFiles}
+                  onUploadFile={session.shareFile}
+                />
+              ) : (
+                session.code && (
+                  <View
+                    style={styles.codeRow}
+                    onLayout={(event) => setStageWidth(event.nativeEvent.layout.width)}
+                  >
+                    {compactProblems ? (
                       <View style={styles.codePane}>
-                        <CodePanel
-                          document={session.code}
-                          runs={session.runs}
-                          files={session.workspaceFiles}
-                          selfPeerId={session.selfPeerId}
-                          onRun={session.runCode}
-                          onFilesChange={session.updateWorkspaceFiles}
-                          stdinSeed={problems.stdinSeed}
-                        />
+                        <View style={styles.problemTabs} accessibilityRole="tablist">
+                          <ProblemTab
+                            label="Code"
+                            selected={!mobileProblem}
+                            onPress={() => setMobileProblem(false)}
+                          />
+                          <ProblemTab
+                            label="Problemă"
+                            selected={mobileProblem}
+                            onPress={() => setMobileProblem(true)}
+                          />
+                        </View>
+                        {mobileProblem ? (
+                          problemPanel
+                        ) : (
+                          <CodePanel
+                            document={session.code}
+                            runs={session.runs}
+                            files={session.workspaceFiles}
+                            selfPeerId={session.selfPeerId}
+                            onRun={session.runCode}
+                            onFilesChange={session.updateWorkspaceFiles}
+                            stdinSeed={problems.stdinSeed}
+                          />
+                        )}
                       </View>
-                      {problemsOpen && (
-                        <>
-                          <ProblemResizeHandle onDrag={resizeProblems} />
-                          <View
-                            style={{ width: clampPanelWidth(problemWidth, stageWidth || width) }}
-                          >
-                            {problemPanel}
-                          </View>
-                        </>
-                      )}
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <View style={styles.codePane}>
+                          <CodePanel
+                            document={session.code}
+                            runs={session.runs}
+                            files={session.workspaceFiles}
+                            selfPeerId={session.selfPeerId}
+                            onRun={session.runCode}
+                            onFilesChange={session.updateWorkspaceFiles}
+                            stdinSeed={problems.stdinSeed}
+                          />
+                        </View>
+                      </>
+                    )}
+                  </View>
+                )
+              )}
+            </View>
+            {/* Full-height problems panel beside the whole stage (videos + code). */}
+            {stage !== 'whiteboard' && session.code && !compactProblems && problemsOpen && (
+              <>
+                <ProblemResizeHandle onDrag={resizeProblems} />
+                <View style={{ width: clampPanelWidth(problemWidth, stageWidth || width) }}>
+                  {problemPanel}
                 </View>
-              )
+              </>
             )}
           </View>
         ) : (
@@ -440,9 +442,9 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
         contentContainerStyle={[styles.toolbar, !wide && styles.toolbarRow]}
       >
         <ToolbarButton
-          icon={microphoneOn(session.localStream) ? 'mic' : 'mic-off'}
-          label={microphoneOn(session.localStream) ? 'Mute' : 'Unmute'}
-          danger={!microphoneOn(session.localStream)}
+          icon={microphoneUnmuted(session.localStream) ? 'mic' : 'mic-off'}
+          label={microphoneUnmuted(session.localStream) ? 'Mute' : 'Unmute'}
+          danger={!microphoneUnmuted(session.localStream)}
           onPress={session.toggleMic}
         />
         <ToolbarButton
@@ -678,6 +680,11 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     flexDirection: 'row',
+  },
+  stageRow: {
+    flex: 1,
+    flexDirection: 'row',
+    minWidth: 0,
   },
   stage: {
     flex: 1,
