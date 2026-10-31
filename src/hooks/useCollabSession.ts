@@ -28,6 +28,7 @@ import {
   INITIAL_PROBLEM_SYNC,
   normalizeSharedProblem,
   reduceProblemSync,
+  shouldApplySharedProblem,
   type ProblemSyncState,
 } from '../collaborare/sync';
 import { SIGNALING_URL } from '../signaling/config';
@@ -52,6 +53,7 @@ import {
   type ChatMessage,
   type HostCommand,
   type PeerState,
+  type ProblemListQuery,
   type RoomSettings,
   type Stroke,
   type WaitingPeer,
@@ -137,6 +139,8 @@ export interface CollabSession {
   readonly problemSync: ProblemSyncState;
   /** Picks a problem. The host shares it unless they are browsing on their own. */
   chooseProblem: (slug: string) => void;
+  /** Publishes the shared search, filters and whether the list is open. */
+  setProblemQuery: (query: ProblemListQuery) => void;
   setFollowHost: (follow: boolean) => void;
   readonly self: PeerState;
   readonly selfPeerId: string | null;
@@ -278,6 +282,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
   const [problemSync, setProblemSync] = useState<ProblemSyncState>(INITIAL_PROBLEM_SYNC);
   const problemSyncRef = useRef(problemSync);
+  const problemEpoch = useRef(0);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [breakoutOf, setBreakoutOf] = useState<string | null>(null);
   const [settings, setSettings] = useState<RoomSettings>(DEFAULT_ROOM_SETTINGS);
@@ -545,9 +550,13 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       });
       signaling.on('room:host', setHostPeerId);
       signaling.on('problem:state', (problem) => {
+        const incoming = normalizeSharedProblem(problem);
+        if (!shouldApplySharedProblem(incoming, selfPeerIdRef.current, problemEpoch.current)) {
+          return;
+        }
         const next = reduceProblemSync(problemSyncRef.current, {
           type: 'host-state',
-          problem: normalizeSharedProblem(problem),
+          problem: incoming,
         }).state;
         problemSyncRef.current = next;
         setProblemSync(next);
@@ -642,8 +651,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
             submissionByRun.current.set(run.runId, request);
           }
         }
-        setRuns((current) => [
-          ...current,
+        setRuns([
           {
             ...run,
             stdin: run.stdin ?? '',
@@ -901,14 +909,48 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       console.info('[collab] opening camera and microphone', { video, audio: true });
       const audioDeviceId = audioDeviceRef.current || undefined;
       const videoDeviceId = videoDeviceRef.current || undefined;
+      const adoptLate = (late: MediaStream): void => {
+        if (!stillHere()) {
+          late.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        const stream = streamRef.current;
+        const missing = late
+          .getTracks()
+          .filter((track) => stream?.getTracks().every((have) => have.kind !== track.kind));
+        late
+          .getTracks()
+          .filter((track) => !missing.includes(track))
+          .forEach((track) => track.stop());
+        if (missing.length === 0) {
+          return;
+        }
+        takeOpenedTracks(new MediaStream(missing));
+        const audioLive = microphoneOn(stream!);
+        const videoLive = cameraOn(stream!);
+        const next: PeerState = {
+          ...selfRef.current,
+          audioMuted: !audioLive,
+          videoOff: !videoLive,
+        };
+        selfRef.current = next;
+        setSelf(next);
+        setLocalStream(stream);
+        setError((current) => (isMediaMessage(current) ? null : current));
+        void refreshDevices();
+      };
       let opened: MediaStream;
       try {
-        opened = await acquireLocalStream({
-          video,
-          audio: true,
-          videoDeviceId,
-          audioDeviceId,
-        });
+        opened = await acquireLocalStream(
+          {
+            video,
+            audio: true,
+            videoDeviceId,
+            audioDeviceId,
+          },
+          undefined,
+          adoptLate,
+        );
       } catch (cause) {
         console.info('[collab] getUserMedia failed', cause);
         if (!stillHere()) {
@@ -1348,8 +1390,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       };
       const checked = validateExecutionRequest(payload);
       if (!checked.ok) {
-        setRuns((current) => [
-          ...current,
+        setRuns([
           {
             runId: randomUUID(),
             byPeerId: selfPeerIdRef.current ?? sessionIdRef.current,
@@ -1391,21 +1432,42 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     }
   }, []);
 
+  const shareProblem = useCallback(
+    (action: Parameters<typeof reduceProblemSync>[1]) => {
+      const result = reduceProblemSync(problemSyncRef.current, action);
+      if (!result.publish) {
+        persistProblem(result.state);
+        return;
+      }
+      problemEpoch.current += 1;
+      const host = { ...result.publish, clientEpoch: problemEpoch.current };
+      persistProblem({ ...result.state, host });
+      signalingRef.current?.emit('problem:select', {
+        slug: host.slug,
+        query: host.query,
+        clientEpoch: host.clientEpoch,
+      });
+    },
+    [persistProblem],
+  );
+
   const chooseProblem = useCallback(
     (slug: string) => {
-      const isHost = selfPeerIdRef.current !== null && selfPeerIdRef.current === hostPeerId;
-      const result = reduceProblemSync(problemSyncRef.current, {
+      shareProblem({
         type: 'choose',
         slug,
-        isHost,
+        isHost: selfPeerIdRef.current !== null && selfPeerIdRef.current === hostPeerId,
         now: Date.now(),
       });
-      persistProblem(result.state);
-      if (result.broadcastSlug) {
-        signalingRef.current?.emit('problem:select', result.broadcastSlug);
-      }
     },
-    [hostPeerId, persistProblem],
+    [hostPeerId, shareProblem],
+  );
+
+  const setProblemQuery = useCallback(
+    (query: ProblemListQuery) => {
+      shareProblem({ type: 'query', query, now: Date.now() });
+    },
+    [shareProblem],
   );
 
   const setFollowHost = useCallback(
@@ -1729,6 +1791,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     workspaceFiles,
     problemSync,
     chooseProblem,
+    setProblemQuery,
     setFollowHost,
     self,
     selfPeerId,
