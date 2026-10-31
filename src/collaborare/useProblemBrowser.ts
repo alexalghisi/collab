@@ -1,3 +1,4 @@
+import { Linking } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { runOnHostedCompiler } from '../code/hostedRun';
 import type { SharedCodeDocument } from '../code/SharedCodeDocument';
@@ -17,6 +18,7 @@ import {
   shouldConfirmOverwrite,
   starterLanguage,
 } from './starter';
+import { problemPageUrl } from './types';
 import { randomProblem, stepProblem, visibleProblemSlug, type ProblemSyncState } from './sync';
 import type { ProblemListQuery } from '../signaling/events';
 import { useProblemCatalog } from './useProblemCatalog';
@@ -92,6 +94,29 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
     session.code.replaceText(problemStarter(language, detail.title));
     setStdinSeed({ token: Date.now(), value: firstExampleInput(detail) });
     setConfirming(false);
+  };
+
+  /**
+   * collaborare.ro keeps its login on its own domain, so Collab cannot submit
+   * for you. Copy the current editor code and open the problem there, where
+   * you are already signed in, ready to paste and submit.
+   */
+  const submitOnSite = async (): Promise<boolean> => {
+    if (!detail) {
+      return false;
+    }
+    const code = session.code?.text.toString() ?? '';
+    let copied = false;
+    try {
+      if (code && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(code);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+    void Linking.openURL(problemPageUrl(detail.slug));
+    return copied;
   };
 
   const runExamples = (): void => {
@@ -191,5 +216,6 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
       setConfirming(false);
     },
     runExamples,
+    submitOnSite,
   };
 }

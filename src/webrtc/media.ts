@@ -6,15 +6,15 @@ export interface MediaConstraintsOptions {
 }
 
 /**
- * Ask for a real 720p picture (1080p when the camera and the machine can give
- * it) at a smooth 30 fps, instead of whatever low default the platform picks.
+ * Ask for a full-HD 1080p picture (up to 4K when the camera can give it) at a
+ * smooth 30 fps (60 where supported), instead of whatever low default the platform picks.
  * `ideal` rather than `exact` so a weaker webcam still opens.
  */
 export const CAMERA_CONSTRAINTS: MediaTrackConstraints = {
   facingMode: 'user',
-  width: { ideal: 1280, max: 1920 },
-  height: { ideal: 720, max: 1080 },
-  frameRate: { ideal: 30, max: 30 },
+  width: { ideal: 1920, max: 3840 },
+  height: { ideal: 1080, max: 2160 },
+  frameRate: { ideal: 30, max: 60 },
 };
 
 /**
@@ -51,7 +51,7 @@ function hintContent(track: MediaStreamTrack, hint: 'motion' | 'detail' | 'speec
 }
 
 /** How long we wait for the permission prompt before joining without that device. */
-export const MEDIA_WAIT_MS = 8_000;
+export const MEDIA_WAIT_MS = 20_000;
 
 function stopTracks(stream: MediaStream): void {
   for (const track of stream.getTracks()) {
@@ -95,7 +95,28 @@ function withDevice(
   return { ...constraints, deviceId: { exact: deviceId } };
 }
 
-async function openUserMedia(
+/**
+ * Browsers queue a second getUserMedia behind a pending one (an open permission
+ * prompt or a camera still starting), so a mic request made while the camera
+ * opens used to time out and leave the mic stuck. Run them one at a time.
+ */
+let captureQueue: Promise<unknown> = Promise.resolve();
+
+function openUserMedia(
+  video: boolean | MediaTrackConstraints,
+  audio: boolean | MediaTrackConstraints,
+  timeoutMs: number,
+  onLate?: LateStream,
+): Promise<MediaStream> {
+  const run = captureQueue.then(
+    () => openUserMediaNow(video, audio, timeoutMs, onLate),
+    () => openUserMediaNow(video, audio, timeoutMs, onLate),
+  );
+  captureQueue = run.catch(() => undefined);
+  return run;
+}
+
+async function openUserMediaNow(
   video: boolean | MediaTrackConstraints,
   audio: boolean | MediaTrackConstraints,
   timeoutMs: number,
@@ -208,7 +229,18 @@ export async function acquireLocalStream(
 }
 
 export async function acquireMicrophoneTrack(deviceId?: string): Promise<MediaStreamTrack> {
-  const stream = await openDevices(false, true, MEDIA_WAIT_MS, deviceId);
+  let stream: MediaStream;
+  try {
+    stream = await openDevices(false, true, MEDIA_WAIT_MS, deviceId);
+  } catch (cause) {
+    // Some drivers (Bluetooth headsets, virtual devices) never answer a request
+    // with processing constraints; a plain request opens them.
+    if (!isMediaTimeout(cause) && !isOverconstrained(cause)) {
+      throw cause;
+    }
+    console.info('[collab] microphone retry with plain audio');
+    stream = await openUserMedia(false, deviceId ? { deviceId: { exact: deviceId } } : true, 8_000);
+  }
   const track = stream.getAudioTracks()[0];
   if (!track) {
     throw new Error('no-microphone');

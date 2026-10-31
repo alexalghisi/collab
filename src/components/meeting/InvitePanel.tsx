@@ -78,8 +78,8 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
     <SidePanel title="Invite" onClose={onClose}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
         <Text style={styles.lede}>
-          Send the join link by SMS or email. The other person gets a message they can open to join
-          this call.
+          Send the join link by SMS, email, or WhatsApp. The other person gets a message they can
+          open to join this call.
         </Text>
         <TextInput
           style={styles.input}
@@ -105,6 +105,7 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
             icon="logo-whatsapp"
             variant="secondary"
             onPress={() => openWhatsApp(contact)}
+            disabled={busy}
           />
         )}
         <Button

@@ -22,7 +22,7 @@ import { sharedRoomFiles } from '../../files/roomFiles';
 import type { CollabSession } from '../../hooks/useCollabSession';
 import { INVITE_ACTION_LABEL } from '../../meeting/invite';
 import { colors } from '../../theme';
-import { cameraOn, microphoneOn } from '../../webrtc/captureState';
+import { cameraOn, microphoneUnmuted } from '../../webrtc/captureState';
 import { Button } from '../ui/Button';
 import { VideoTile } from '../VideoTile';
 import { ChatPanel } from './ChatPanel';
@@ -164,6 +164,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
       onLoad={problems.requestLoad}
       onConfirmLoad={problems.confirmLoad}
       onRunExamples={problems.runExamples}
+      onSubmit={problems.submitOnSite}
       onClose={() => {
         setProblemsOpen(false);
         setMobileProblem(false);
@@ -386,9 +387,9 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           contentContainerStyle={[styles.toolbar, !wide && styles.toolbarRow]}
         >
           <ToolbarButton
-            icon={microphoneOn(session.localStream) ? 'mic' : 'mic-off'}
-            label={microphoneOn(session.localStream) ? 'Mute' : 'Unmute'}
-            danger={!microphoneOn(session.localStream)}
+            icon={microphoneUnmuted(session.localStream) ? 'mic' : 'mic-off'}
+            label={microphoneUnmuted(session.localStream) ? 'Mute' : 'Unmute'}
+            danger={!microphoneUnmuted(session.localStream)}
             onPress={session.toggleMic}
           />
           <ToolbarButton
@@ -692,6 +693,11 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     flexDirection: 'row',
+  },
+  stageRow: {
+    flex: 1,
+    flexDirection: 'row',
+    minWidth: 0,
   },
   stage: {
     flex: 1,

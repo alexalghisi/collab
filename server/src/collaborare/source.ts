@@ -27,6 +27,8 @@ interface SourceOptions {
   readonly ttlMs?: number;
   readonly url?: string;
   readonly key?: string;
+  /** Rows kept in this repo and served after the public catalog's own. */
+  readonly localRows?: readonly CatalogRow[];
 }
 
 function catalogBase(): string {
@@ -54,6 +56,7 @@ export function createProblemCatalog(options: SourceOptions = {}): ProblemCatalo
   const ttlMs = options.ttlMs ?? CATALOG_TTL_MS;
   const base = (options.url ?? catalogBase()).replace(/\/$/, '');
   const key = options.key ?? catalogKey();
+  const localRows = options.localRows ?? [];
   let listCache: {
     readonly at: number;
     readonly fetchedAt: string;
@@ -80,7 +83,9 @@ export function createProblemCatalog(options: SourceOptions = {}): ProblemCatalo
     endpoint.searchParams.set('order', 'difficulty.asc,title.asc');
     endpoint.searchParams.set('limit', '2000');
     const rows = await readRows(await fetchImpl(endpoint, { headers }));
-    const problems = rows.flatMap((row) => {
+    const remoteSlugs = new Set(rows.map((row) => row.slug));
+    const local = localRows.filter((row) => !remoteSlugs.has(row.slug));
+    const problems = [...rows, ...local].flatMap((row) => {
       const summary = summaryFromRow(row);
       return summary ? [summary] : [];
     });
@@ -94,6 +99,10 @@ export function createProblemCatalog(options: SourceOptions = {}): ProblemCatalo
     async detail(slug) {
       if (!isProblemSlug(slug)) {
         return null;
+      }
+      const local = localRows.find((row) => row.slug === slug);
+      if (local) {
+        return detailFromRow(local);
       }
       const cached = details.get(slug);
       if (cached && now() - cached.at < ttlMs) {
