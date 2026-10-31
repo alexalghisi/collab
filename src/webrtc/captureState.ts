@@ -21,6 +21,28 @@ export function cameraOn(stream: MediaStream | null | undefined): boolean {
   return trackIsLive(stream?.getVideoTracks()[0]);
 }
 
+export type CameraTogglePlan = 'stop' | 'enable' | 'reopen' | 'open';
+
+/**
+ * What Start/Stop video should do.
+ *
+ * A picture that is actually showing stops. A live track that is only disabled
+ * turns back on, so we do not ask the browser for a second camera. A live track
+ * the OS has muted still holds the device: opening another capture queues
+ * behind it and the button never finishes, so that track is released first.
+ */
+export function cameraTogglePlan(
+  track: { readyState: string; enabled: boolean; muted?: boolean } | undefined,
+): CameraTogglePlan {
+  if (!track || track.readyState !== 'live') {
+    return 'open';
+  }
+  if (track.muted === true) {
+    return 'reopen';
+  }
+  return track.enabled ? 'stop' : 'enable';
+}
+
 export function describeMediaFailure(cause: unknown): string {
   const name = cause instanceof Error ? cause.name : '';
   const message = cause instanceof Error ? cause.message : '';
