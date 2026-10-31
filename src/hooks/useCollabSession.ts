@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
 import { mergeChatHistory } from '../chat/history';
