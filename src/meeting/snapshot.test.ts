@@ -68,7 +68,18 @@ describe('room snapshot', () => {
       strokes: board,
       transcript: captions,
       problem: {
-        host: { slug: null, history: [], updatedAt: 0 },
+        host: {
+          slug: null,
+          history: [],
+          updatedAt: 0,
+          query: {
+            text: '',
+            category: '__all',
+            olympGrade: null,
+            olympLevel: null,
+            listing: true,
+          },
+        },
         followHost: true,
         localSlug: null,
         localHistory: [],
@@ -80,7 +91,18 @@ describe('room snapshot', () => {
       strokes: [],
       transcript: [],
       problem: {
-        host: { slug: null, history: [], updatedAt: 0 },
+        host: {
+          slug: null,
+          history: [],
+          updatedAt: 0,
+          query: {
+            text: '',
+            category: '__all',
+            olympGrade: null,
+            olympLevel: null,
+            listing: true,
+          },
+        },
         followHost: true,
         localSlug: null,
         localHistory: [],

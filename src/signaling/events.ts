@@ -152,12 +152,36 @@ export interface BoardFile {
   readonly h: number;
 }
 
-/** The problem the room is looking at, plus the slugs opened so far. */
+/** Search and filters that decide which problems the room is looking at. */
+export interface ProblemListQuery {
+  readonly text: string;
+  readonly category: string;
+  readonly olympGrade: number | null;
+  readonly olympLevel: string | null;
+  /** True while the list is on screen; false while a statement is open. */
+  readonly listing: boolean;
+}
+
+/** The problem the room is looking at, plus the list everyone should see. */
 export interface SharedProblem {
   readonly slug: string | null;
   readonly history: readonly string[];
   readonly updatedAt: number;
+  readonly query: ProblemListQuery;
+  /** Who published this view. Absent on older snapshots. */
+  readonly byPeerId?: string;
+  /** Sender's own counter, so a late echo of their previous edit is ignored. */
+  readonly clientEpoch?: number;
 }
+
+/** A slug, or the whole shared list. A string keeps older clients working. */
+export type ProblemSelectPayload =
+  | string
+  | {
+      readonly slug?: string | null;
+      readonly query?: Partial<ProblemListQuery>;
+      readonly clientEpoch?: number;
+    };
 
 export interface RoomJoinedPayload {
   readonly selfPeerId: string;
@@ -229,8 +253,8 @@ export interface ClientToServerEvents {
   /** Asks the meeting assistant; the reply is streamed to the whole room. */
   'assistant:ask': (ask: AssistantAsk) => void;
   'room:settings': (settings: RoomSettings) => void;
-  /** Host only. Everyone following the host switches to this problem. */
-  'problem:select': (slug: string) => void;
+  /** Anyone in the room. Everyone else switches to this problem and list. */
+  'problem:select': (update: ProblemSelectPayload) => void;
   'host:command': (payload: HostCommandPayload) => void;
   'waiting:decide': (decision: WaitingDecision) => void;
 }
