@@ -217,12 +217,28 @@ export class SharedCodeDocument {
     if (next === current) {
       return;
     }
+    // Only touch the part that differs: deleting and re-inserting everything
+    // would make a peer's concurrent keystrokes land in the middle of words.
+    let start = 0;
+    const shortest = Math.min(current.length, next.length);
+    while (start < shortest && current[start] === next[start]) {
+      start += 1;
+    }
+    let tail = 0;
+    while (
+      tail < shortest - start &&
+      current[current.length - 1 - tail] === next[next.length - 1 - tail]
+    ) {
+      tail += 1;
+    }
+    const removed = current.length - start - tail;
+    const inserted = next.slice(start, next.length - tail);
     this.doc.transact(() => {
-      if (current.length > 0) {
-        this.text.delete(0, current.length);
+      if (removed > 0) {
+        this.text.delete(start, removed);
       }
-      if (next !== '') {
-        this.text.insert(0, next);
+      if (inserted !== '') {
+        this.text.insert(start, inserted);
       }
     });
   }
