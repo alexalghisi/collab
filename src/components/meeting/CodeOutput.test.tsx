@@ -23,18 +23,46 @@ function run(patch: Partial<CodeRun> & Pick<CodeRun, 'runId' | 'stdout'>): CodeR
 }
 
 describe('CodeOutput', () => {
-  it('shows only the latest program output', () => {
+  it('shows only the latest run, who started it, and the input', () => {
     render(
       <CodeOutput
         runs={[
-          run({ runId: 'old', stdout: 'first\n' }),
-          run({ runId: 'new', stdout: 'Hello from Collab\n' }),
+          run({ runId: 'old', stdout: 'first\n', stdin: 'old\n', byDisplayName: 'Linus' }),
+          run({
+            runId: 'new',
+            stdout: 'Hello from Collab\n',
+            stdin: '3\n1 2 3\n',
+            byDisplayName: 'Ada',
+          }),
         ]}
       />,
     );
 
+    expect(screen.getByText(/Ada/)).toBeTruthy();
+    expect(screen.getByText(/3\s+1 2 3/)).toBeTruthy();
     expect(screen.getByText(/Hello from Collab/)).toBeTruthy();
-    expect(screen.queryByText(/first/)).toBeNull();
-    expect(screen.getByText('finished')).toBeTruthy();
+    expect(screen.queryByText(/Linus/)).toBeNull();
+    expect(screen.queryByText('first\n')).toBeNull();
+    expect(screen.queryByText('stdout')).toBeNull();
+  });
+
+  it('clears stdout while the latest run has not printed yet', () => {
+    render(
+      <CodeOutput
+        runs={[
+          run({
+            runId: 'new',
+            stdout: '',
+            stdin: '41\n',
+            running: true,
+            exitCode: null,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/41/)).toBeTruthy();
+    expect(screen.getByText('running')).toBeTruthy();
+    expect(screen.queryByText('(empty)')).toBeNull();
   });
 });
