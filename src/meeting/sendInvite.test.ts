@@ -91,4 +91,22 @@ describe('sendContactInvite', () => {
       }),
     ).rejects.toThrow(/could not be delivered/i);
   });
+  it("falls back to the host's own mail app when the server has no mail provider", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: 'not configured' }), { status: 503 })),
+    );
+    const location = { href: '' };
+    vi.stubGlobal('location', location);
+    const contact = await sendContactInvite('http://signaling.example', {
+      contact: 'ada@example.com, linus@example.com',
+      roomId: 'room-1',
+      sessionId: 'session-1',
+      hostName: 'Ada',
+      link: 'https://collab.example/?room=room-1',
+    });
+    expect(contact).toEqual({ kind: 'email', value: 'ada@example.com' });
+    expect(location.href).toMatch(/^mailto:ada%40example\.com,linus%40example\.com\?subject=/);
+    expect(decodeURIComponent(location.href)).toContain('https://collab.example/?room=room-1');
+  });
 });
