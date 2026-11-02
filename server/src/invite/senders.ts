@@ -63,6 +63,10 @@ function twilioSendSms(env: InviteEnv): InviteTransport['sendSms'] | null {
         body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
       },
     );
+    if (rejectedCredentials(response)) {
+      console.warn(`Twilio rejected the SMS credentials (HTTP ${response.status}).`);
+      throw new UnconfiguredError('sms');
+    }
     if (!response.ok) {
       throw new Error(await describeFailure(response, 'The SMS could not be delivered.'));
     }
@@ -84,10 +88,23 @@ function resendSendEmail(env: InviteEnv): InviteTransport['sendEmail'] | null {
       },
       body: JSON.stringify({ from, to: [to], subject, text }),
     });
+    if (rejectedCredentials(response)) {
+      console.warn(`Resend rejected RESEND_API_KEY (HTTP ${response.status}).`);
+      throw new UnconfiguredError('email');
+    }
     if (!response.ok) {
       throw new Error(await describeFailure(response, 'The email could not be delivered.'));
     }
   };
+}
+
+/**
+ * A revoked or mistyped provider key is a configuration problem, not a delivery
+ * failure: report it as "not configured" so clients fall back to Google Calendar
+ * or the host's own mail app instead of failing the invite.
+ */
+function rejectedCredentials(response: Response): boolean {
+  return response.status === 401 || response.status === 403;
 }
 
 async function describeFailure(response: Response, fallback: string): Promise<string> {
