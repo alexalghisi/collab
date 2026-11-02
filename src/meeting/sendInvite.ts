@@ -16,6 +16,35 @@ interface InviteResponseBody {
   readonly error?: unknown;
 }
 
+/** A prefilled mail (all addresses) or SMS link for the same invite. */
+export function composerUrl(contacts: readonly ParsedContact[], request: InviteRequest): string {
+  const host = request.hostName.trim() || 'Someone';
+  const what = request.title?.trim() ? `"${request.title.trim()}"` : 'a Collab meeting';
+  const text = `${host} invited you to ${what}. Join here: ${request.link}`;
+  const emails = contacts.filter((c) => c.kind === 'email').map((c) => c.value);
+  if (emails.length > 0) {
+    const subject = `Join ${what} on Collab`;
+    return `mailto:${emails.map(encodeURIComponent).join(',')}?subject=${encodeURIComponent(
+      subject,
+    )}&body=${encodeURIComponent(text)}`;
+  }
+  const phones = contacts.map((c) => c.value).join(',');
+  return `sms:${phones}?&body=${encodeURIComponent(text)}`;
+}
+
+function openComposer(contacts: readonly ParsedContact[], request: InviteRequest): boolean {
+  const target = globalThis as { location?: { href: string } };
+  if (contacts.length === 0 || !target.location) {
+    return false;
+  }
+  try {
+    target.location.href = composerUrl(contacts, request);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function inviteUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/$/, '')}/invite`;
 }
@@ -45,6 +74,11 @@ export async function sendContactInvite(
     });
   } catch {
     throw new InviteError('Could not reach the invite service.');
+  }
+
+  if (response.status === 503 && openComposer(contacts, request)) {
+    // No mail/SMS provider on the server: the invite goes out from the host's own app.
+    return contacts[0];
   }
 
   if (!response.ok) {

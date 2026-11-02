@@ -81,6 +81,26 @@ describe('calendar router', () => {
     await app.close();
   });
 
+  it('keeps the grant even when the account record was lost in a server restart', async () => {
+    const app = await start(async (params) =>
+      params.grant_type === 'authorization_code'
+        ? { status: 200, body: { access_token: 'a1', expires_in: 3599, refresh_token: 'r1' } }
+        : { status: 200, body: { access_token: 'a2', expires_in: 3599 } },
+    );
+    const ghost = issueToken({ uid: 'ghost-uid', email: 'ghost@example.com', displayName: 'G' });
+    const headers = { Authorization: `Bearer ${ghost}`, 'Content-Type': 'application/json' };
+    const connect = await fetch(`${app.url}/calendar/connect`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ code: 'c', redirectUri: 'postmessage' }),
+    });
+    expect(connect.status).toBe(200);
+    expect(app.store.calendarRefreshToken('ghost-uid')).toBe('r1');
+    const token = await fetch(`${app.url}/calendar/token`, { method: 'POST', headers });
+    expect(token.status).toBe(200);
+    await app.close();
+  });
+
   it('forgets a revoked grant so the person can connect again', async () => {
     const app = await start(async () => ({ status: 400, body: { error: 'invalid_grant' } }));
     app.store.setCalendarRefreshToken(app.user.uid, 'old');

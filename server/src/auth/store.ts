@@ -112,6 +112,32 @@ export class UserStore {
     return undefined;
   }
 
+  /**
+   * The account behind a still-valid session. A Render restart without a cloud store
+   * loses the user file while signed tokens stay valid, so the record is rebuilt here
+   * (same uid) instead of silently dropping whatever is saved against it.
+   */
+  ensureSessionUser(session: { uid: string; email: string; displayName: string }): StoredUser {
+    const found = this.findByUid(session.uid);
+    if (found) {
+      return found;
+    }
+    const email = normalizeEmail(session.email);
+    const existing = this.users.get(email);
+    const user: StoredUser = existing
+      ? { ...existing, uid: session.uid }
+      : {
+          uid: session.uid,
+          email,
+          displayName: session.displayName.trim() || email,
+          passwordHash: null,
+          googleSub: null,
+        };
+    this.users.set(email, user);
+    this.save();
+    return user;
+  }
+
   calendarRefreshToken(uid: string): string | null {
     return this.findByUid(uid)?.calendarRefreshToken ?? null;
   }

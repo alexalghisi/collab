@@ -63,11 +63,15 @@ const defaultRevoke = async (token: string): Promise<void> => {
   );
 };
 
-function sessionUid(request: Request): string | null {
+function sessionUser(request: Request) {
   const header = request.headers.authorization;
   const token =
     typeof header === 'string' && header.toLowerCase().startsWith('bearer ') ? header.slice(7) : '';
-  return verifyToken(token)?.uid ?? null;
+  return verifyToken(token);
+}
+
+function sessionUid(request: Request): string | null {
+  return sessionUser(request)?.uid ?? null;
 }
 
 function readString(value: unknown): string {
@@ -107,8 +111,9 @@ export function calendarRouter({
   });
 
   router.post('/calendar/connect', async (request, response) => {
-    const uid = sessionUid(request);
-    if (!uid) {
+    const session = sessionUser(request);
+    const uid = session?.uid ?? null;
+    if (!session || !uid) {
       response.status(401).json({ error: 'Sign in again to connect Google Calendar.' });
       return;
     }
@@ -147,7 +152,12 @@ export function calendarRouter({
         .json({ error: 'Google did not grant offline access. Try connecting again.' });
       return;
     }
-    store.setCalendarRefreshToken(uid, refresh);
+    // The account record may be gone after a server restart; recreate it so the grant sticks.
+    store.ensureSessionUser(session);
+    if (!store.setCalendarRefreshToken(uid, refresh)) {
+      response.status(500).json({ error: 'Google Calendar could not be saved. Try again.' });
+      return;
+    }
     response.json({ accessToken: body.access_token, expiresIn: body.expires_in ?? 3600 });
   });
 
