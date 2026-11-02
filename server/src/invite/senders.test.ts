@@ -6,6 +6,21 @@ describe('invite transport', () => {
     vi.unstubAllGlobals();
   });
 
+  it('treats a rejected Resend API key as unconfigured so clients fall back', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: 'API key is invalid' }), { status: 403 }),
+      ),
+    );
+    const transport = transportFromEnv({ RESEND_API_KEY: 're_bad', RESEND_FROM: 'a@b.c' });
+    const failure = await transport.sendEmail('x@y.z', 's', 'b').catch((cause: unknown) => cause);
+    expect(isUnconfigured(failure)).toBe(true);
+    expect((failure as Error).message).toBe('Email invites are not configured on the server.');
+  });
+
   it('posts an SMS to Twilio when the account is configured', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
