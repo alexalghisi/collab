@@ -1,8 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  AccountStoreError,
   UserStore,
   createUserStoreFromEnv,
   gistUserStore,
@@ -221,5 +222,84 @@ describe('createUserStoreFromEnv', () => {
     writeFileSync(path, '{"users":[]}');
     const store = createUserStoreFromEnv(path, {});
     expect(store.findByEmail('nobody@example.com')).toBeUndefined();
+  });
+});
+
+describe('UserStore with a failing cloud store', () => {
+  const unauthorized = {
+    async pull(): Promise<null> {
+      throw new AccountStoreError(401);
+    },
+    push: vi.fn(async () => {
+      throw new AccountStoreError(401);
+    }),
+  };
+
+  it('starts on local accounts when the cloud store rejects the token', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const path = join(tempDir(), 'users.json');
+    new UserStore(path).create({ email: 'ada@example.com', displayName: 'Ada', passwordHash: 'x' });
+    const store = new UserStore(path, { ...unauthorized, push: vi.fn() });
+
+    await expect(store.ready()).resolves.toBeUndefined();
+
+    expect(store.findByEmail('ada@example.com')?.displayName).toBe('Ada');
+    expect(store.remoteAvailable).toBe(false);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(String(error.mock.calls[0]?.[0])).toContain('AUTH_GIST_TOKEN');
+  });
+
+  it('does not crash the process when a background push is rejected', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const push = vi.fn(async () => {
+        throw new AccountStoreError(401);
+      });
+      const store = new UserStore(join(tempDir(), 'users.json'), { pull: async () => null, push });
+
+      store.create({ email: 'ada@example.com', displayName: 'Ada', passwordHash: 'x' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      store.create({ email: 'linus@example.com', displayName: 'Linus', passwordHash: 'x' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(push).toHaveBeenCalledTimes(1);
+      expect(store.findByEmail('linus@example.com')).toBeDefined();
+      expect(error).toHaveBeenCalledTimes(1);
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
+  it('keeps syncing after a transient server error and still rethrows it from ready()', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const push = vi.fn(async () => {});
+    const store = new UserStore(join(tempDir(), 'users.json'), {
+      async pull() {
+        throw new AccountStoreError(503);
+      },
+      push,
+    });
+
+    await expect(store.ready()).rejects.toBeInstanceOf(AccountStoreError);
+    store.create({ email: 'ada@example.com', displayName: 'Ada', passwordHash: 'x' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(store.remoteAvailable).toBe(true);
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the HTTP status of a rejected gist call as an AccountStoreError', async () => {
+    const remote = gistUserStore(
+      'id',
+      'expired',
+      'secret',
+      (async () => new Response('Bad credentials', { status: 401 })) as unknown as typeof fetch,
+    );
+
+    await expect(remote.pull()).rejects.toMatchObject({ status: 401, isAuthFailure: true });
+    await expect(remote.push({ users: [] })).rejects.toBeInstanceOf(AccountStoreError);
   });
 });

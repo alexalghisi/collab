@@ -21,8 +21,22 @@ export interface RemoteUserStore {
   push(file: UserFile): Promise<void>;
 }
 
+/** A non-OK answer from the cloud account store (GitHub Gist or AUTH_STORE_URL). */
+export class AccountStoreError extends Error {
+  constructor(readonly status: number) {
+    super(`account store answered ${status}`);
+    this.name = 'AccountStoreError';
+  }
+
+  /** 401/403: the credentials are wrong or expired, so retrying cannot help. */
+  get isAuthFailure(): boolean {
+    return this.status === 401 || this.status === 403;
+  }
+}
+
 export class UserStore {
   private users = new Map<string, StoredUser>();
+  private remoteDisabled = false;
 
   constructor(
     private readonly path: string,
@@ -33,16 +47,28 @@ export class UserStore {
 
   /** Waits for the cloud copy, if any, so a fresh Render box sees yesterday's sign-ups. */
   async ready(): Promise<void> {
-    if (!this.remote) {
+    if (!this.remote || this.remoteDisabled) {
       return;
     }
-    const file = await this.remote.pull();
-    if (file && file.users.length > 0) {
-      this.replace(file);
-      this.writeFile();
-    } else if (this.users.size > 0) {
-      await this.remote.push(this.snapshot());
+    try {
+      const file = await this.remote.pull();
+      if (file && file.users.length > 0) {
+        this.replace(file);
+        this.writeFile();
+      } else if (this.users.size > 0) {
+        await this.remote.push(this.snapshot());
+      }
+    } catch (cause) {
+      this.handleRemoteFailure(cause);
+      if (!this.remoteDisabled) {
+        throw cause;
+      }
     }
+  }
+
+  /** False once the cloud store rejected our credentials; accounts then live on local disk only. */
+  get remoteAvailable(): boolean {
+    return Boolean(this.remote) && !this.remoteDisabled;
   }
 
   findByEmail(email: string): StoredUser | undefined {
@@ -194,9 +220,25 @@ export class UserStore {
 
   private save(): void {
     this.writeFile();
-    if (this.remote) {
-      void this.remote.push(this.snapshot());
+    if (this.remote && !this.remoteDisabled) {
+      // Never let a background sync failure become an unhandled rejection: that kills the process.
+      this.remote.push(this.snapshot()).catch((cause: unknown) => this.handleRemoteFailure(cause));
     }
+  }
+
+  private handleRemoteFailure(cause: unknown): void {
+    if (cause instanceof AccountStoreError && cause.isAuthFailure) {
+      if (!this.remoteDisabled) {
+        this.remoteDisabled = true;
+        console.error(
+          `Account store rejected the credentials (HTTP ${cause.status}). ` +
+            'Cloud sync is off; accounts are kept on local disk only. ' +
+            'Rotate AUTH_GIST_TOKEN (needs the "gist" scope) or fix AUTH_STORE_URL, then redeploy.',
+        );
+      }
+      return;
+    }
+    console.error('Could not sync the account store', cause);
   }
 }
 
@@ -272,7 +314,7 @@ export function gistUserStore(
         return null;
       }
       if (!response.ok) {
-        throw new Error(`account store answered ${response.status}`);
+        throw new AccountStoreError(response.status);
       }
       const body = (await response.json()) as {
         files?: Record<string, { content?: string }>;
@@ -289,7 +331,7 @@ export function gistUserStore(
         }),
       });
       if (!response.ok) {
-        throw new Error(`account store answered ${response.status}`);
+        throw new AccountStoreError(response.status);
       }
     },
   };
@@ -307,7 +349,7 @@ export function httpUserStore(
         return null;
       }
       if (!response.ok) {
-        throw new Error(`account store answered ${response.status}`);
+        throw new AccountStoreError(response.status);
       }
       return openUserFile(await response.text(), secret);
     },
@@ -318,7 +360,7 @@ export function httpUserStore(
         body: sealUserFile(file, secret),
       });
       if (!response.ok) {
-        throw new Error(`account store answered ${response.status}`);
+        throw new AccountStoreError(response.status);
       }
     },
   };
