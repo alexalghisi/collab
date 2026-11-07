@@ -155,6 +155,27 @@ test('both participants always see the same problem and example verdicts', async
   await expect(guest.getByText(/3\/3 examples passed/)).toBeVisible();
   await expect(host.getByText('3/3 examples passed · run by Guest')).toBeVisible();
 
+  // Submit opens collaborare.ro with the shared code in the link, ready to submit there.
+  await host
+    .context()
+    .route('https://collaborare.ro/**', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<title>collaborare</title>' }),
+    );
+  const [site] = await Promise.all([
+    host.context().waitForEvent('page'),
+    host.getByRole('button', { name: 'Submit on collaborare.ro' }).click(),
+  ]);
+  const opened = new URL(site.url());
+  expect(opened.pathname).toMatch(/^\/probleme\//);
+  const handoff = new URLSearchParams(opened.hash.slice(1)).get('collab') ?? '';
+  const payload = JSON.parse(
+    Buffer.from(handoff.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'),
+  ) as { lang: string; code: string; submit: boolean };
+  expect(payload).toMatchObject({ lang: 'python', submit: true });
+  expect(payload.code).toContain('def suma(n)');
+  await expect(host.getByText(/Sent to collaborare.ro/)).toBeVisible();
+  await site.close();
+
   // Even a hidden panel comes back when the other person opens a problem.
   await host.getByRole('button', { name: 'Hide problems' }).click();
   await guest.getByRole('button', { name: 'Back to list' }).click();
