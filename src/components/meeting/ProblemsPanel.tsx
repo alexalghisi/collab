@@ -362,7 +362,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
                 {verdicts[index] && (
                   <View accessibilityLabel={`Example ${index + 1} verdict`}>
                     <Text style={verdicts[index].passed ? styles.pass : styles.fail}>
-                      {verdicts[index].passed ? 'Passed' : 'Failed'}
+                      {verdicts[index].passed ? '✓ Passed' : '✗ Failed'}
                       {verdicts[index].error ? ` — ${verdicts[index].error}` : ''}
                     </Text>
                     {!verdicts[index].passed && !verdicts[index].error && (

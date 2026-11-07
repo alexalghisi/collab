@@ -1,3 +1,11 @@
+/**
+ * RNNoise runs on the page's main thread, so a busy page (the code editor, live
+ * sync) delays audio frames and the voice breaks up. The browser's own noise
+ * suppression (getUserMedia constraints) runs off the main thread and is always
+ * on, so the extra RNNoise pass starts off and stays opt-in.
+ */
+export const RNNOISE_ON_BY_DEFAULT = false;
+
 interface RunningSuppression {
   readonly track: MediaStreamTrack;
   readonly stop: () => void;

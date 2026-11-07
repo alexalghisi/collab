@@ -351,4 +351,16 @@ describe('SharedCodeDocument', () => {
     expect(ada.document.text.toString()).toBe('function add(a, b) {\n  return a + b;\n}');
     expect(linus.document.text.toString()).toBe(ada.document.text.toString());
   });
+
+  it('stores line breaks as LF whatever the caller sends', () => {
+    const document = new SharedCodeDocument(
+      { emit() {}, on() {}, off() {}, disconnect() {} } as unknown as ConstructorParameters<
+        typeof SharedCodeDocument
+      >[0],
+      { peerId: 'a', displayName: 'Ada' },
+    );
+    document.replaceText('int main() {\r\n  return 0;\r\n}');
+    expect(document.text.toString()).toBe('int main() {\n  return 0;\n}');
+    document.destroy();
+  });
 });

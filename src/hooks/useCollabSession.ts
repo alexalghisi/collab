@@ -48,7 +48,7 @@ import { loadIceServers } from '../webrtc/loadIceServers';
 import type { IceServerConfig } from '../webrtc/config';
 import { isLoopbackSignalingUrl, waitUntilSignalingReady } from '../signaling/wake';
 import type { LinkQuality } from '../webrtc/linkQuality';
-import { openNoiseSuppression } from '../webrtc/noiseSuppression';
+import { openNoiseSuppression, RNNOISE_ON_BY_DEFAULT } from '../webrtc/noiseSuppression';
 import { nextAudioOutput, outputKindLabel } from '../webrtc/speakers';
 import { joinRemotePeer, rememberRemoteStream, syncRoomPeers } from '../webrtc/participants';
 import type { TranscriptSegment } from '../transcript/segments';
@@ -276,7 +276,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   });
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
   const [linkQuality, setLinkQuality] = useState<Record<string, LinkQuality>>({});
-  const [noiseSuppression, setNoiseSuppression] = useState(true);
+  const [noiseSuppression, setNoiseSuppression] = useState(RNNOISE_ON_BY_DEFAULT);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [boardFiles, setBoardFiles] = useState<BoardFile[]>([]);
@@ -324,7 +324,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const cameraBusyRef = useRef(false);
   const audioDeviceRef = useRef('');
   const videoDeviceRef = useRef('');
-  const noiseOnRef = useRef(true);
+  const noiseOnRef = useRef(RNNOISE_ON_BY_DEFAULT);
   /** Microphone from getUserMedia. Kept alive while a processed copy is sent. */
   const rawMicRef = useRef<MediaStreamTrack | null>(null);
   const voiceProcessorRef = useRef<{ stop: () => void } | null>(null);

@@ -144,6 +144,33 @@ describe('problem sync', () => {
     expect(moved?.examples).toBeFalsy();
   });
 
+  it('keeps its example verdicts when a room echo carries none (an older server)', () => {
+    const shared = reduceProblemSync(INITIAL_PROBLEM_SYNC, {
+      type: 'choose',
+      slug: 'suma',
+      isHost: true,
+      now: 10,
+    });
+    const verdict = { index: 0, passed: true, expected: '1', actual: '1', error: null };
+    const ran = reduceProblemSync(shared.state, {
+      type: 'examples',
+      examples: { slug: 'suma', running: false, verdicts: [verdict], at: 11 },
+      now: 11,
+    });
+
+    const echo = reduceProblemSync(ran.state, {
+      type: 'host-state',
+      problem: { ...shared.state.host, updatedAt: 12 },
+    });
+    expect(echo.state.host.examples?.verdicts).toEqual([verdict]);
+
+    const moved = reduceProblemSync(echo.state, {
+      type: 'host-state',
+      problem: { ...shared.state.host, slug: 'graf', history: ['suma', 'graf'], updatedAt: 13 },
+    });
+    expect(moved.state.host.examples).toBeFalsy();
+  });
+
   it('lets a guest publish and drops a stale echo of their own edit', () => {
     const published = applyProblemSelect(
       EMPTY_SHARED_PROBLEM,
