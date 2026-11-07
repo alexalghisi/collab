@@ -62,6 +62,7 @@ import {
   type HostCommand,
   type PeerState,
   type ProblemListQuery,
+  type SharedExampleRun,
   type RoomSettings,
   type Stroke,
   type WaitingPeer,
@@ -149,6 +150,8 @@ export interface CollabSession {
   chooseProblem: (slug: string) => void;
   /** Publishes the shared search, filters and whether the list is open. */
   setProblemQuery: (query: ProblemListQuery) => void;
+  /** Shares a "Run on examples" result (or that one is running) with the whole room. */
+  shareExamples: (examples: Omit<SharedExampleRun, 'byName' | 'at'> | null) => void;
   setFollowHost: (follow: boolean) => void;
   readonly self: PeerState;
   readonly selfPeerId: string | null;
@@ -1512,6 +1515,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         slug: host.slug,
         query: host.query,
         clientEpoch: host.clientEpoch,
+        ...(action.type === 'examples' ? { examples: host.examples ?? null } : {}),
       });
     },
     [persistProblem],
@@ -1532,6 +1536,20 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const setProblemQuery = useCallback(
     (query: ProblemListQuery) => {
       shareProblem({ type: 'query', query, now: Date.now() });
+    },
+    [shareProblem],
+  );
+
+  const shareExamples = useCallback(
+    (examples: Omit<SharedExampleRun, 'byName' | 'at'> | null) => {
+      const now = Date.now();
+      shareProblem({
+        type: 'examples',
+        examples: examples
+          ? { ...examples, at: now, byName: displayNameRef.current || undefined }
+          : null,
+        now,
+      });
     },
     [shareProblem],
   );
@@ -1858,6 +1876,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     problemSync,
     chooseProblem,
     setProblemQuery,
+    shareExamples,
     setFollowHost,
     self,
     selfPeerId,

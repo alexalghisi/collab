@@ -1,8 +1,16 @@
-import type { ProblemListQuery, ProblemSelectPayload, SharedProblem } from '../signaling/events';
+import type {
+  ProblemListQuery,
+  ProblemSelectPayload,
+  SharedExampleRun,
+  SharedExampleVerdict,
+  SharedProblem,
+} from '../signaling/events';
 import { CATEGORY_ALL } from './filter';
 import { isProblemSlug } from './map';
 
 export const MAX_PROBLEM_HISTORY = 40;
+export const MAX_SHARED_VERDICTS = 50;
+const MAX_VERDICT_TEXT = 4000;
 
 export const EMPTY_PROBLEM_QUERY: ProblemListQuery = {
   text: '',
@@ -46,7 +54,8 @@ export type ProblemSyncAction =
       readonly isHost: boolean;
       readonly now: number;
     }
-  | { readonly type: 'query'; readonly query: ProblemListQuery; readonly now: number };
+  | { readonly type: 'query'; readonly query: ProblemListQuery; readonly now: number }
+  | { readonly type: 'examples'; readonly examples: SharedExampleRun | null; readonly now: number };
 
 export interface ProblemSyncResult {
   readonly state: ProblemSyncState;
@@ -90,6 +99,55 @@ export function normalizeProblemQuery(value: unknown): ProblemListQuery {
   };
 }
 
+function clip(value: unknown): string {
+  return typeof value === 'string' ? value.slice(0, MAX_VERDICT_TEXT) : '';
+}
+
+function normalizeVerdict(value: unknown, fallbackIndex: number): SharedExampleVerdict | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const raw = value as Partial<SharedExampleVerdict>;
+  return {
+    index:
+      typeof raw.index === 'number' && Number.isFinite(raw.index)
+        ? Math.max(0, Math.round(raw.index))
+        : fallbackIndex,
+    passed: raw.passed === true,
+    expected: clip(raw.expected),
+    actual: clip(raw.actual),
+    error: typeof raw.error === 'string' ? clip(raw.error) : null,
+  };
+}
+
+/** A shared example run, or null when it is malformed or belongs to another problem. */
+export function normalizeExampleRun(value: unknown, slug: string | null): SharedExampleRun | null {
+  if (typeof value !== 'object' || value === null || slug === null) {
+    return null;
+  }
+  const raw = value as Partial<SharedExampleRun>;
+  if (raw.slug !== slug) {
+    return null;
+  }
+  const verdicts = Array.isArray(raw.verdicts)
+    ? raw.verdicts
+        .slice(0, MAX_SHARED_VERDICTS)
+        .map((item, index) => normalizeVerdict(item, index))
+        .filter((item): item is SharedExampleVerdict => item !== null)
+    : [];
+  const byName =
+    typeof raw.byName === 'string' && raw.byName.trim() !== ''
+      ? raw.byName.slice(0, 80)
+      : undefined;
+  return {
+    slug,
+    running: raw.running === true,
+    verdicts,
+    at: typeof raw.at === 'number' && Number.isFinite(raw.at) ? raw.at : 0,
+    ...(byName ? { byName } : {}),
+  };
+}
+
 export function normalizeSharedProblem(value: unknown): SharedProblem {
   if (typeof value !== 'object' || value === null) {
     return EMPTY_SHARED_PROBLEM;
@@ -106,6 +164,7 @@ export function normalizeSharedProblem(value: unknown): SharedProblem {
       : undefined;
   const byPeerId =
     typeof raw.byPeerId === 'string' && raw.byPeerId !== '' ? raw.byPeerId : undefined;
+  const examples = normalizeExampleRun(raw.examples, slug);
   return {
     slug,
     history: withCurrent.slice(-MAX_PROBLEM_HISTORY),
@@ -113,6 +172,7 @@ export function normalizeSharedProblem(value: unknown): SharedProblem {
     query: normalizeProblemQuery(raw.query),
     ...(byPeerId ? { byPeerId } : {}),
     ...(clientEpoch !== undefined ? { clientEpoch } : {}),
+    ...(examples ? { examples } : {}),
   };
 }
 
@@ -154,12 +214,13 @@ export function applyProblemSelect(
   }
   const hasSlug = payload.slug === null || typeof payload.slug === 'string';
   const hasQuery = payload.query !== undefined;
-  if (!hasSlug && !hasQuery) {
+  const hasExamples = payload.examples !== undefined;
+  if (!hasSlug && !hasQuery && !hasExamples) {
     return null;
   }
   let next = current;
   if (payload.slug === null) {
-    next = { ...next, slug: null, updatedAt: now };
+    next = { ...next, slug: null, updatedAt: now, examples: null };
   } else if (typeof payload.slug === 'string') {
     if (!isProblemSlug(payload.slug)) {
       return null;
@@ -172,6 +233,9 @@ export function applyProblemSelect(
       query: normalizeProblemQuery({ ...next.query, ...payload.query }),
       updatedAt: now,
     };
+  }
+  if (hasExamples) {
+    next = { ...next, examples: normalizeExampleRun(payload.examples, next.slug), updatedAt: now };
   }
   const clientEpoch =
     typeof payload.clientEpoch === 'number' && Number.isFinite(payload.clientEpoch)
@@ -194,7 +258,9 @@ export function normalizeProblemSync(value: unknown): ProblemSyncState {
     typeof raw.localSlug === 'string' && isProblemSlug(raw.localSlug) ? raw.localSlug : null;
   return {
     host: normalizeSharedProblem(raw.host),
-    followHost: raw.followHost !== false,
+    // Everyone always sees the room's problem: older snapshots saved while
+    // "browsing freely" must not leave a screen out of sync.
+    followHost: true,
     localSlug,
     localHistory:
       localSlug && !localHistory.includes(localSlug)
@@ -211,6 +277,7 @@ export function rememberProblem(history: readonly string[], slug: string): strin
 export function publishProblem(current: SharedProblem, slug: string, now: number): SharedProblem {
   return {
     ...current,
+    examples: current.slug === slug ? (current.examples ?? null) : null,
     slug,
     history: rememberProblem(current.history, slug),
     updatedAt: now,
@@ -227,8 +294,19 @@ function sameQuery(a: ProblemListQuery, b: ProblemListQuery): boolean {
   );
 }
 
+function sameExamples(
+  a: SharedExampleRun | null | undefined,
+  b: SharedExampleRun | null | undefined,
+): boolean {
+  if (!a || !b) {
+    return !a && !b;
+  }
+  return a.at === b.at && a.running === b.running && a.verdicts.length === b.verdicts.length;
+}
+
 export function sameSharedProblem(a: SharedProblem, b: SharedProblem): boolean {
   return (
+    sameExamples(a.examples, b.examples) &&
     a.slug === b.slug &&
     a.updatedAt === b.updatedAt &&
     a.history.length === b.history.length &&
@@ -263,25 +341,17 @@ export function reduceProblemSync(
       publish: null,
     };
   }
-  if (action.type === 'follow') {
-    if (action.followHost) {
-      return { state: { ...state, followHost: true }, broadcastSlug: null, publish: null };
-    }
-    // Start free browsing from the problem already on screen.
-    const localSlug = state.host.slug;
-    return {
-      state: {
-        ...state,
-        followHost: false,
-        localSlug,
-        localHistory: localSlug
-          ? rememberProblem(state.host.history, localSlug)
-          : [...state.host.history],
-        localQuery: state.host.query,
-      },
-      broadcastSlug: null,
-      publish: null,
+  if (action.type === 'examples') {
+    const host: SharedProblem = {
+      ...state.host,
+      examples: normalizeExampleRun(action.examples, state.host.slug),
+      updatedAt: action.now,
     };
+    return { state: { ...state, host }, broadcastSlug: null, publish: host };
+  }
+  if (action.type === 'follow') {
+    // Free browsing is gone: the panel always shows what the room sees.
+    return { state: { ...state, followHost: true }, broadcastSlug: null, publish: null };
   }
   if (action.type === 'query') {
     const query = normalizeProblemQuery(action.query);

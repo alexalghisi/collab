@@ -65,4 +65,28 @@ describe('a shared problem across two clients', () => {
     expect(guestDoc.text.toString()).toContain('int main()');
     await settle();
   });
+
+  it('shows example verdicts run by one participant to everyone, late joiners too', async () => {
+    const host = await server.join('host', 'Ada');
+    const guest = await server.join('guest', 'Linus');
+    const seen: SharedProblem[] = [];
+    guest.channel.on('problem:state', (problem) => seen.push(problem));
+
+    host.channel.emit('problem:select', 'bucati');
+    await until(() => seen.some((problem) => problem.slug === 'bucati'));
+    const verdict = { index: 0, passed: true, expected: '0', actual: '0', error: null };
+    host.channel.emit('problem:select', {
+      examples: { slug: 'bucati', running: false, verdicts: [verdict], at: 5, byName: 'Ada' },
+      clientEpoch: 2,
+    });
+    await until(() => seen.some((problem) => (problem.examples?.verdicts.length ?? 0) > 0));
+
+    expect(seen.at(-1)?.examples).toMatchObject({
+      slug: 'bucati',
+      byName: 'Ada',
+      verdicts: [verdict],
+    });
+    const late = await server.join('late', 'Grace');
+    expect(late.joined.problem.examples?.verdicts).toEqual([verdict]);
+  });
 });

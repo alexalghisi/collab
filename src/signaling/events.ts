@@ -162,6 +162,25 @@ export interface ProblemListQuery {
   readonly listing: boolean;
 }
 
+/** One example's outcome from "Run on examples", shared with the whole room. */
+export interface SharedExampleVerdict {
+  readonly index: number;
+  readonly passed: boolean;
+  readonly expected: string;
+  readonly actual: string;
+  readonly error: string | null;
+}
+
+/** The latest "Run on examples" for the open problem, so everyone sees the same verdicts. */
+export interface SharedExampleRun {
+  readonly slug: string;
+  readonly running: boolean;
+  readonly verdicts: readonly SharedExampleVerdict[];
+  /** Who pressed Run on examples. */
+  readonly byName?: string;
+  readonly at: number;
+}
+
 /** The problem the room is looking at, plus the list everyone should see. */
 export interface SharedProblem {
   readonly slug: string | null;
@@ -172,6 +191,8 @@ export interface SharedProblem {
   readonly byPeerId?: string;
   /** Sender's own counter, so a late echo of their previous edit is ignored. */
   readonly clientEpoch?: number;
+  /** Example verdicts for the open problem; cleared when the problem changes. */
+  readonly examples?: SharedExampleRun | null;
 }
 
 /** A slug, or the whole shared list. A string keeps older clients working. */
@@ -181,6 +202,8 @@ export type ProblemSelectPayload =
       readonly slug?: string | null;
       readonly query?: Partial<ProblemListQuery>;
       readonly clientEpoch?: number;
+      /** A new example run (or null to clear it) for the open problem. */
+      readonly examples?: SharedExampleRun | null;
     };
 
 export interface RoomJoinedPayload {
