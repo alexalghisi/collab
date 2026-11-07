@@ -4,6 +4,7 @@ import { runOnHostedCompiler } from '../code/hostedRun';
 import type { SharedCodeDocument } from '../code/SharedCodeDocument';
 import { SIGNALING_URL } from '../signaling/config';
 import { runProblemExamples, type ExampleVerdict } from './examples';
+import { submitHandoffUrl, type SubmitOutcome } from './handoff';
 import {
   CATEGORY_ALL,
   CATEGORY_OLYMPIAD,
@@ -31,6 +32,18 @@ export interface ProblemBrowserSession {
   setProblemQuery: (query: ProblemListQuery) => void;
   shareExamples: (examples: Omit<SharedExampleRun, 'byName' | 'at'> | null) => void;
   setFollowHost: (follow: boolean) => void;
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (!text || typeof navigator === 'undefined' || !navigator.clipboard) {
+    return false;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function useProblemBrowser(session: ProblemBrowserSession) {
@@ -104,26 +117,24 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
   };
 
   /**
-   * collaborare.ro keeps its login on its own domain, so Collab cannot submit
-   * for you. Copy the current editor code and open the problem there, where
-   * you are already signed in, ready to paste and submit.
+   * Opens the problem on collaborare.ro with the editor code in the link, so
+   * the site fills its editor and submits it (it keeps its login on its own
+   * domain). The code is also copied, as a fallback for languages it can't judge.
    */
-  const submitOnSite = async (): Promise<boolean> => {
+  const submitOnSite = async (): Promise<SubmitOutcome> => {
     if (!detail) {
-      return false;
+      return 'opened';
     }
     const code = session.code?.text.toString() ?? '';
-    let copied = false;
-    try {
-      if (code && typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(code);
-        copied = true;
-      }
-    } catch {
-      copied = false;
+    const handoff = session.code
+      ? submitHandoffUrl(detail.slug, session.code.language, code)
+      : null;
+    const copied = await copyToClipboard(code);
+    void Linking.openURL(handoff ?? problemPageUrl(detail.slug));
+    if (handoff) {
+      return 'sent';
     }
-    void Linking.openURL(problemPageUrl(detail.slug));
-    return copied;
+    return copied ? 'copied' : 'opened';
   };
 
   const runExamples = (): void => {
