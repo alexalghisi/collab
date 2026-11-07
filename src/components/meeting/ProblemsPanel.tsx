@@ -45,6 +45,8 @@ export interface ProblemsPanelProps {
   history: readonly string[];
   verdicts: readonly ExampleVerdict[];
   examplesRunning: boolean;
+  /** Who ran the shared example verdicts on screen, when known. */
+  examplesBy?: string | null;
   confirming: boolean;
   listing: boolean;
   onShowList: () => void;
@@ -56,7 +58,6 @@ export interface ProblemsPanelProps {
   onPrev: () => void;
   onNext: () => void;
   onRandom: () => void;
-  onFollowHost: (follow: boolean) => void;
   onLoad: () => void;
   onConfirmLoad: (replace: boolean) => void;
   onRunExamples: () => void;
@@ -87,6 +88,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
     history,
     verdicts,
     examplesRunning,
+    examplesBy,
     confirming,
     listing,
     onShowList,
@@ -98,7 +100,6 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
     onPrev,
     onNext,
     onRandom,
-    onFollowHost,
     onLoad,
     onConfirmLoad,
     onRunExamples,
@@ -148,21 +149,14 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
         </Pressable>
       </View>
       <View style={styles.followRow}>
-        <Pressable
-          onPress={() => onFollowHost(!followHost)}
-          accessibilityRole="switch"
-          accessibilityLabel={followHost ? 'Stop following the host' : 'Follow the host'}
-          accessibilityState={{ checked: followHost }}
+        <View
+          accessibilityLabel="Synced with everyone in the room"
           style={[styles.chip, followHost && styles.chipActive]}
         >
           <Text style={styles.chipText}>
-            {followHost
-              ? isHost
-                ? 'Sharing with the room'
-                : 'Following the host'
-              : 'Browsing freely'}
+            {isHost ? 'Synced · you are the host' : 'Synced with the room'}
           </Text>
-        </Pressable>
+        </View>
       </View>
       {listing && (
         <>
@@ -347,6 +341,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
                 accessibilityLiveRegion="polite"
               >
                 {verdicts.filter((item) => item.passed).length}/{verdicts.length} examples passed
+                {examplesBy ? ` · run by ${examplesBy}` : ''}
               </Text>
             )}
             {detail.examples.map((example, index) => (

@@ -20,7 +20,7 @@ import {
 } from './starter';
 import { problemPageUrl } from './types';
 import { randomProblem, stepProblem, visibleProblemSlug, type ProblemSyncState } from './sync';
-import type { ProblemListQuery } from '../signaling/events';
+import type { ProblemListQuery, SharedExampleRun } from '../signaling/events';
 import { useProblemCatalog } from './useProblemCatalog';
 
 export interface ProblemBrowserSession {
@@ -29,6 +29,7 @@ export interface ProblemBrowserSession {
   readonly code: SharedCodeDocument | null;
   chooseProblem: (slug: string) => void;
   setProblemQuery: (query: ProblemListQuery) => void;
+  shareExamples: (examples: Omit<SharedExampleRun, 'byName' | 'at'> | null) => void;
   setFollowHost: (follow: boolean) => void;
 }
 
@@ -41,8 +42,10 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
   const category = query.category || CATEGORY_ALL;
   const olympGrade = query.olympGrade;
   const olympLevel = query.olympLevel;
-  const [verdicts, setVerdicts] = useState<readonly ExampleVerdict[]>([]);
-  const [examplesRunning, setExamplesRunning] = useState(false);
+  // "Run on examples" lives in the room's shared problem, so everyone sees the
+  // same verdicts whoever pressed the button.
+  const sharedRun = session.problemSync.host.examples ?? null;
+  const [localRunning, setLocalRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [stdinSeed, setStdinSeed] = useState<{
     readonly token: number;
@@ -50,6 +53,9 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
   } | null>(null);
 
   const slug = visibleProblemSlug(session.problemSync);
+  const run = sharedRun && sharedRun.slug === slug ? sharedRun : null;
+  const verdicts: readonly ExampleVerdict[] = run?.verdicts ?? [];
+  const examplesRunning = localRunning || run?.running === true;
   const categories = useMemo(() => problemCategories(catalog.problems), [catalog.problems]);
   const grades = useMemo(() => olympiadGrades(catalog.problems), [catalog.problems]);
   const levels = useMemo(() => olympiadLevels(catalog.problems), [catalog.problems]);
@@ -73,7 +79,6 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
       return;
     }
     void catalog.loadDetail(slug);
-    setVerdicts([]);
     setConfirming(false);
   }, [slug, catalog.loadDetail]);
 
@@ -127,15 +132,20 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
     }
     const language = session.code.language;
     const code = session.code.text.toString();
-    setExamplesRunning(true);
+    const problemSlug = detail.slug;
+    setLocalRunning(true);
+    session.shareExamples({ slug: problemSlug, running: true, verdicts: [] });
     void runProblemExamples({
       language,
       code,
       examples: detail.examples,
       run: runOnHostedCompiler,
     })
-      .then(setVerdicts)
-      .finally(() => setExamplesRunning(false));
+      .then((result) =>
+        session.shareExamples({ slug: problemSlug, running: false, verdicts: result }),
+      )
+      .catch(() => session.shareExamples({ slug: problemSlug, running: false, verdicts: [] }))
+      .finally(() => setLocalRunning(false));
   };
 
   return {
@@ -160,6 +170,7 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
     history,
     verdicts,
     examplesRunning,
+    examplesBy: run && !run.running && run.verdicts.length > 0 ? (run.byName ?? null) : null,
     confirming,
     stdinSeed,
     listing: query.listing,
