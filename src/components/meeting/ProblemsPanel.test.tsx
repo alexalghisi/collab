@@ -197,8 +197,8 @@ describe('ProblemsPanel', () => {
       />,
     );
     expect(screen.getByText('1/2 examples passed')).toBeTruthy();
-    expect(screen.getByText('Passed')).toBeTruthy();
-    expect(screen.getByText('Failed')).toBeTruthy();
+    expect(screen.getByText('✓ Passed')).toBeTruthy();
+    expect(screen.getByText('✗ Failed')).toBeTruthy();
     expect(screen.getByText(/Your output/).textContent).toContain('4');
   });
 
