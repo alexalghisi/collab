@@ -83,7 +83,7 @@ function props(overrides: Partial<ProblemsPanelProps> = {}): ProblemsPanelProps 
     onLoad: vi.fn(),
     onConfirmLoad: vi.fn(),
     onRunExamples: vi.fn(),
-    onSubmit: vi.fn(async () => true),
+    onSubmit: vi.fn(async () => 'sent' as const),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -239,5 +239,20 @@ describe('ProblemsPanel', () => {
       />,
     );
     expect(screen.getByText(/examples passed · run by Alex/)).toBeTruthy();
+  });
+
+  it('submits on collaborare.ro and says the code was sent there', async () => {
+    const onSubmit = vi.fn(async () => 'sent' as const);
+    render(<ProblemsPanel {...props({ slug: 'suma-vector', detail: DETAIL, onSubmit })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Submit on collaborare.ro' }));
+    expect(await screen.findByText(/Sent to collaborare.ro/)).toBeTruthy();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to pasting for languages collaborare.ro cannot judge', async () => {
+    const onSubmit = vi.fn(async () => 'copied' as const);
+    render(<ProblemsPanel {...props({ slug: 'suma-vector', detail: DETAIL, onSubmit })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Submit on collaborare.ro' }));
+    expect(await screen.findByText(/Code copied: paste it there/)).toBeTruthy();
   });
 });
