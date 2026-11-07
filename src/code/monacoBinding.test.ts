@@ -27,7 +27,17 @@ class FakeModel implements EditorModel {
   private listeners: Array<(event: ModelContentChangedEvent) => void> = [];
   private version = 1;
 
-  constructor(private value = '') {}
+  /** Like Monaco, a model has one line ending and converts whatever is written into it. */
+  constructor(
+    private value = '',
+    private eol: '\n' | '\r\n' = '\n',
+  ) {}
+
+  setEOL(sequence: number): void {
+    this.eol = sequence === 0 ? '\n' : '\r\n';
+    this.value = this.value.replace(/\r\n|\r|\n/g, this.eol);
+    this.version += 1;
+  }
 
   getValue(): string {
     return this.value;
@@ -64,7 +74,8 @@ class FakeModel implements EditorModel {
         this.value.length,
         this.getOffsetAt({ lineNumber: range.endLineNumber, column: range.endColumn }),
       );
-      this.value = this.value.slice(0, start) + edit.text + this.value.slice(end);
+      const text = edit.text.replace(/\r\n|\r|\n/g, this.eol);
+      this.value = this.value.slice(0, start) + text + this.value.slice(end);
     }
     this.version += 1;
   }
@@ -102,7 +113,7 @@ class FakeEditor implements EditorApi {
   selection: { start: number; end: number; head?: number } | null = { start: 0, end: 0, head: 0 };
   /** Monaco reports the shoved caret on a later turn, after the edit returns. */
   replayRemoteCaret = false;
-  private cursorListeners: Array<() => void> = [];
+  private cursorListeners: Array<(event: { source?: string }) => void> = [];
 
   constructor(readonly model: FakeModel) {
     const apply = model.applyEdits.bind(model);
@@ -137,7 +148,7 @@ class FakeEditor implements EditorApi {
           queueMicrotask(() => {
             this.selection = { start: shoved, end: shoved, head: shoved };
             for (const listener of this.cursorListeners) {
-              listener();
+              listener({});
             }
           });
         }
@@ -149,7 +160,7 @@ class FakeEditor implements EditorApi {
     return this.model;
   }
 
-  onDidChangeCursorSelection(listener: () => void) {
+  onDidChangeCursorSelection(listener: (event: { source?: string }) => void) {
     this.cursorListeners.push(listener);
     return { dispose: () => (this.cursorListeners = []) };
   }
@@ -185,10 +196,10 @@ class FakeEditor implements EditorApi {
     };
   }
 
-  moveCursor(start: number, end = start, head = end): void {
+  moveCursor(start: number, end = start, head = end, source?: string): void {
     this.selection = { start, end, head };
     for (const listener of this.cursorListeners) {
-      listener();
+      listener({ source });
     }
   }
 
@@ -208,7 +219,7 @@ class FakeEditor implements EditorApi {
     });
     this.selection = { start: Math.min(anchor, head), end: Math.max(anchor, head), head };
     for (const listener of this.cursorListeners) {
-      listener();
+      listener({});
     }
   }
 }
@@ -236,8 +247,8 @@ describe('MonacoTextBinding', () => {
   let editor: FakeEditor;
   let binding: MonacoTextBinding;
 
-  const bind = (initial = '') => {
-    model = new FakeModel(initial);
+  const bind = (initial = '', eol: '\n' | '\r\n' = '\n') => {
+    model = new FakeModel(initial, eol);
     editor = new FakeEditor(model);
     binding = new MonacoTextBinding(document, editor, monaco);
   };
@@ -317,6 +328,93 @@ describe('MonacoTextBinding', () => {
       end: 5,
       head: 5,
     });
+  });
+
+  it('keeps the caret after its own text when someone inserts earlier in the file', async () => {
+    document.text.insert(0, 'line one\nline two');
+    bind('line one\nline two');
+    editor.replayRemoteCaret = true;
+    editor.moveCursor(17);
+
+    document.applyState(remoteEdit(document, (text) => text.insert(0, '// header\n')));
+    await Promise.resolve();
+
+    expect(model.getValue()).toBe('// header\nline one\nline two');
+    expect(editor.selection).toEqual({ start: 27, end: 27, head: 27 });
+    expect(document.localSelection()).toMatchObject({ head: 27 });
+  });
+
+  it('keeps the caret on its text when someone deletes earlier in the file', async () => {
+    document.text.insert(0, 'remove me\nkeep');
+    bind('remove me\nkeep');
+    editor.replayRemoteCaret = true;
+    editor.moveCursor(12);
+
+    document.applyState(remoteEdit(document, (text) => text.delete(0, 10)));
+    await Promise.resolve();
+
+    expect(model.getValue()).toBe('keep');
+    expect(editor.selection).toEqual({ start: 2, end: 2, head: 2 });
+  });
+
+  it('follows the caret as its owner types while a remote edit is settling', async () => {
+    document.text.insert(0, 'x');
+    bind('x');
+    editor.moveCursor(1, 1, 1, 'keyboard');
+
+    // Someone else types elsewhere; its caret restore is still pending.
+    document.applyState(remoteEdit(document, (text) => text.insert(0, 'r')));
+    // Meanwhile this participant types two characters at their caret.
+    for (const char of '/h') {
+      const at = editor.selection?.head ?? 0;
+      model.type(at, char);
+      editor.moveCursor(at + 1, at + 1, at + 1, 'keyboard');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(model.getValue()).toBe('rx/h');
+    expect(document.localSelection()).toMatchObject({ head: 4 });
+    expect(editor.selection).toEqual({ start: 4, end: 4, head: 4 });
+  });
+
+  it('ignores the caret Monaco shoves around while applying a remote edit', () => {
+    document.text.insert(0, 'abc');
+    bind('abc');
+    editor.moveCursor(1, 1, 1, 'keyboard');
+
+    editor.moveCursor(3, 3, 3, 'modelChange');
+
+    expect(document.localSelection()).toMatchObject({ head: 1 });
+  });
+
+  it('switches a Windows (CRLF) editor to LF so its offsets match the shared text', () => {
+    bind('int main() {\r\n  return 0;\r\n}', '\r\n');
+
+    expect(model.getValue()).toBe('int main() {\n  return 0;\n}');
+    expect(document.text.toString()).toBe('int main() {\n  return 0;\n}');
+  });
+
+  it('cleans carriage returns that an older client stored in the shared text', async () => {
+    document.text.insert(0, 'int main() {\r\n  return 0;\r\n}');
+    bind('', '\r\n');
+    await Promise.resolve();
+
+    expect(document.text.toString()).toBe('int main() {\n  return 0;\n}');
+    expect(model.getValue()).toBe(document.text.toString());
+  });
+
+  it('deleting one character never takes other code with it, even after a CRLF edit arrives', async () => {
+    document.text.insert(0, 'a\nb\nreturn 0;');
+    bind('a\nb\nreturn 0;', '\r\n');
+    document.applyState(remoteEdit(document, (text) => text.insert(0, 'x\r\n')));
+    await Promise.resolve();
+    expect(document.text.toString()).toBe('x\na\nb\nreturn 0;');
+
+    // Delete the "b" on line 3.
+    model.type(4, '', 1);
+
+    expect(document.text.toString()).toBe('x\na\n\nreturn 0;');
+    expect(model.getValue()).toBe(document.text.toString());
   });
 
   it('does not feed a remote change back into the document', () => {
