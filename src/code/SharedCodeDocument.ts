@@ -8,6 +8,7 @@ import {
 import type { SignalingChannel } from '../signaling/SignalingChannel';
 import { decodeUpdate, encodeUpdate } from './updates';
 import { DEFAULT_CODE_LANGUAGE, isCodeLanguage, type CodeLanguage } from './languages';
+import { toLf } from './lineEndings';
 import { isStarterCode, starterCode } from './starterCode';
 
 export interface CodeIdentity {
@@ -222,7 +223,27 @@ export class SharedCodeDocument {
     this.replaceYText(this.stdin, next);
   }
 
-  private replaceYText(target: Y.Text, next: string): void {
+  /**
+   * Removes carriage returns an older client wrote, as single-character
+   * deletes so two clients cleaning up at once cannot collide. True if any.
+   */
+  stripCarriageReturns(origin?: unknown): boolean {
+    const current = this.text.toString();
+    if (!current.includes('\r')) {
+      return false;
+    }
+    this.doc.transact(() => {
+      for (let index = current.length - 1; index >= 0; index -= 1) {
+        if (current[index] === '\r') {
+          this.text.delete(index, 1);
+        }
+      }
+    }, origin);
+    return true;
+  }
+
+  private replaceYText(target: Y.Text, raw: string): void {
+    const next = toLf(raw);
     const current = target.toString();
     if (next === current) {
       return;

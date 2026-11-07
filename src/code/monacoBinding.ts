@@ -1,4 +1,5 @@
 import type * as Y from 'yjs';
+import { MONACO_EOL_LF, toLf } from './lineEndings';
 import type { CodePresence, SharedCodeDocument } from './SharedCodeDocument';
 
 /**
@@ -14,6 +15,8 @@ export interface EditorPosition {
 export interface EditorModel {
   getValue(): string;
   getVersionId(): number;
+  /** Monaco's line-ending switch; `0` is LF. */
+  setEOL?(sequence: number): void;
   getPositionAt(offset: number): EditorPosition;
   getOffsetAt(position: EditorPosition): number;
   applyEdits(edits: Array<{ range: CursorRange; text: string }>): void;
@@ -41,7 +44,8 @@ export interface CursorRange {
 
 export interface EditorApi {
   getModel(): EditorModel | null;
-  onDidChangeCursorSelection(listener: () => void): Disposable;
+  /** `source` is Monaco's: 'keyboard', 'mouse', 'api', 'modelChange', … */
+  onDidChangeCursorSelection(listener: (event: CursorSelectionEvent) => void): Disposable;
   /** The caret, which can sit at either end of a selection. */
   getPosition(): EditorPosition | null;
   getSelection(): { getStartPosition(): EditorPosition; getEndPosition(): EditorPosition } | null;
@@ -57,6 +61,13 @@ export interface EditorApi {
   }): void;
   createDecorationsCollection(decorations: Decoration[]): DecorationsCollection;
 }
+
+export interface CursorSelectionEvent {
+  readonly source?: string;
+}
+
+/** Monaco moved the caret because the text under it changed, not because its owner did. */
+const SHOVED_BY_EDIT = 'modelChange';
 
 export interface Decoration {
   readonly range: CursorRange;
@@ -115,10 +126,10 @@ export class MonacoTextBinding {
     );
     this.document.text.observe(this.onTextChange);
     this.disposables.push(
-      editor.onDidChangeCursorSelection(() => {
+      editor.onDidChangeCursorSelection((event) => {
         const current = this.editor.getModel();
         if (current) {
-          this.publishSelection(current);
+          this.onCursorChange(current, event.source);
         }
       }),
       { dispose: () => this.document.text.unobserve(this.onTextChange) },
@@ -133,12 +144,14 @@ export class MonacoTextBinding {
   }
 
   private seed(model: EditorModel): void {
+    model.setEOL?.(MONACO_EOL_LF);
+    this.document.stripCarriageReturns(LOCAL);
     const shared = this.document.text.toString();
     if (shared === model.getValue()) {
       return;
     }
     if (shared === '') {
-      this.document.text.insert(0, model.getValue());
+      this.document.text.insert(0, toLf(model.getValue()));
       return;
     }
     this.writeModel(model, shared);
@@ -157,7 +170,7 @@ export class MonacoTextBinding {
           this.document.text.delete(change.rangeOffset, change.rangeLength);
         }
         if (change.text !== '') {
-          this.document.text.insert(change.rangeOffset, change.text);
+          this.document.text.insert(change.rangeOffset, toLf(change.text));
         }
       }
     }, LOCAL);
@@ -170,6 +183,12 @@ export class MonacoTextBinding {
     }
     const model = this.editor.getModel();
     if (!model) {
+      return;
+    }
+    if (this.document.text.toString().includes('\r')) {
+      // An older client sent CRLF. Its offsets do not match this LF editor, so
+      // clean the shared text first, then bring the editor onto it.
+      queueMicrotask(() => this.recoverFromCarriageReturns());
       return;
     }
     this.selectionLock += 1;
@@ -221,6 +240,16 @@ export class MonacoTextBinding {
       }
     });
   };
+
+  private recoverFromCarriageReturns(): void {
+    this.document.stripCarriageReturns(LOCAL);
+    const model = this.editor.getModel();
+    if (!model) {
+      return;
+    }
+    this.alignModel(model);
+    this.restoreCaret(model);
+  }
 
   private restoreCaret(model: EditorModel): void {
     const selection = this.document.localSelection();
@@ -275,8 +304,22 @@ export class MonacoTextBinding {
     return new this.monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column);
   }
 
-  private publishSelection(model: EditorModel, fromUserEdit = false): void {
-    if (this.applyingRemote || (this.selectionLock > 0 && !fromUserEdit)) {
+  /**
+   * A caret moved by its owner (typing, clicking, arrow keys) is always the
+   * truth, even while a remote edit is settling; dropping it is what made a
+   * pending restore put the caret back behind the owner's last keystroke.
+   * Only Monaco shoving the caret aside for someone else's text is ignored.
+   */
+  private onCursorChange(model: EditorModel, source: string | undefined): void {
+    if (source === SHOVED_BY_EDIT) {
+      return;
+    }
+    const byOwner = source !== undefined && source !== 'api';
+    this.publishSelection(model, byOwner);
+  }
+
+  private publishSelection(model: EditorModel, fromOwner = false): void {
+    if (this.applyingRemote || (this.selectionLock > 0 && !fromOwner)) {
       return;
     }
     const selection = this.editor.getSelection();
