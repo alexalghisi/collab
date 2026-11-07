@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { noiseSuppressionSupported, openNoiseSuppression } from './noiseSuppression';
+import {
+  noiseSuppressionSupported,
+  openNoiseSuppression,
+  RNNOISE_ON_BY_DEFAULT,
+} from './noiseSuppression';
 
 describe('openNoiseSuppression', () => {
   afterEach(() => {
@@ -11,5 +15,11 @@ describe('openNoiseSuppression', () => {
     expect(noiseSuppressionSupported()).toBe(false);
     const track = { id: 'mic', kind: 'audio' } as MediaStreamTrack;
     await expect(openNoiseSuppression(track)).resolves.toBeNull();
+  });
+});
+
+describe('default', () => {
+  it('leaves the main-thread RNNoise pass off so a busy page cannot break up the voice', () => {
+    expect(RNNOISE_ON_BY_DEFAULT).toBe(false);
   });
 });

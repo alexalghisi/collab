@@ -323,6 +323,18 @@ export function visibleProblemSlug(state: ProblemSyncState): string | null {
   return state.localSlug;
 }
 
+/**
+ * A room state with no verdicts for the same problem is an echo from a server
+ * that does not carry them yet; keep what this screen already shows. Another
+ * problem never inherits them.
+ */
+function keepExamples(current: SharedProblem, incoming: SharedProblem): SharedProblem {
+  if (incoming.examples || !current.examples || current.examples.slug !== incoming.slug) {
+    return incoming;
+  }
+  return { ...incoming, examples: current.examples };
+}
+
 function kept(state: ProblemSyncState): ProblemSyncResult {
   return { state, broadcastSlug: null, publish: null };
 }
@@ -336,7 +348,7 @@ export function reduceProblemSync(
   }
   if (action.type === 'host-state') {
     return {
-      state: { ...state, host: normalizeSharedProblem(action.problem) },
+      state: { ...state, host: keepExamples(state.host, normalizeSharedProblem(action.problem)) },
       broadcastSlug: null,
       publish: null,
     };
