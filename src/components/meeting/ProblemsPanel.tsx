@@ -1,3 +1,4 @@
+import { SUBMIT_NOTES, type SubmitOutcome } from '../../collaborare/handoff';
 import { useEffect, useState } from 'react';
 import {
   Image,
@@ -22,7 +23,7 @@ import {
 import { colors } from '../../theme';
 
 const SUBMIT_HINT =
-  'Copies your code and opens this problem on collaborare.ro, where you are signed in: paste it there and submit.';
+  'Opens this problem on collaborare.ro with your code already in its editor and submits it there.';
 
 export interface ProblemsPanelProps {
   problems: readonly ProblemSummary[];
@@ -61,8 +62,8 @@ export interface ProblemsPanelProps {
   onLoad: () => void;
   onConfirmLoad: (replace: boolean) => void;
   onRunExamples: () => void;
-  /** Copies the editor code and opens the problem on collaborare.ro; resolves true when copied. */
-  onSubmit: () => Promise<boolean>;
+  /** Sends the editor code to the problem on collaborare.ro and submits it there. */
+  onSubmit: () => Promise<SubmitOutcome>;
   onClose: () => void;
 }
 
@@ -439,13 +440,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
         <Pressable
           disabled={!detail}
           onPress={() => {
-            void onSubmit().then((copied) =>
-              setSubmitNote(
-                copied
-                  ? 'Code copied. Paste it in the editor on collaborare.ro and press Submit.'
-                  : 'Opened on collaborare.ro. Copy your code from the editor and submit there.',
-              ),
-            );
+            void onSubmit().then((outcome) => setSubmitNote(SUBMIT_NOTES[outcome]));
           }}
           accessibilityRole="button"
           accessibilityLabel="Submit on collaborare.ro"
