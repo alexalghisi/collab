@@ -78,9 +78,9 @@ n = int(data[0])
 print("\\n".join(str(suma(int(x))) for x in data[1:1 + n]))
 `;
 
-test('host picks a problem, guest follows; load into editor; run on examples', async ({
-  browser,
-}) => {
+test('both participants always see the same problem and example verdicts', async ({ browser }) => {
+  // Two browsers walking both directions of the sync take longer than the default.
+  test.setTimeout(240_000);
   const host = await signedIn(browser, 'Host');
   await host.goto('/');
   await host.getByText('New meeting').first().click();
@@ -96,16 +96,16 @@ test('host picks a problem, guest follows; load into editor; run on examples', a
 
   // Host opens the panel and picks a problem.
   await host.getByRole('button', { name: 'Probleme', exact: true }).click();
-  await expect(host.getByText('Sharing with the room')).toBeVisible();
+  await expect(host.getByText('Synced · you are the host')).toBeVisible();
   await host.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
   await expect(host.getByText('Example 1')).toBeVisible();
 
   // Guest sees the same problem without touching anything but the panel button.
   const guestPanel = guest.getByRole('button', { name: 'Probleme', exact: true });
-  if (!(await guest.getByText('Following the host').isVisible())) {
+  if (!(await guest.getByText('Synced with the room').isVisible())) {
     await guestPanel.click();
   }
-  await expect(guest.getByText('Following the host')).toBeVisible();
+  await expect(guest.getByText('Synced with the room')).toBeVisible();
   await expect(guest.getByRole('heading', { name: 'Suma cifrelor (OLI 5)' })).toBeVisible();
   await expect(guest.getByText('Example 1')).toBeVisible();
 
@@ -132,27 +132,43 @@ test('host picks a problem, guest follows; load into editor; run on examples', a
 
   // Run on examples: the solution passes every example.
   await host.getByRole('button', { name: 'Run on examples' }).click();
-  await expect(host.getByText('3/3 examples passed')).toBeVisible();
+  await expect(host.getByText(/3\/3 examples passed/)).toBeVisible();
+  // The guest sees the same verdicts, and who ran them, without pressing anything.
+  await expect(guest.getByText('3/3 examples passed · run by Host')).toBeVisible();
 
   // A wrong answer fails and shows what it printed.
   await setEditorText(host, SUMA_CIFRELOR.replace('sum(int(c)', '1 + sum(int(c)'));
   await host.getByRole('button', { name: 'Run on examples' }).click();
-  await expect(host.getByText('0/3 examples passed')).toBeVisible();
+  await expect(host.getByText(/0\/3 examples passed/)).toBeVisible();
   await expect(host.getByText(/Your output/).first()).toBeVisible();
+  await expect(guest.getByText(/0\/3 examples passed/)).toBeVisible();
+  await expect(guest.getByText(/Your output/).first()).toBeVisible();
 
-  // The guest browses freely without moving the host.
-  await guest.getByRole('switch', { name: 'Stop following the host' }).click();
-  await expect(guest.getByText('Browsing freely')).toBeVisible();
+  // A guest who opens a problem moves the whole room, and their run shows to the host.
+  await expect(guest.getByRole('switch')).toHaveCount(0);
+  await guest.getByRole('button', { name: 'Back to list' }).click();
+  await guest.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
+  await expect(host.getByRole('heading', { name: 'Suma cifrelor (OLI 5)' })).toBeVisible();
+  await setEditorText(guest, SUMA_CIFRELOR);
+  await expect.poll(() => editorText(host)).toContain('def suma(n)');
+  await guest.getByRole('button', { name: 'Run on examples' }).click();
+  await expect(guest.getByText(/3\/3 examples passed/)).toBeVisible();
+  await expect(host.getByText('3/3 examples passed · run by Guest')).toBeVisible();
+
+  // Even a hidden panel comes back when the other person opens a problem.
+  await host.getByRole('button', { name: 'Hide problems' }).click();
   await guest.getByRole('button', { name: 'Back to list' }).click();
   await guest.getByRole('button', { name: 'Este palindrom? (OLI 5)' }).click();
-  await expect(guest.getByRole('heading', { name: 'Este palindrom? (OLI 5)' })).toBeVisible();
+  await expect(host.getByRole('heading', { name: 'Este palindrom? (OLI 5)' })).toBeVisible();
+  await expect(host.getByText(/examples passed/)).toHaveCount(0);
+  await guest.getByRole('button', { name: 'Back to list' }).click();
+  await guest.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
   await expect(host.getByRole('heading', { name: 'Suma cifrelor (OLI 5)' })).toBeVisible();
-  await expect(host.getByText('Sharing with the room')).toBeVisible();
 
   // A refresh keeps the shared problem.
   await host.reload();
   await expect(host.getByText(roomId).first()).toBeVisible();
-  if (!(await host.getByText('Sharing with the room').isVisible())) {
+  if (!(await host.getByText('Synced · you are the host').isVisible())) {
     await host.getByRole('button', { name: 'Probleme', exact: true }).click();
   }
   await expect(host.getByRole('heading', { name: 'Suma cifrelor (OLI 5)' })).toBeVisible();
