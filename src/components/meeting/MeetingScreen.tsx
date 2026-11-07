@@ -77,6 +77,24 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   const [problemWidth, setProblemWidth] = useState(DEFAULT_PANEL_WIDTH);
   const problems = useProblemBrowser(session);
 
+  // When anyone opens a problem or runs the examples, bring the panel back on
+  // every screen so the whole room looks at the same thing.
+  const sharedRunAt = session.problemSync.host.examples?.at ?? 0;
+  const problemSignal = `${problems.slug ?? ''}|${problems.listing ? 'list' : 'detail'}|${sharedRunAt}`;
+  const lastProblemSignal = useRef(problemSignal);
+  useEffect(() => {
+    if (lastProblemSignal.current === problemSignal) {
+      return;
+    }
+    lastProblemSignal.current = problemSignal;
+    if (problems.slug && !problems.listing) {
+      setProblemsOpen(true);
+      if (isCompactProblemLayout(width)) {
+        setMobileProblem(true);
+      }
+    }
+  }, [problemSignal, problems.slug, problems.listing, width]);
+
   const stage: Stage = session.settings.stage;
   const compactProblems = isCompactProblemLayout(width);
   const wide = width >= WIDE_LAYOUT_MIN_WIDTH;
@@ -149,6 +167,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
       history={problems.history}
       verdicts={problems.verdicts}
       examplesRunning={problems.examplesRunning}
+      examplesBy={problems.examplesBy}
       confirming={problems.confirming}
       listing={problems.listing}
       onShowList={problems.showList}
@@ -160,7 +179,6 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
       onPrev={problems.prev}
       onNext={problems.next}
       onRandom={problems.random}
-      onFollowHost={problems.setFollowHost}
       onLoad={problems.requestLoad}
       onConfirmLoad={problems.confirmLoad}
       onRunExamples={problems.runExamples}

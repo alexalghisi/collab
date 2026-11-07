@@ -10,6 +10,7 @@ import {
   EMPTY_SHARED_PROBLEM,
   INITIAL_PROBLEM_SYNC,
   randomProblem,
+  normalizeProblemSync,
   reduceProblemSync,
   shouldApplySharedProblem,
   stepProblem,
@@ -78,44 +79,69 @@ describe('problem sync', () => {
     expect(next.state.host.query.text).toBe('mat');
   });
 
-  it('keeps a free browse on this screen', () => {
+  it('never leaves a screen browsing on its own', () => {
     const shared = reduceProblemSync(INITIAL_PROBLEM_SYNC, {
       type: 'choose',
       slug: 'bucati',
       isHost: true,
       now: 10,
     });
-    const browsing = reduceProblemSync(shared.state, { type: 'follow', followHost: false });
-    expect(visibleProblemSlug(browsing.state)).toBe('bucati');
+    const tried = reduceProblemSync(shared.state, { type: 'follow', followHost: false });
+    expect(tried.state.followHost).toBe(true);
 
-    const picked = reduceProblemSync(browsing.state, {
+    const picked = reduceProblemSync(tried.state, {
       type: 'choose',
       slug: 'suma',
       isHost: false,
       now: 12,
     });
-    expect(picked.publish).toBeNull();
-    expect(picked.state.host.slug).toBe('bucati');
+    expect(picked.publish?.slug).toBe('suma');
     expect(visibleProblemSlug(picked.state)).toBe('suma');
 
-    const listed = reduceProblemSync(picked.state, {
-      type: 'query',
-      now: 13,
-      query: { ...EMPTY_PROBLEM_QUERY, text: 'pal', listing: true },
-    });
-    expect(listed.publish).toBeNull();
-    expect(listed.state.host.query).toEqual({ ...EMPTY_PROBLEM_QUERY, listing: false });
-    expect(listed.state.localQuery.text).toBe('pal');
+    const restored = normalizeProblemSync({ ...picked.state, followHost: false });
+    expect(restored.followHost).toBe(true);
+  });
 
-    const echoed = reduceProblemSync(listed.state, {
-      type: 'host-state',
-      problem: { ...shared.state.host, slug: 'graf', history: ['graf'], updatedAt: 20 },
+  it('shares example verdicts with the room and clears them on another problem', () => {
+    const shared = reduceProblemSync(INITIAL_PROBLEM_SYNC, {
+      type: 'choose',
+      slug: 'suma',
+      isHost: false,
+      now: 10,
     });
-    expect(visibleProblemSlug(echoed.state)).toBe('suma');
-    expect(echoed.state.host.slug).toBe('graf');
+    const verdict = { index: 0, passed: false, expected: '3', actual: '', error: null };
+    const ran = reduceProblemSync(shared.state, {
+      type: 'examples',
+      examples: { slug: 'suma', running: false, verdicts: [verdict], at: 11, byName: 'Alex' },
+      now: 11,
+    });
+    expect(ran.publish?.examples).toMatchObject({
+      slug: 'suma',
+      verdicts: [verdict],
+      byName: 'Alex',
+    });
 
-    const following = reduceProblemSync(echoed.state, { type: 'follow', followHost: true });
-    expect(visibleProblemSlug(following.state)).toBe('graf');
+    // The server merges it into the room for everyone, late joiners included.
+    const room = applyProblemSelect(
+      shared.state.host,
+      { examples: ran.publish?.examples ?? null, clientEpoch: 3 },
+      'guest',
+      12,
+    );
+    expect(room?.examples?.verdicts).toEqual([verdict]);
+
+    // Verdicts for another problem never show.
+    const stale = applyProblemSelect(
+      shared.state.host,
+      { examples: { slug: 'graf', running: false, verdicts: [verdict], at: 1 } },
+      'guest',
+      13,
+    );
+    expect(stale?.examples).toBeFalsy();
+
+    const moved = room ? applyProblemSelect(room, 'graf', 'host', 14) : null;
+    expect(moved?.slug).toBe('graf');
+    expect(moved?.examples).toBeFalsy();
   });
 
   it('lets a guest publish and drops a stale echo of their own edit', () => {
