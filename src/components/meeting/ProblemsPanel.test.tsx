@@ -80,7 +80,6 @@ function props(overrides: Partial<ProblemsPanelProps> = {}): ProblemsPanelProps 
     onPrev: vi.fn(),
     onNext: vi.fn(),
     onRandom: vi.fn(),
-    onFollowHost: vi.fn(),
     onLoad: vi.fn(),
     onConfirmLoad: vi.fn(),
     onRunExamples: vi.fn(),
@@ -216,12 +215,29 @@ describe('ProblemsPanel', () => {
     expect(onConfirmLoad.mock.calls).toEqual([[false], [true]]);
   });
 
-  it('lets a guest stop following the host', () => {
-    const onFollowHost = vi.fn();
-    render(<ProblemsPanel {...props({ isHost: false, onFollowHost })} />);
-    const toggle = screen.getByRole('switch', { name: 'Stop following the host' });
-    expect(screen.getByText('Following the host')).toBeTruthy();
-    fireEvent.click(toggle);
-    expect(onFollowHost).toHaveBeenCalledWith(false);
+  it('always shows the panel as synced with the room, with no way to drift off', () => {
+    render(<ProblemsPanel {...props({ isHost: false })} />);
+    expect(screen.getByText('Synced with the room')).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('says who ran the shared example verdicts', () => {
+    render(
+      <ProblemsPanel
+        {...props({
+          slug: 'suma-vector',
+          detail: DETAIL,
+          verdicts: DETAIL.examples.map((example, index) => ({
+            index,
+            passed: true,
+            expected: example.output,
+            actual: example.output,
+            error: null,
+          })),
+          examplesBy: 'Alex',
+        })}
+      />,
+    );
+    expect(screen.getByText(/examples passed · run by Alex/)).toBeTruthy();
   });
 });
