@@ -35,6 +35,15 @@ import { DraggablePip } from './DraggablePip';
 import { ProblemsPanel } from './ProblemsPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
+import {
+  SHARE_HEIGHT_SHARE,
+  activeScreenSharer,
+  screenShareFirst,
+  sharedScreenWidth,
+  spotlightAfterShareChange,
+  withoutSpotlit,
+} from './spotlightLayout';
+import { TileSpotlight } from './TileSpotlight';
 import { ToolbarButton } from './ToolbarButton';
 import { Whiteboard } from './Whiteboard';
 
@@ -46,6 +55,7 @@ export interface MeetingScreenProps {
   onInvite?: CollabSession['sendInvite'];
 }
 
+type Participant = CollabSession['participants'][number];
 type Panel = 'participants' | 'chat' | 'invite' | 'files' | 'devices' | null;
 type Stage = 'grid' | 'whiteboard' | 'code';
 
@@ -53,6 +63,11 @@ const WIDE_LAYOUT_MIN_WIDTH = 900;
 const PANEL_WIDTH = 340;
 /** Tile width in the strip shown above the whiteboard. */
 const STRIP_TILE_WIDTH = 180;
+/** Room left around tiles by the strip's and the grid's padding. */
+const TILE_AREA_GUTTER = 24;
+const PROBLEM_HANDLE_WIDTH = 8;
+/** Share of a phone's width for a presented screen floating over the editor. */
+const SHARE_PIP_WIDTH_SHARE = 0.7;
 const CAN_SHARE_SCREEN = Platform.OS === 'web';
 
 function columnsFor(tileCount: number, width: number): number {
@@ -64,7 +79,7 @@ function columnsFor(tileCount: number, width: number): number {
 }
 
 export function MeetingScreen({ session, roomId, displayName, onInvite }: MeetingScreenProps) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   // On a phone a panel covers the whole call, so start with the people in view.
   const [panel, setPanel] = useState<Panel>(() =>
     width < WIDE_LAYOUT_MIN_WIDTH ? null : session.messages.length > 0 ? 'chat' : 'invite',
@@ -75,6 +90,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   const [problemsOpen, setProblemsOpen] = useState(true);
   const [mobileProblem, setMobileProblem] = useState(false);
   const [problemWidth, setProblemWidth] = useState(DEFAULT_PANEL_WIDTH);
+  const [spotlitPeerId, setSpotlitPeerId] = useState<string | null>(null);
   const problems = useProblemBrowser(session);
 
   // When anyone opens a problem or runs the examples, bring the panel back on
@@ -94,6 +110,14 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
       }
     }
   }, [problemSignal, problems.slug, problems.listing, width]);
+
+  const sharerPeerId = activeScreenSharer(session.participants);
+  const previousSharer = useRef(sharerPeerId);
+  useEffect(() => {
+    const previous = previousSharer.current;
+    previousSharer.current = sharerPeerId;
+    setSpotlitPeerId((current) => spotlightAfterShareChange(current, previous, sharerPeerId));
+  }, [sharerPeerId]);
 
   const stage: Stage = session.settings.stage;
   const compactProblems = isCompactProblemLayout(width);
@@ -134,6 +158,10 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   const columnWidth = clampPanelWidth(problemWidth, problemsBudget);
   const problemsDocked =
     stage === 'code' && !compactProblems && problemsOpen && session.code !== null;
+  const stageWidth =
+    gridWidth - (problemsDocked ? columnWidth + PROBLEM_HANDLE_WIDTH : 0) - TILE_AREA_GUTTER;
+  const shareStripWidth = sharedScreenWidth(stageWidth, height, SHARE_HEIGHT_SHARE.strip);
+  const shareGridWidth = sharedScreenWidth(stageWidth, height, SHARE_HEIGHT_SHARE.grid);
   const budgetRef = useRef(problemsBudget);
   budgetRef.current = problemsBudget;
 
@@ -212,28 +240,43 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   }
   const files = sharedRoomFiles(session.messages, session.boardFiles, namesByPeerId);
 
-  const tiles: Array<[string, ReactNode]> = [
-    [
-      'self',
-      <VideoTile
-        label={`${displayName} (You)`}
-        state={session.self}
-        stream={session.localStream ?? undefined}
-        isHost={session.hostPeerId === session.selfPeerId}
-        mirror
-      />,
-    ],
-    ...session.participants.map((participant): [string, ReactNode] => [
-      participant.peerId,
-      <VideoTile
-        label={participant.displayName}
-        state={participant.state}
-        stream={participant.stream}
-        isHost={participant.peerId === session.hostPeerId}
-        quality={session.linkQuality[participant.peerId]}
-      />,
-    ]),
-  ];
+  const spotlit = session.participants.find(({ peerId }) => peerId === spotlitPeerId) ?? null;
+
+  const remoteTile = (participant: Participant, fill: boolean): ReactNode => (
+    <VideoTile
+      label={participant.displayName}
+      state={participant.state}
+      stream={participant.stream}
+      isHost={participant.peerId === session.hostPeerId}
+      quality={session.linkQuality[participant.peerId]}
+      fill={fill}
+      onExpand={fill ? undefined : () => setSpotlitPeerId(participant.peerId)}
+    />
+  );
+
+  const tiles = screenShareFirst(
+    withoutSpotlit<ReactNode>(
+      [
+        [
+          'self',
+          <VideoTile
+            label={`${displayName} (You)`}
+            state={session.self}
+            stream={session.localStream ?? undefined}
+            isHost={session.hostPeerId === session.selfPeerId}
+            mirror
+          />,
+        ],
+        ...session.participants.map((participant): [string, ReactNode] => [
+          participant.peerId,
+          remoteTile(participant, false),
+        ]),
+      ],
+      spotlit?.peerId ?? null,
+    ),
+    sharerPeerId,
+  );
+  const pipTile = tiles.find(([key]) => key !== 'self') ?? tiles[0];
 
   return (
     <View style={styles.screen}>
@@ -280,15 +323,23 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
                   contentContainerStyle={styles.strip}
                 >
                   {tiles.map(([key, tile]) => (
-                    <View key={key} style={[styles.cell, { width: STRIP_TILE_WIDTH }]}>
+                    <View
+                      key={key}
+                      style={[
+                        styles.cell,
+                        { width: key === sharerPeerId ? shareStripWidth : STRIP_TILE_WIDTH },
+                      ]}
+                    >
                       {tile}
                     </View>
                   ))}
                 </ScrollView>
               )}
               {fullCode && (
-                <DraggablePip>
-                  {(tiles.find(([key]) => key !== 'self') ?? tiles[0])?.[1]}
+                <DraggablePip
+                  width={pipTile?.[0] === sharerPeerId ? width * SHARE_PIP_WIDTH_SHARE : undefined}
+                >
+                  {pipTile?.[1]}
                 </DraggablePip>
               )}
               {stage === 'whiteboard' ? (
@@ -353,7 +404,13 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           ) : (
             <ScrollView contentContainerStyle={styles.grid}>
               {tiles.map(([key, tile]) => (
-                <View key={key} style={[styles.cell, { width: cellWidth }]}>
+                <View
+                  key={key}
+                  style={[
+                    styles.cell,
+                    { width: key === sharerPeerId ? shareGridWidth : cellWidth },
+                  ]}
+                >
                   {tile}
                 </View>
               ))}
@@ -581,6 +638,16 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
             />
           )}
         </View>
+      )}
+      {spotlit && (
+        <TileSpotlight
+          title={spotlit.displayName}
+          micOn={microphoneUnmuted(session.localStream)}
+          onToggleMic={session.toggleMic}
+          onClose={() => setSpotlitPeerId(null)}
+        >
+          {remoteTile(spotlit, true)}
+        </TileSpotlight>
       )}
     </View>
   );
