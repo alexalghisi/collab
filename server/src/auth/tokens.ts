@@ -8,7 +8,7 @@ export interface AuthToken {
 
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
-function secret(): string {
+export function authSecret(): string {
   const fromEnv = process.env.AUTH_SECRET?.trim();
   return fromEnv && fromEnv.length > 0 ? fromEnv : 'collab-dev-auth-secret';
 }
@@ -18,7 +18,7 @@ export function issueToken(user: AuthToken, ttlMs = MONTH_MS): string {
     JSON.stringify({ ...user, exp: Date.now() + ttlMs }),
     'utf8',
   ).toString('base64url');
-  const signature = createHmac('sha256', secret()).update(payload).digest('base64url');
+  const signature = createHmac('sha256', authSecret()).update(payload).digest('base64url');
   return `${payload}.${signature}`;
 }
 
@@ -32,7 +32,7 @@ export function verifyToken(token: string | undefined | null): AuthToken | null 
   }
   const payload = token.slice(0, dot);
   const signature = token.slice(dot + 1);
-  const expected = createHmac('sha256', secret()).update(payload).digest('base64url');
+  const expected = createHmac('sha256', authSecret()).update(payload).digest('base64url');
   const left = Buffer.from(signature);
   const right = Buffer.from(expected);
   if (left.length !== right.length || !timingSafeEqual(left, right)) {
