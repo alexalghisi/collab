@@ -1,6 +1,6 @@
 import { timeoutSignal } from '../net/timeoutSignal';
 import { EXECUTION_URL } from './config';
-import { executeInCloud } from './cloudExecute';
+import { CLOUD_EXECUTE_BUDGET_MS, executeInCloud } from './cloudExecute';
 import type { ExecutionRequest, ExecutionResult } from './execution';
 import type { WorkspaceFile } from './workspaceFiles';
 
@@ -18,6 +18,9 @@ interface ExecuteBody {
   readonly files?: unknown;
   readonly error?: unknown;
 }
+
+/** The server's own compiler call has to be able to finish before the browser gives up. */
+const SERVER_TIMEOUT_MS = CLOUD_EXECUTE_BUDGET_MS + 5_000;
 
 function asFiles(value: unknown): WorkspaceFile[] {
   if (!Array.isArray(value)) {
@@ -51,7 +54,7 @@ export async function executeOnServer(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(request),
-      signal: timeoutSignal(25_000),
+      signal: timeoutSignal(SERVER_TIMEOUT_MS),
     });
   } catch (cause) {
     throw new Error(`the execution service could not be reached: ${(cause as Error).message}`, {

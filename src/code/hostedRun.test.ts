@@ -36,7 +36,7 @@ describe('runOnHostedCompiler', () => {
       timedOut: false,
       error: null,
     });
-    expect(compiler).toBe('gcc-head');
+    expect(compiler).toBe('gcc-13.2.0');
   });
 
   it('keeps a compiler failure on stderr instead of claiming the sandbox is off', async () => {
