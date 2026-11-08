@@ -37,7 +37,15 @@ const POPUP_BLOCKED =
 const POPUP_CANCELLED = 'Google sign-in was cancelled.';
 const POPUP_CANCEL_GRACE_MS = 8_000;
 
-function watchForClosedGoogleWindow(cancel: (message: string) => void): () => void {
+/**
+ * Focus coming back only suggests the Google window is gone: people also switch away while
+ * reading the consent or unverified-app screen. A single read when focus returns confirms it,
+ * unlike the timer in Google's own error_callback, which floods the console with COOP warnings.
+ */
+function watchForClosedGoogleWindow(
+  cancel: (message: string) => void,
+  stillOpen: () => boolean,
+): () => void {
   if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
     return () => undefined;
   }
@@ -52,7 +60,11 @@ function watchForClosedGoogleWindow(cancel: (message: string) => void): () => vo
       return;
     }
     clearTimeout(cancelTimer);
-    cancelTimer = setTimeout(() => cancel(POPUP_CANCELLED), POPUP_CANCEL_GRACE_MS);
+    cancelTimer = setTimeout(() => {
+      if (!stillOpen()) {
+        cancel(POPUP_CANCELLED);
+      }
+    }, POPUP_CANCEL_GRACE_MS);
   };
   window.addEventListener('blur', onBlur);
   window.addEventListener('focus', onFocus);
@@ -63,7 +75,7 @@ function watchForClosedGoogleWindow(cancel: (message: string) => void): () => vo
   };
 }
 
-function openGoogleWindow(open: () => void): boolean {
+function openGoogleWindow(open: () => void, remember: (child: Window) => void): boolean {
   if (typeof window === 'undefined' || typeof window.open !== 'function') {
     open();
     return false;
@@ -74,6 +86,8 @@ function openGoogleWindow(open: () => void): boolean {
     const child = original.call(window, url, target, features);
     if (child === null) {
       blocked = true;
+    } else {
+      remember(child);
     }
     return child;
   };
@@ -164,10 +178,17 @@ function requestAccessToken(
         finish(() => reject(new Error(message)));
       },
     });
-    stopWatching = watchForClosedGoogleWindow((message) =>
-      finish(() => reject(new Error(message))),
+    let googleWindow: Window | undefined;
+    stopWatching = watchForClosedGoogleWindow(
+      (message) => finish(() => reject(new Error(message))),
+      () => googleWindow?.closed === false,
     );
-    const blocked = openGoogleWindow(() => client.requestAccessToken({ prompt: options.prompt }));
+    const blocked = openGoogleWindow(
+      () => client.requestAccessToken({ prompt: options.prompt }),
+      (child) => {
+        googleWindow = child;
+      },
+    );
     if (blocked) {
       finish(() => reject(new Error(POPUP_BLOCKED)));
     }
@@ -278,10 +299,17 @@ export async function requestGoogleCalendarCode(): Promise<CalendarAuthCode | nu
         finish(() => reject(new Error(message)));
       },
     });
-    stopWatching = watchForClosedGoogleWindow(() =>
-      finish(() => reject(new Error('Google Calendar access was cancelled.'))),
+    let googleWindow: Window | undefined;
+    stopWatching = watchForClosedGoogleWindow(
+      () => finish(() => reject(new Error('Google Calendar access was cancelled.'))),
+      () => googleWindow?.closed === false,
     );
-    const blocked = openGoogleWindow(() => client.requestCode());
+    const blocked = openGoogleWindow(
+      () => client.requestCode(),
+      (child) => {
+        googleWindow = child;
+      },
+    );
     if (blocked) {
       finish(() => reject(new Error(POPUP_BLOCKED)));
     }
