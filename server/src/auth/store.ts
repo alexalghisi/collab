@@ -250,10 +250,11 @@ function keyFromSecret(secret: string): Buffer {
   return createHash('sha256').update(secret).digest();
 }
 
-export function sealUserFile(file: UserFile, secret: string): string {
+/** AES-256-GCM envelope; only a holder of the server secret can read or forge it. */
+export function sealJson(value: unknown, secret: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', keyFromSecret(secret), iv);
-  const plain = Buffer.from(JSON.stringify(file), 'utf8');
+  const plain = Buffer.from(JSON.stringify(value), 'utf8');
   const encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
   const tag = cipher.getAuthTag();
   return JSON.stringify({
@@ -264,18 +265,10 @@ export function sealUserFile(file: UserFile, secret: string): string {
   });
 }
 
-export function openUserFile(raw: string, secret: string): UserFile | null {
+/** The value inside a sealed envelope, or null when it is damaged or sealed with another secret. */
+export function openSealedJson(raw: string, secret: string): unknown {
   try {
-    const parsed = JSON.parse(raw) as {
-      v?: number;
-      iv?: string;
-      tag?: string;
-      data?: string;
-      users?: StoredUser[];
-    };
-    if (Array.isArray(parsed.users)) {
-      return { users: parsed.users };
-    }
+    const parsed = JSON.parse(raw) as { v?: number; iv?: string; tag?: string; data?: string };
     if (parsed.v !== 1 || !parsed.iv || !parsed.tag || !parsed.data) {
       return null;
     }
@@ -289,10 +282,26 @@ export function openUserFile(raw: string, secret: string): UserFile | null {
       decipher.update(Buffer.from(parsed.data, 'base64')),
       decipher.final(),
     ]);
-    return JSON.parse(plain.toString('utf8')) as UserFile;
+    return JSON.parse(plain.toString('utf8'));
   } catch {
     return null;
   }
+}
+
+export function sealUserFile(file: UserFile, secret: string): string {
+  return sealJson(file, secret);
+}
+
+export function openUserFile(raw: string, secret: string): UserFile | null {
+  try {
+    const parsed = JSON.parse(raw) as { users?: StoredUser[] };
+    if (Array.isArray(parsed.users)) {
+      return { users: parsed.users };
+    }
+  } catch {
+    return null;
+  }
+  return openSealedJson(raw, secret) as UserFile | null;
 }
 
 export function gistUserStore(

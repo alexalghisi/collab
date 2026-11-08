@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
-import { verifyToken } from '../auth/tokens';
-import type { UserStore } from '../auth/store';
+import { authSecret, verifyToken } from '../auth/tokens';
+import { openSealedJson, sealJson, type UserStore } from '../auth/store';
 
 /**
  * Permanent Google Calendar access. The browser only ever gets short-lived
@@ -8,6 +8,10 @@ import type { UserStore } from '../auth/store';
  * "connect again". Here the one-time consent is exchanged for a refresh token
  * that stays on the server, sealed in the account store, and any later
  * access token is minted from it silently — connect once, synced for good.
+ *
+ * A free Render box has no durable disk and the cloud account store can fail, so the
+ * browser also keeps a sealed copy of the grant. It is opaque without AUTH_SECRET and
+ * bound to the account, and it brings the grant back after the server forgot it.
  */
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -78,6 +82,20 @@ function readString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+interface SealedGrant {
+  readonly uid?: unknown;
+  readonly refreshToken?: unknown;
+}
+
+function sealGrant(uid: string, refreshToken: string): string {
+  return sealJson({ uid, refreshToken }, authSecret());
+}
+
+function openGrant(raw: string, uid: string): string | null {
+  const grant = raw ? (openSealedJson(raw, authSecret()) as SealedGrant | null) : null;
+  return grant?.uid === uid && typeof grant.refreshToken === 'string' ? grant.refreshToken : null;
+}
+
 /** Only redirect URIs of this app's own pages may be used to redeem a code. */
 export function isAllowedRedirect(uri: string): boolean {
   // GIS code client (popup): Google requires redirect_uri=postmessage when redeeming the code.
@@ -101,6 +119,9 @@ export function calendarRouter({
   revoke = defaultRevoke,
 }: CalendarRouterOptions): Router {
   const router = Router();
+
+  const refreshTokenOf = (uid: string, request: Request): string | null =>
+    store.calendarRefreshToken(uid) ?? openGrant(readString(request.body?.grant), uid);
 
   router.get('/calendar/status', (request, response) => {
     const uid = sessionUid(request);
@@ -158,12 +179,17 @@ export function calendarRouter({
       response.status(500).json({ error: 'Google Calendar could not be saved. Try again.' });
       return;
     }
-    response.json({ accessToken: body.access_token, expiresIn: body.expires_in ?? 3600 });
+    response.json({
+      accessToken: body.access_token,
+      expiresIn: body.expires_in ?? 3600,
+      grant: sealGrant(uid, refresh),
+    });
   });
 
   router.post('/calendar/token', async (request, response) => {
-    const uid = sessionUid(request);
-    if (!uid) {
+    const session = sessionUser(request);
+    const uid = session?.uid ?? null;
+    if (!session || !uid) {
       response.status(401).json({ error: 'Sign in again to sync Google Calendar.' });
       return;
     }
@@ -171,7 +197,7 @@ export function calendarRouter({
       response.status(503).json({ error: 'not_configured' });
       return;
     }
-    const refresh = store.calendarRefreshToken(uid);
+    const refresh = refreshTokenOf(uid, request);
     if (!refresh) {
       response.status(404).json({ error: 'not_connected' });
       return;
@@ -183,7 +209,15 @@ export function calendarRouter({
       client_secret: config.clientSecret,
     });
     if (status === 200 && body.access_token) {
-      response.json({ accessToken: body.access_token, expiresIn: body.expires_in ?? 3600 });
+      if (!store.calendarRefreshToken(uid)) {
+        store.ensureSessionUser(session);
+        store.setCalendarRefreshToken(uid, refresh);
+      }
+      response.json({
+        accessToken: body.access_token,
+        expiresIn: body.expires_in ?? 3600,
+        grant: sealGrant(uid, refresh),
+      });
       return;
     }
     if (body.error === 'invalid_grant') {
@@ -201,7 +235,7 @@ export function calendarRouter({
       response.status(401).json({ error: 'Sign in again.' });
       return;
     }
-    const refresh = store.calendarRefreshToken(uid);
+    const refresh = refreshTokenOf(uid, request);
     store.setCalendarRefreshToken(uid, null);
     if (refresh) {
       await revoke(refresh);
