@@ -1,5 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { requestGoogleCalendarToken, requestGoogleCredential } from './googleWeb';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  requestGoogleCalendarCode,
+  requestGoogleCalendarToken,
+  requestGoogleCredential,
+} from './googleWeb';
 
 const CLIENT_ID = 'collab.apps.googleusercontent.com';
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
@@ -95,6 +99,39 @@ beforeEach(() => {
   delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 });
 
+interface CodeAnswer {
+  readonly code?: string;
+  readonly error?: string;
+}
+
+interface AwaitingGoogle {
+  answerToken?: (response: TokenResponse) => void;
+  answerCode?: (response: CodeAnswer) => void;
+}
+
+const openPopup = () => window.open('https://accounts.google.com/o/oauth2/v2/auth', 'g', 'popup');
+
+/** Google's window is open and has not answered yet; the test decides what happens next. */
+function stubGoogleAwaitingAnswer(): AwaitingGoogle {
+  const awaiting: AwaitingGoogle = {};
+  (globalThis as GoogleGlobal).google = {
+    accounts: {
+      id: { initialize: () => undefined, prompt: () => undefined },
+      oauth2: {
+        initTokenClient: (config: { callback: (value: TokenResponse) => void }) => {
+          awaiting.answerToken = config.callback;
+          return { requestAccessToken: openPopup };
+        },
+        initCodeClient: (config: { callback: (value: CodeAnswer) => void }) => {
+          awaiting.answerCode = config.callback;
+          return { requestCode: openPopup };
+        },
+      },
+    },
+  };
+  return awaiting;
+}
+
 describe('requestGoogleCalendarToken', () => {
   it('refuses to start when the deployment has no Google web client id', async () => {
     await expect(requestGoogleCalendarToken()).rejects.toThrow(
@@ -139,6 +176,44 @@ describe('requestGoogleCalendarToken', () => {
     });
 
     await expect(requestGoogleCalendarToken()).rejects.toThrow(/blocked the Google window/);
+  });
+});
+
+describe('requestGoogleCalendarCode', () => {
+  beforeEach(() => {
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps waiting while the unverified-app screen is open behind this page', async () => {
+    const browser = stubWindow(() => ({ closed: false }) as Window);
+    const google = stubGoogleAwaitingAnswer();
+
+    const pending = requestGoogleCalendarCode();
+    await vi.advanceTimersByTimeAsync(0);
+    browser.fire('blur');
+    browser.fire('focus');
+    await vi.advanceTimersByTimeAsync(120_000);
+    google.answerCode?.({ code: 'one-time-code' });
+
+    await expect(pending).resolves.toEqual({ code: 'one-time-code', redirectUri: 'postmessage' });
+  });
+
+  it('gives up once focus returns and the Google window is really closed', async () => {
+    const browser = stubWindow(() => ({ closed: true }) as Window);
+    stubGoogleAwaitingAnswer();
+
+    const pending = requestGoogleCalendarCode();
+    const settled = expect(pending).rejects.toThrow('Google Calendar access was cancelled.');
+    await vi.advanceTimersByTimeAsync(0);
+    browser.fire('blur');
+    browser.fire('focus');
+    await vi.advanceTimersByTimeAsync(8_000);
+    await settled;
   });
 });
 
@@ -214,6 +289,22 @@ describe('requestGoogleCredential', () => {
     stubGoogle({ error: 'popup_closed_by_user' });
 
     await expect(requestGoogleCredential()).rejects.toThrow('popup_closed_by_user');
+  });
+
+  it('does not give up on a Google window that is still open', async () => {
+    vi.useFakeTimers();
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = CLIENT_ID;
+    const browser = stubWindow(() => ({ closed: false }) as Window);
+    const google = stubGoogleAwaitingAnswer();
+
+    const pending = requestGoogleCredential();
+    browser.fire('blur');
+    browser.fire('focus');
+    await vi.advanceTimersByTimeAsync(60_000);
+    google.answerToken?.({ access_token: 'late-token' });
+
+    await expect(pending).resolves.toEqual({ accessToken: 'late-token' });
+    vi.useRealTimers();
   });
 
   it('gives up when someone closes the Google window instead of waiting on it', async () => {
