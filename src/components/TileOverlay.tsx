@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PeerState } from '../signaling/events';
 import { colors } from '../theme';
@@ -12,10 +12,12 @@ export interface TileOverlayProps {
   state: PeerState;
   isHost: boolean;
   quality?: LinkQuality;
+  /** Offered on tiles that can be enlarged. */
+  onExpand?: () => void;
 }
 
 /** Status chrome drawn over a video tile: name, host badge, mute, hand, reaction. */
-export function TileOverlay({ label, state, isHost, quality }: TileOverlayProps) {
+export function TileOverlay({ label, state, isHost, quality, onExpand }: TileOverlayProps) {
   return (
     <>
       <View style={styles.topRow} pointerEvents="none">
@@ -40,6 +42,17 @@ export function TileOverlay({ label, state, isHost, quality }: TileOverlayProps)
           </View>
         )}
       </View>
+
+      {onExpand && (
+        <Pressable
+          style={styles.expand}
+          onPress={onExpand}
+          accessibilityRole="button"
+          accessibilityLabel={`Expand ${label}`}
+        >
+          <Ionicons name="expand" size={18} color={colors.text} />
+        </Pressable>
+      )}
 
       {state.reaction && (
         <View style={styles.reaction} pointerEvents="none">
@@ -72,9 +85,13 @@ function qualityColor(quality: LinkQuality): string {
   return colors.danger;
 }
 
+/** Above the video element and the avatar placeholder, which sit at layers 1 and 2. */
+const OVERLAY_LAYER = 3;
+
 const styles = StyleSheet.create({
   topRow: {
     position: 'absolute',
+    zIndex: OVERLAY_LAYER,
     top: 8,
     left: 8,
     right: 8,
@@ -111,8 +128,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  expand: {
+    position: 'absolute',
+    zIndex: OVERLAY_LAYER,
+    top: 6,
+    right: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17, 24, 39, 0.72)',
+  },
   reaction: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: OVERLAY_LAYER,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -121,6 +151,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: 'absolute',
+    zIndex: OVERLAY_LAYER,
     bottom: 0,
     left: 0,
     right: 0,
