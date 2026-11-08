@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   readGoogleCalendarConnected,
+  readGoogleCalendarGrant,
   readGoogleCalendarToken,
   writeGoogleCalendarConnected,
+  writeGoogleCalendarGrant,
   writeGoogleCalendarToken,
 } from './googleCalendarStore';
 
@@ -27,6 +29,16 @@ afterEach(() => {
 });
 
 describe('Google Calendar token persistence', () => {
+  it('keeps the sealed grant per account and forgets it on null', () => {
+    writeGoogleCalendarGrant('u1', 'sealed');
+
+    expect(readGoogleCalendarGrant('u1')).toBe('sealed');
+    expect(readGoogleCalendarGrant('u2')).toBeNull();
+
+    writeGoogleCalendarGrant('u1', null);
+    expect(readGoogleCalendarGrant('u1')).toBeNull();
+  });
+
   it('stores the access token next to the connected flag', () => {
     writeGoogleCalendarConnected('user-1', true);
     writeGoogleCalendarToken('user-1', 'ya29.live');

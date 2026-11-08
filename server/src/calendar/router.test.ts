@@ -69,16 +69,111 @@ describe('calendar router', () => {
       code: 'c',
       redirectUri: 'https://collab.example/',
     });
-    expect(await connect.json()).toEqual({ accessToken: 'a1', expiresIn: 3599 });
+    expect(await connect.json()).toMatchObject({ accessToken: 'a1', expiresIn: 3599 });
     expect(app.store.calendarRefreshToken(app.user.uid)).toBe('r1');
 
     const refreshed = await app.post('/calendar/token');
-    expect(await refreshed.json()).toEqual({ accessToken: 'a2', expiresIn: 3599 });
+    expect(await refreshed.json()).toMatchObject({ accessToken: 'a2', expiresIn: 3599 });
     expect(calls[1]).toMatchObject({ grant_type: 'refresh_token', refresh_token: 'r1' });
 
     const status = await fetch(`${app.url}/calendar/status`, { headers: app.auth });
     expect(await status.json()).toEqual({ configured: true, connected: true });
     await app.close();
+  });
+
+  describe('sealed grant kept by the browser', () => {
+    const answers: TokenRequest = async (params) =>
+      params.grant_type === 'authorization_code'
+        ? { status: 200, body: { access_token: 'a1', expires_in: 3599, refresh_token: 'r1' } }
+        : { status: 200, body: { access_token: 'a2', expires_in: 3599 } };
+
+    async function connected(requestToken: TokenRequest = answers) {
+      const app = await start(requestToken);
+      const response = await app.post('/calendar/connect', {
+        code: 'c',
+        redirectUri: 'postmessage',
+      });
+      const { grant } = (await response.json()) as { grant: string };
+      return { app, grant };
+    }
+
+    it('never exposes the refresh token in the grant handed to the browser', async () => {
+      const { app, grant } = await connected();
+      expect(typeof grant).toBe('string');
+      expect(grant).not.toContain('r1');
+      await app.close();
+    });
+
+    it('survives a server that lost its account store, and restores the store', async () => {
+      const { app, grant } = await connected();
+      app.store.setCalendarRefreshToken(app.user.uid, null);
+
+      const renewed = await app.post('/calendar/token', { grant });
+
+      expect(renewed.status).toBe(200);
+      expect(await renewed.json()).toMatchObject({ accessToken: 'a2' });
+      expect(app.store.calendarRefreshToken(app.user.uid)).toBe('r1');
+      await app.close();
+    });
+
+    it('hands a grant to browsers that do not hold one yet', async () => {
+      const { app } = await connected();
+      const renewed = (await (await app.post('/calendar/token')).json()) as { grant?: string };
+      app.store.setCalendarRefreshToken(app.user.uid, null);
+
+      expect((await app.post('/calendar/token', { grant: renewed.grant })).status).toBe(200);
+      await app.close();
+    });
+
+    it("rejects another account's grant and garbage", async () => {
+      const { app, grant } = await connected();
+      app.store.setCalendarRefreshToken(app.user.uid, null);
+      const other = app.store.create({
+        email: 'bob@example.com',
+        displayName: 'Bob',
+        passwordHash: null,
+      });
+      const bobAuth = {
+        Authorization: `Bearer ${issueToken({ uid: other.uid, email: other.email, displayName: 'Bob' })}`,
+        'Content-Type': 'application/json',
+      };
+
+      const stolen = await fetch(`${app.url}/calendar/token`, {
+        method: 'POST',
+        headers: bobAuth,
+        body: JSON.stringify({ grant }),
+      });
+
+      expect(stolen.status).toBe(404);
+      expect((await app.post('/calendar/token', { grant: 'garbage' })).status).toBe(404);
+      await app.close();
+    });
+
+    it('answers not_connected when Google revoked the grant', async () => {
+      const { app, grant } = await connected(async (params) =>
+        params.grant_type === 'authorization_code'
+          ? { status: 200, body: { access_token: 'a1', refresh_token: 'r1' } }
+          : { status: 400, body: { error: 'invalid_grant' } },
+      );
+      app.store.setCalendarRefreshToken(app.user.uid, null);
+
+      const renewed = await app.post('/calendar/token', { grant });
+
+      expect(renewed.status).toBe(404);
+      expect(await renewed.json()).toEqual({ error: 'not_connected' });
+      expect(app.store.calendarRefreshToken(app.user.uid)).toBeNull();
+      await app.close();
+    });
+
+    it('revokes through the grant when the server lost the token', async () => {
+      const { app, grant } = await connected();
+      app.store.setCalendarRefreshToken(app.user.uid, null);
+
+      await app.post('/calendar/disconnect', { grant });
+
+      expect(app.revoked).toEqual(['r1']);
+      await app.close();
+    });
   });
 
   it('keeps the grant even when the account record was lost in a server restart', async () => {
