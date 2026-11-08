@@ -13,13 +13,22 @@ export function VideoTile({
   isHost = false,
   mirror = false,
   quality,
+  fill = false,
+  onExpand,
 }: VideoTileProps) {
   const streamUrl = stream ? (stream as unknown as { toURL: () => string }).toURL() : undefined;
   const presentation = videoPresentation(state, mirror);
   const speaking = useSpeaking(stream?.getAudioTracks()[0], !state.audioMuted);
 
   return (
-    <View style={[styles.tile, speaking && styles.speaking]}>
+    <View
+      style={[
+        styles.tile,
+        state.screenSharing && styles.screen,
+        fill && styles.fill,
+        speaking && styles.speaking,
+      ]}
+    >
       {streamUrl ? (
         <RTCView
           streamURL={streamUrl}
@@ -33,7 +42,13 @@ export function VideoTile({
           <Text style={styles.avatar}>{label.charAt(0).toUpperCase()}</Text>
         </View>
       )}
-      <TileOverlay label={label} state={state} isHost={isHost} quality={quality} />
+      <TileOverlay
+        label={label}
+        state={state}
+        isHost={isHost}
+        quality={quality}
+        onExpand={onExpand}
+      />
     </View>
   );
 }
@@ -46,6 +61,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: 'transparent',
+  },
+  screen: {
+    aspectRatio: 16 / 9,
+  },
+  fill: {
+    flex: 1,
+    aspectRatio: undefined,
+    borderRadius: 0,
+    borderWidth: 0,
   },
   speaking: {
     borderColor: colors.success,

@@ -19,6 +19,9 @@ export interface VideoTileProps {
   mirror?: boolean;
   /** Link grade for a remote participant. Omitted on the local tile. */
   quality?: LinkQuality;
+  /** Fill the parent instead of keeping the tile's own proportions. */
+  fill?: boolean;
+  onExpand?: () => void;
 }
 
 const videoStyle: CSSProperties = {
@@ -47,6 +50,8 @@ export function VideoTile({
   isHost = false,
   mirror = false,
   quality,
+  fill = false,
+  onExpand,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
@@ -82,7 +87,14 @@ export function VideoTile({
   }, [stream, videoRef, videoElement, trackKey, mirror]);
 
   return (
-    <View style={[styles.tile, speaking && styles.speaking]}>
+    <View
+      style={[
+        styles.tile,
+        state.screenSharing && styles.screen,
+        fill && styles.fill,
+        speaking && styles.speaking,
+      ]}
+    >
       <video
         ref={setVideo}
         autoPlay
@@ -96,7 +108,13 @@ export function VideoTile({
         </View>
       )}
       {mirror && <MicMeter track={stream?.getAudioTracks()[0]} />}
-      <TileOverlay label={label} state={state} isHost={isHost} quality={quality} />
+      <TileOverlay
+        label={label}
+        state={state}
+        isHost={isHost}
+        quality={quality}
+        onExpand={onExpand}
+      />
     </View>
   );
 }
@@ -109,6 +127,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: 'transparent',
+  },
+  screen: {
+    aspectRatio: 16 / 9,
+  },
+  fill: {
+    flex: 1,
+    aspectRatio: undefined,
+    borderRadius: 0,
+    borderWidth: 0,
   },
   speaking: {
     borderColor: colors.success,
