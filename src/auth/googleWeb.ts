@@ -222,6 +222,11 @@ export async function requestGoogleCalendarToken(prompt: '' | 'consent' = ''): P
   });
 }
 
+/** The desktop shell only has short-lived tokens; browsers can give the server a lasting grant. */
+export function supportsCalendarOfflineGrant(): boolean {
+  return !getElectronAuth();
+}
+
 /**
  * One-time offline consent for Google Calendar through the GIS code client (web only, not the
  * desktop shell). The server redeems the code and keeps the refresh token, so access never has

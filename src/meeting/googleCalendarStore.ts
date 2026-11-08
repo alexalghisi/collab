@@ -12,6 +12,10 @@ export function googleCalendarSyncTokenKey(uid: string): string {
   return `collab.googleCalendar.${uid}.syncToken`;
 }
 
+export function googleCalendarGrantKey(uid: string): string {
+  return `collab.googleCalendar.${uid}.grant`;
+}
+
 export function readGoogleCalendarConnected(uid: string): boolean {
   try {
     return storage.read(googleCalendarConnectedKey(uid)) === '1';
@@ -57,6 +61,23 @@ export function readGoogleCalendarSyncToken(uid: string): string | null {
 export function writeGoogleCalendarSyncToken(uid: string, token: string | null): void {
   try {
     storage.write(googleCalendarSyncTokenKey(uid), token ?? '');
+  } catch {
+    return;
+  }
+}
+
+/** The server-sealed Calendar grant; it restores the connection if the server forgot it. */
+export function readGoogleCalendarGrant(uid: string): string | null {
+  try {
+    return storage.read(googleCalendarGrantKey(uid)) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeGoogleCalendarGrant(uid: string, grant: string | null): void {
+  try {
+    storage.write(googleCalendarGrantKey(uid), grant ?? '');
   } catch {
     return;
   }

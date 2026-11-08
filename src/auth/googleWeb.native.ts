@@ -8,6 +8,10 @@ export async function requestGoogleCalendarToken(_prompt?: '' | 'consent'): Prom
   throw new Error('Google Calendar sync is available in the web app.');
 }
 
+export function supportsCalendarOfflineGrant(): boolean {
+  return false;
+}
+
 export async function requestGoogleCalendarCode(): Promise<null> {
   return null;
 }
