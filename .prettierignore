@@ -9,3 +9,4 @@ ios
 package-lock.json
 *.gif
 *.png
+public/google*.html
