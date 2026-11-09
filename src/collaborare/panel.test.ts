@@ -209,8 +209,11 @@ describe('problem panel layout', () => {
     expect(clampPanelWidth(10, 1000)).toBe(280);
     expect(clampPanelWidth(Number.NaN, 400)).toBe(240);
     expect(readPanelWidth('420', 1000)).toBe(420);
-    expect(readPanelWidth('380', 1000)).toBe(440);
-    expect(readPanelWidth(null, 1000)).toBe(440);
+    expect(readPanelWidth('380', 1440)).toBe(440);
+    expect(readPanelWidth(null, 1000)).toBe(420);
+    expect(readPanelWidth(null, 1440)).toBe(440);
+    // A tablet keeps most of its width for the editor until the column is dragged.
+    expect(readPanelWidth(null, 820)).toBe(344);
     expect(isCompactProblemLayout(768)).toBe(true);
     expect(isCompactProblemLayout(360)).toBe(true);
     expect(isCompactProblemLayout(769)).toBe(false);

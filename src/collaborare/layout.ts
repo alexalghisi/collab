@@ -22,11 +22,19 @@ export function clampPanelWidth(requested: number, stageWidth: number): number {
   return Math.min(max, Math.max(min, Math.round(width)));
 }
 
+/** Share of the stage the column takes before anyone drags it, so a tablet keeps room to code. */
+const DEFAULT_PANEL_SHARE = 0.42;
+
+/** The starting width: 440px on a large screen, less on a tablet. */
+export function defaultPanelWidth(stageWidth: number): number {
+  return Math.min(DEFAULT_PANEL_WIDTH, Math.floor(stageWidth * DEFAULT_PANEL_SHARE));
+}
+
 export function readPanelWidth(raw: string | null, stageWidth: number): number {
   const stored = raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
   const parsed =
     !Number.isFinite(stored) || stored === PREVIOUS_DEFAULT_PANEL_WIDTH
-      ? DEFAULT_PANEL_WIDTH
+      ? defaultPanelWidth(stageWidth)
       : stored;
   return clampPanelWidth(parsed, stageWidth);
 }

@@ -43,6 +43,9 @@ function ensureCursorStyles(editors: CodePresence[]): void {
   sheet.textContent = remoteCursorCss(editors);
 }
 
+/** Below this the file list would squeeze the code, so it becomes a toggle. */
+const NARROW_EDITOR_WIDTH = 560;
+
 /** The shared editor: Monaco bound to the room's document, cursors and all. */
 export function CodePanel({
   document: shared,
@@ -58,6 +61,11 @@ export function CodePanel({
   const [stdin, setStdin] = useState(() => shared.stdin.toString() || stdinSeed?.value || '');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
   const [fontSize, setFontSize] = useState(16);
+  const [bodyWidth, setBodyWidth] = useState(Number.POSITIVE_INFINITY);
+  const [filesOpen, setFilesOpen] = useState(false);
+  // A narrow editor keeps its width for code; the file list opens on demand.
+  const narrow = bodyWidth < NARROW_EDITOR_WIDTH;
+
   const fontSizeRef = useRef(16);
   const editorHost = useRef<View>(null);
   const bindingRef = useRef<MonacoTextBinding | null>(null);
@@ -67,6 +75,7 @@ export function CodePanel({
 
   const running = runs.some((run) => run.running && run.byPeerId === selfPeerId);
   const openFile = files.find((file) => file.name === selected) ?? null;
+  const showFiles = !narrow || filesOpen || openFile !== null;
 
   const editFile = (content: string): void => {
     if (!openFile) {
@@ -172,15 +181,30 @@ export function CodePanel({
         >
           <Text style={styles.fontLabel}>A+</Text>
         </Pressable>
+        {narrow && (
+          <Pressable
+            onPress={() => setFilesOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityLabel={showFiles ? 'Hide files' : 'Show files'}
+            accessibilityState={{ expanded: showFiles }}
+            style={[styles.fontButton, styles.filesToggle, showFiles && styles.fontButtonActive]}
+          >
+            <Text style={styles.fontLabel}>
+              Files{files.length > 0 ? ` · ${files.length + 1}` : ''}
+            </Text>
+          </Pressable>
+        )}
       </View>
-      <View style={styles.body}>
-        <CodeFileManager
-          language={language}
-          files={files}
-          selected={selected}
-          onSelect={setSelected}
-          onChange={onFilesChange}
-        />
+      <View style={styles.body} onLayout={(event) => setBodyWidth(event.nativeEvent.layout.width)}>
+        {showFiles && (
+          <CodeFileManager
+            language={language}
+            files={files}
+            selected={selected}
+            onSelect={setSelected}
+            onChange={onFilesChange}
+          />
+        )}
         <View ref={editorHost} style={[styles.editor, openFile ? styles.hidden : null]}>
           <Editor
             language={language}
@@ -231,6 +255,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
     paddingHorizontal: 12,
     paddingVertical: 6,
+  },
+  fontButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  filesToggle: {
+    marginLeft: 'auto',
   },
   fontLabel: {
     color: colors.text,

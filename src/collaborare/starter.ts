@@ -10,7 +10,7 @@ export function problemStarter(language: 'cpp' | 'python', title: string): strin
   if (language === 'python') {
     return `# ${title}
 def main():
-    # scrie soluția aici
+    # write your solution here
     pass
 
 if __name__ == "__main__":
@@ -22,7 +22,7 @@ if __name__ == "__main__":
 using namespace std;
 
 int main() {
-    // scrie soluția aici
+    // write your solution here
     return 0;
 }
 `;
