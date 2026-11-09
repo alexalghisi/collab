@@ -126,7 +126,7 @@ describe('ProblemsPanel', () => {
 
   it('shows the same topic chips as collaborare.ro', () => {
     render(<ProblemsPanel {...props()} />);
-    for (const label of ['Toate problemele', 'Vectori', 'Matrice', 'Backtracking']) {
+    for (const label of ['All problems', 'Vectori', 'Matrice', 'Backtracking']) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
   });
