@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { completeCloudUiRun } from './runInCloudUi';
 
 const request = {
@@ -9,6 +9,10 @@ const request = {
 };
 
 const meta = { runId: 'run-1', byPeerId: 'peer-1', byDisplayName: 'Ada' };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('completeCloudUiRun', () => {
   it('turns a successful compile into console output the room can show', async () => {
@@ -35,7 +39,11 @@ describe('completeCloudUiRun', () => {
       throw new Error('ENOTFOUND');
     }) as typeof fetch;
 
-    const run = await completeCloudUiRun(request, meta, fetchImpl);
+    // The compiler is asked again after a pause; the test does not sit through it.
+    vi.useFakeTimers();
+    const pending = completeCloudUiRun(request, meta, fetchImpl);
+    await vi.runAllTimersAsync();
+    const run = await pending;
 
     expect(run.error).toMatch(/could not be reached/);
     expect(run.exitCode).toBeNull();

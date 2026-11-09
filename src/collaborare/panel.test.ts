@@ -243,6 +243,7 @@ describe('running examples', () => {
         exitCode: 0,
         timedOut: false,
         error: null,
+        compileError: null,
       }),
     });
     expect(verdicts.map((item) => item.passed)).toEqual([true, false]);
@@ -260,6 +261,7 @@ describe('running examples', () => {
         exitCode: null,
         timedOut: false,
         error: 'the cloud sandbox could not be reached: offline',
+        compileError: null,
       }),
     });
     expect(verdicts[0]?.passed).toBe(false);
