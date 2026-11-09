@@ -34,11 +34,11 @@ export function problemCategories(problems: readonly ProblemSummary[]): ProblemC
     topics.push(problem.topic);
   }
   return [
-    { key: CATEGORY_ALL, label: 'Toate problemele' },
-    { key: CATEGORY_OLYMPIAD, label: 'Olimpiada de informatică (cls. V–XII)' },
-    { key: CATEGORY_START_9_10, label: 'Pregătire clasa IX–X' },
-    { key: CATEGORY_START_11_12, label: 'Pregătire clasa XI–XII' },
-    { key: CATEGORY_SEQUENCES, label: 'Antrenament secvențe' },
+    { key: CATEGORY_ALL, label: 'All problems' },
+    { key: CATEGORY_OLYMPIAD, label: 'Informatics Olympiad (grades 5–12)' },
+    { key: CATEGORY_START_9_10, label: 'Practice: grades 9–10' },
+    { key: CATEGORY_START_11_12, label: 'Practice: grades 11–12' },
+    { key: CATEGORY_SEQUENCES, label: 'Sequences practice' },
     ...topics.map((topic) => ({ key: topic, label: topic })),
   ];
 }

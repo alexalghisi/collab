@@ -138,7 +138,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
     <View style={styles.panel}>
       <View style={styles.header}>
         <Text style={styles.heading} accessibilityRole="header">
-          Probleme
+          Problems
         </Text>
         <Pressable
           onPress={onClose}
@@ -204,13 +204,13 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
               {grades.map((grade) => (
                 <Chip
                   key={grade}
-                  label={`a ${grade}-a`}
+                  label={`Grade ${grade}`}
                   active={olympGrade === grade}
                   onPress={() => onOlympGrade(grade)}
                 />
               ))}
               <Chip
-                label="Orice etapă"
+                label="Any stage"
                 active={olympLevel === null}
                 onPress={() => onOlympLevel(null)}
               />
