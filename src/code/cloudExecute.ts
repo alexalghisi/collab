@@ -13,10 +13,15 @@ const COMPILERS: Record<CodeLanguage, readonly [string, ...string[]]> = {
   cpp: ['gcc-13.2.0', 'gcc-head'],
 };
 
-const ATTEMPTS = 2;
 const ATTEMPT_TIMEOUT_MS = 30_000;
+/** A try that times out costs the whole wait, so only one more follows it. */
+const MAX_TIMEOUTS = 2;
+/** A busy or garbled answer comes back at once, so a third try is cheap. */
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAYS_MS = [400, 1_200] as const;
 /** Longest one run can take here; callers waiting on this service must allow for it. */
-export const CLOUD_EXECUTE_BUDGET_MS = ATTEMPTS * ATTEMPT_TIMEOUT_MS;
+export const CLOUD_EXECUTE_BUDGET_MS =
+  MAX_TIMEOUTS * ATTEMPT_TIMEOUT_MS + RETRY_DELAYS_MS.reduce((total, delay) => total + delay, 0);
 
 interface CloudResponse {
   readonly status?: string;
@@ -32,29 +37,47 @@ export interface CloudExecution {
   readonly result: ExecutionResult;
   readonly stdout: string;
   readonly stderr: string;
+  /** The compiler's diagnostics when the program never got to run; null otherwise. */
+  readonly compileError: string | null;
 }
 
-function compilerFor(language: CodeLanguage, attempt: number): string {
-  const compilers = COMPILERS[language];
-  return compilers[Math.min(attempt, compilers.length - 1)] ?? compilers[0];
+/** Waits between tries. Tests pass their own so they do not sleep. */
+export type RetryWait = (ms: number) => Promise<void>;
+
+/** Spread out, so examples that were refused together do not come back together. */
+const jitteredWait: RetryWait = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms * (0.75 + Math.random() * 0.5)));
+
+class RetryableError extends Error {
+  constructor(
+    message: string,
+    readonly timedOut: boolean,
+    cause?: unknown,
+  ) {
+    super(message, { cause });
+  }
 }
 
-function reachError(cause: unknown): Error {
+/** Statuses a public compiler answers with when it is overloaded, not when the request is wrong. */
+function isBusyStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function reachError(cause: unknown): RetryableError {
   const { name, message } = cause as Error;
-  const reason =
-    name === 'TimeoutError' || name === 'AbortError'
-      ? 'the compiler did not answer in time. Press Run again.'
-      : message;
-  return new Error(`the cloud sandbox could not be reached: ${reason}`, { cause });
+  const timedOut = name === 'TimeoutError' || name === 'AbortError';
+  const reason = timedOut ? 'the compiler did not answer in time. Press Run again.' : message;
+  return new RetryableError(`the cloud sandbox could not be reached: ${reason}`, timedOut, cause);
 }
 
-async function requestCompile(
+async function compileOnce(
   request: ExecutionRequest,
   compiler: string,
   fetchImpl: typeof fetch,
-): Promise<Response> {
+): Promise<CloudResponse> {
+  let response: Response;
   try {
-    return await fetchImpl(CLOUD_EXECUTE_URL, {
+    response = await fetchImpl(CLOUD_EXECUTE_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -68,38 +91,84 @@ async function requestCompile(
   } catch (cause) {
     throw reachError(cause);
   }
-}
-
-/** A public compiler has slow moments, so one more try is cheaper than a failed Run. */
-async function compileWithRetry(
-  request: ExecutionRequest,
-  fetchImpl: typeof fetch,
-  attempt = 0,
-): Promise<CloudResponse> {
-  const retry = attempt + 1 < ATTEMPTS;
-  let response: Response;
-  try {
-    response = await requestCompile(request, compilerFor(request.language, attempt), fetchImpl);
-  } catch (error) {
-    if (retry) {
-      return compileWithRetry(request, fetchImpl, attempt + 1);
-    }
-    throw error;
-  }
-  if (response.status >= 500 && retry) {
-    return compileWithRetry(request, fetchImpl, attempt + 1);
+  if (isBusyStatus(response.status)) {
+    throw new RetryableError(
+      `the cloud sandbox is busy (it answered ${response.status}). Press Run again.`,
+      false,
+    );
   }
   if (!response.ok) {
     throw new Error(`the cloud sandbox answered ${response.status}`);
   }
-  return (await response.json()) as CloudResponse;
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (cause) {
+    // A proxy's error page, or a body cut off mid-way: the run itself may be fine.
+    throw new RetryableError(
+      'the cloud sandbox could not be reached: its answer could not be read. Press Run again.',
+      false,
+      cause,
+    );
+  }
+  if (typeof payload !== 'object' || payload === null) {
+    throw new RetryableError(
+      'the cloud sandbox could not be reached: its answer could not be read. Press Run again.',
+      false,
+    );
+  }
+  return payload as CloudResponse;
+}
+
+/**
+ * A public compiler has slow and busy moments, so another try is cheaper than a
+ * failed Run. The backup compiler steps in after a timeout and on the last try.
+ */
+async function compileWithRetry(
+  request: ExecutionRequest,
+  fetchImpl: typeof fetch,
+  wait: RetryWait,
+): Promise<CloudResponse> {
+  const compilers = COMPILERS[request.language];
+  let timeouts = 0;
+  for (let attempt = 0; ; attempt += 1) {
+    const backup = timeouts > 0 || attempt === MAX_ATTEMPTS - 1;
+    const compiler = (backup && compilers[1]) || compilers[0];
+    try {
+      return await compileOnce(request, compiler, fetchImpl);
+    } catch (error) {
+      if (!(error instanceof RetryableError)) {
+        throw error;
+      }
+      timeouts += error.timedOut ? 1 : 0;
+      if (attempt + 1 >= MAX_ATTEMPTS || timeouts >= MAX_TIMEOUTS) {
+        throw error;
+      }
+      if (!error.timedOut) {
+        await wait(RETRY_DELAYS_MS[attempt] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]);
+      }
+    }
+  }
+}
+
+/** A kill may be reported by the signal's name or by its description. */
+const KILLED_SIGNALS = new Set(['SIGKILL', 'SIGXCPU', 'Killed', 'CPU time limit exceeded']);
+
+/** Diagnostics count as a failed build only when nothing ran: warnings alone do not. */
+function compileFailure(payload: CloudResponse, exitCode: number | null): string | null {
+  const diagnostics = payload.compiler_error || payload.compiler_output || '';
+  const ran = Boolean(payload.program_output || payload.program_error || payload.signal);
+  return exitCode !== null && exitCode !== 0 && !ran && /error:/.test(diagnostics)
+    ? diagnostics.slice(0, MAX_OUTPUT_BYTES)
+    : null;
 }
 
 export async function executeInCloud(
   request: ExecutionRequest,
   fetchImpl: typeof fetch = fetch,
+  wait: RetryWait = jitteredWait,
 ): Promise<CloudExecution> {
-  const payload = await compileWithRetry(request, fetchImpl);
+  const payload = await compileWithRetry(request, fetchImpl, wait);
   const stdout = (payload.program_output || payload.program_message || '').slice(
     0,
     MAX_OUTPUT_BYTES,
@@ -108,14 +177,15 @@ export async function executeInCloud(
   const stderr = (payload.program_error || compiled).slice(0, MAX_OUTPUT_BYTES);
   const parsed =
     payload.status === undefined || payload.status === '' ? NaN : Number(payload.status);
-  const timedOut = payload.signal === 'SIGKILL' || payload.signal === 'SIGXCPU';
+  const exitCode = Number.isFinite(parsed) ? parsed : null;
   return {
     result: {
-      exitCode: Number.isFinite(parsed) ? parsed : null,
-      timedOut,
+      exitCode,
+      timedOut: KILLED_SIGNALS.has(payload.signal ?? ''),
       files: [],
     },
     stdout,
     stderr,
+    compileError: compileFailure(payload, exitCode),
   };
 }

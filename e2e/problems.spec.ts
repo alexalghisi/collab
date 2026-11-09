@@ -1,4 +1,7 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
 const SIGNALING = 'http://localhost:4000';
@@ -26,10 +29,21 @@ async function signedIn(browser: Browser, name: string): Promise<Page> {
   });
   page.on('pageerror', (error) => errors.push(error.message));
   (page as Page & { errors: string[] }).errors = errors;
-  // Wandbox stand-in: runs the Python the page sends, on this machine, and answers
-  // in Wandbox's shape. Real pass/fail, no network.
+  // Wandbox stand-in: runs the Python or C++ the page sends, on this machine, and
+  // answers in Wandbox's shape. Real pass/fail, no network.
+  const compiles: string[] = [];
+  (page as Page & { compiles: string[] }).compiles = compiles;
   await page.route('https://wandbox.org/api/compile.json', async (route) => {
-    const body = route.request().postDataJSON() as { code: string; stdin: string };
+    const body = route.request().postDataJSON() as {
+      compiler: string;
+      code: string;
+      stdin: string;
+    };
+    compiles.push(body.compiler);
+    if (body.compiler.startsWith('gcc')) {
+      await route.fulfill({ json: runCpp(body.code, body.stdin) });
+      return;
+    }
     let output: string;
     let status = '0';
     try {
@@ -44,6 +58,32 @@ async function signedIn(browser: Browser, name: string): Promise<Page> {
     await route.fulfill({ json: { status, program_output: output } });
   });
   return page;
+}
+
+/** g++ on this machine, answering the way Wandbox does for a build that fails or runs. */
+function runCpp(code: string, stdin: string): Record<string, string> {
+  const dir = mkdtempSync(join(tmpdir(), 'collab-e2e-'));
+  writeFileSync(join(dir, 'prog.cc'), code);
+  const build = spawnSync('g++', ['prog.cc', '-o', 'prog'], { cwd: dir, encoding: 'utf8' });
+  if (build.status !== 0) {
+    return { status: '1', compiler_error: build.stderr, program_output: '' };
+  }
+  const run = spawnSync(join(dir, 'prog'), [], {
+    cwd: dir,
+    encoding: 'utf8',
+    input: stdin,
+    timeout: 20_000,
+  });
+  return {
+    status: String(run.status ?? ''),
+    compiler_error: build.stderr,
+    program_output: run.stdout,
+    program_error: run.stderr,
+  };
+}
+
+function compilesOf(page: Page): string[] {
+  return (page as Page & { compiles: string[] }).compiles;
 }
 
 function errorsOf(page: Page): string[] {
@@ -77,6 +117,57 @@ data = sys.stdin.read().split()
 n = int(data[0])
 print("\\n".join(str(suma(int(x))) for x in data[1:1 + n]))
 `;
+
+const SUMA_CIFRELOR_CPP = `#include <iostream>
+using namespace std;
+int suma(long long n) {
+  int total = 0;
+  for (; n > 0; n /= 10) total += n % 10;
+  return total;
+}
+int main() {
+  int n;
+  cin >> n;
+  while (n--) {
+    long long x;
+    cin >> x;
+    cout << suma(x) << "\\n";
+  }
+}
+`;
+
+test('a C++ solution is compiled once for all of its examples', async ({ browser }) => {
+  const host = await signedIn(browser, 'Host');
+  await host.goto('/');
+  await host.getByText('New meeting').first().click();
+  await host.waitForURL(/room=/);
+  await host.getByRole('button', { name: 'Probleme', exact: true }).click();
+  await host.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
+  await expect(host.getByText('Example 3')).toBeVisible();
+  await host.getByRole('button', { name: 'Load into editor' }).click();
+  await expect.poll(() => editorText(host)).toContain('int main()');
+
+  // Three examples, one trip to the compiler.
+  await setEditorText(host, SUMA_CIFRELOR_CPP);
+  await host.getByRole('button', { name: 'Run on examples' }).click();
+  await expect(host.getByText(/3\/3 examples passed/)).toBeVisible();
+  expect(compilesOf(host)).toEqual(['gcc-13.2.0']);
+
+  // A wrong answer still shows what each example printed.
+  await setEditorText(host, SUMA_CIFRELOR_CPP.replace('int total = 0;', 'int total = 1;'));
+  await host.getByRole('button', { name: 'Run on examples' }).click();
+  await expect(host.getByText(/0\/3 examples passed/)).toBeVisible();
+  await expect(host.getByText(/Your output/)).toHaveCount(3);
+  expect(compilesOf(host)).toHaveLength(2);
+
+  // A program that does not build says so, with the line, instead of an empty output.
+  await setEditorText(host, SUMA_CIFRELOR_CPP.replace('cin >> n;', 'cin >> m;'));
+  await host.getByRole('button', { name: 'Run on examples' }).click();
+  await expect(host.getByText(/Does not compile \(line 10: /)).toHaveCount(3);
+  expect(compilesOf(host)).toHaveLength(3);
+
+  expect(errorsOf(host)).toEqual([]);
+});
 
 test('both participants always see the same problem and example verdicts', async ({ browser }) => {
   // Two browsers walking both directions of the sync take longer than the default.
