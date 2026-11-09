@@ -52,17 +52,17 @@ The first join after the server has been idle can take about a minute — Render
 
 A browser may call those routes only from `https://alexalghisi.github.io` or from `http://localhost` (any port). Each problem includes its category, time and memory limits, the test count when the catalog has one, the statement, and examples with input and output. The hosted server serves this after the API is deployed; until then the call shows a link to `https://collaborare.ro/probleme/<slug>`.
 
-During a call, **Probleme** opens the catalog beside the editor. Try it at **[alexalghisi.github.io/collab](https://alexalghisi.github.io/collab/)**.
+During a call, **Problems** opens the catalog beside the editor. Try it at **[alexalghisi.github.io/collab](https://alexalghisi.github.io/collab/)**.
 
 <p align="center">
   <img src="./assets/problems-panel.gif" alt="Host picks a problem and the guest follows, Load into editor, Run on examples" width="800" />
 </p>
 
-_Two real browsers in one call (recorded from the e2e stack): the host picks **Suma cifrelor**, steps with Alt+→ / Alt+←, loads a Python starter, and **Run on examples** reports 3/3. The guest's panel follows every change._
+_Two real browsers in one call (recorded from the e2e stack): the host opens **Problems**, picks **Suma cifrelor**, loads a Python starter, and **Run on examples** reports 3/3. The guest's panel follows every change._
 
 ![Problems panel beside the editor](./assets/problems-panel.png)
 
-On a wide screen the column can be dragged and its width is remembered. At 768 pixels and below, **Code** and **Problemă** are tabs so the page does not scroll sideways. A 390px-wide frame looks like this:
+On a wide screen the column can be dragged and its width is remembered. At 768 pixels and below, **Code** and **Problem** are tabs so the page does not scroll sideways. A 390px-wide frame looks like this:
 
 ![Problems panel on a phone](./assets/problems-panel-mobile.png)
 
@@ -70,7 +70,7 @@ Search and the chips use the same categories as [collaborare.ro](https://collabo
 
 Keyboard: **Alt+→** next problem, **Alt+←** previous, Tab through every control (each has a label and a visible focus state). Statements render collaborare.ro's Markdown (headings, `code`, lists), and **Run on examples** prints the output that differed on a failed example.
 
-On a phone (360, 390 or 768 pixels wide) the Code tab fills the screen. The other person's video shrinks to a thumbnail you can drag. **A-** and **A+** change the editor size, a pinch does the same, and long lines wrap. The toolbar keeps Mute, video, Code, Probleme and Leave on screen; **More** opens the rest, and the bar still scrolls if it needs to.
+On a phone (360, 390 or 768 pixels wide) the Code tab fills the screen. The other person's video shrinks to a thumbnail in the bottom-right corner that you can drag. **A-** and **A+** change the editor size, a pinch does the same, and long lines wrap. The toolbar is one row that scrolls sideways, with **Leave** pinned at the right end so it is always in reach; **More** opens the rest. On a tablet the problems column starts narrower, and the editor's file list folds into a **Files** button so the code keeps its width.
 
 ### Video on Wi-Fi and on mobile data
 

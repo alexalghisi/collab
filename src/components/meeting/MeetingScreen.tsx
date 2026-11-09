@@ -286,9 +286,11 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
             <Text style={styles.roomTitle} numberOfLines={1}>
               {session.roomId ?? roomId}
             </Text>
-            <Text style={styles.roomMeta}>
+            <Text style={styles.roomMeta} numberOfLines={1}>
               {tileCount === 1
-                ? 'Only you so far — send the invite on the right'
+                ? wide
+                  ? 'Only you so far — send the invite on the right'
+                  : 'Only you so far — tap Invite to add someone'
                 : `${tileCount} participants`}
               {session.breakoutOf ? ` · breakout room of ${session.breakoutOf}` : ''}
             </Text>
@@ -365,7 +367,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
                             onPress={() => setMobileProblem(false)}
                           />
                           <ProblemTab
-                            label="Problemă"
+                            label="Problem"
                             selected={mobileProblem}
                             onPress={() => setMobileProblem(true)}
                           />
@@ -454,137 +456,142 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
             </Pressable>
           )}
 
-        <ScrollView
-          horizontal={!wide}
-          scrollEnabled={!wide}
-          showsHorizontalScrollIndicator={false}
-          style={styles.toolbarScroll}
-          contentContainerStyle={[styles.toolbar, !wide && styles.toolbarRow]}
-        >
-          <ToolbarButton
-            icon={microphoneUnmuted(session.localStream) ? 'mic' : 'mic-off'}
-            label={microphoneUnmuted(session.localStream) ? 'Mute' : 'Unmute'}
-            danger={!microphoneUnmuted(session.localStream)}
-            onPress={session.toggleMic}
-          />
-          <ToolbarButton
-            icon={cameraOn(session.localStream) ? 'videocam' : 'videocam-off'}
-            label={cameraOn(session.localStream) ? 'Stop video' : 'Start video'}
-            danger={!cameraOn(session.localStream)}
-            disabled={session.self.screenSharing}
-            onPress={() => void session.toggleCamera()}
-          />
-          <ToolbarButton
-            icon={session.noiseSuppression ? 'pulse' : 'pulse-outline'}
-            label={session.noiseSuppression ? 'Noise on' : 'Noise off'}
-            active={session.noiseSuppression}
-            onPress={session.toggleNoiseSuppression}
-          />
-          <ToolbarButton
-            icon={session.speakerLabel === 'Headphones' ? 'headset' : 'volume-high'}
-            label={session.speakerLabel}
-            onPress={() => void session.cycleSpeaker()}
-          />
-          {showExtraTools && CAN_SHARE_SCREEN && (
+        <View style={styles.toolbarBar}>
+          <ScrollView
+            horizontal={!wide}
+            scrollEnabled={!wide}
+            showsHorizontalScrollIndicator={false}
+            style={styles.toolbarScroll}
+            contentContainerStyle={[styles.toolbar, wide && styles.toolbarWrap]}
+          >
             <ToolbarButton
-              icon="desktop-outline"
-              label={session.self.screenSharing ? 'Stop share' : 'Share screen'}
-              active={session.self.screenSharing}
-              onPress={() => void session.toggleScreenShare()}
+              icon={microphoneUnmuted(session.localStream) ? 'mic' : 'mic-off'}
+              label={microphoneUnmuted(session.localStream) ? 'Mute' : 'Unmute'}
+              danger={!microphoneUnmuted(session.localStream)}
+              onPress={session.toggleMic}
             />
-          )}
-          {showExtraTools && (
             <ToolbarButton
-              icon={session.self.handRaised ? 'hand-left' : 'hand-left-outline'}
-              label={session.self.handRaised ? 'Lower hand' : 'Raise hand'}
-              active={session.self.handRaised}
-              onPress={session.toggleHand}
+              icon={cameraOn(session.localStream) ? 'videocam' : 'videocam-off'}
+              label={cameraOn(session.localStream) ? 'Stop video' : 'Start video'}
+              danger={!cameraOn(session.localStream)}
+              disabled={session.self.screenSharing}
+              onPress={() => void session.toggleCamera()}
             />
-          )}
-          {showExtraTools && (
             <ToolbarButton
-              icon="happy-outline"
-              label="React"
-              active={reactionsOpen}
-              onPress={() => setReactionsOpen((open) => !open)}
+              icon={session.noiseSuppression ? 'pulse' : 'pulse-outline'}
+              label={session.noiseSuppression ? 'Noise on' : 'Noise off'}
+              active={session.noiseSuppression}
+              onPress={session.toggleNoiseSuppression}
             />
-          )}
-          {showExtraTools && (
             <ToolbarButton
-              icon="brush"
-              label="Whiteboard"
-              active={stage === 'whiteboard'}
-              onPress={() => toggleStage('whiteboard')}
+              icon={session.speakerLabel === 'Headphones' ? 'headset' : 'volume-high'}
+              label={session.speakerLabel}
+              onPress={() => void session.cycleSpeaker()}
             />
-          )}
-          <ToolbarButton
-            icon="code-slash"
-            label="Code"
-            active={stage === 'code'}
-            onPress={() => toggleStage('code')}
-          />
-          <ToolbarButton
-            icon="library-outline"
-            label="Probleme"
-            active={stage === 'code' && (compactProblems ? mobileProblem : problemsOpen)}
-            onPress={() => {
-              if (stage !== 'code') {
-                session.updateSettings({ stage: 'code' });
-                setProblemsOpen(true);
-                setMobileProblem(true);
-                return;
-              }
-              if (compactProblems) {
-                setMobileProblem((open) => !open);
-                return;
-              }
-              setProblemsOpen((open) => !open);
-            }}
-          />
-          {compact && (
+            {showExtraTools && CAN_SHARE_SCREEN && (
+              <ToolbarButton
+                icon="desktop-outline"
+                label={session.self.screenSharing ? 'Stop share' : 'Share screen'}
+                active={session.self.screenSharing}
+                onPress={() => void session.toggleScreenShare()}
+              />
+            )}
+            {showExtraTools && (
+              <ToolbarButton
+                icon={session.self.handRaised ? 'hand-left' : 'hand-left-outline'}
+                label={session.self.handRaised ? 'Lower hand' : 'Raise hand'}
+                active={session.self.handRaised}
+                onPress={session.toggleHand}
+              />
+            )}
+            {showExtraTools && (
+              <ToolbarButton
+                icon="happy-outline"
+                label="React"
+                active={reactionsOpen}
+                onPress={() => setReactionsOpen((open) => !open)}
+              />
+            )}
+            {showExtraTools && (
+              <ToolbarButton
+                icon="brush"
+                label="Whiteboard"
+                active={stage === 'whiteboard'}
+                onPress={() => toggleStage('whiteboard')}
+              />
+            )}
             <ToolbarButton
-              icon="ellipsis-horizontal"
-              label={moreOpen ? 'Less' : 'More'}
-              active={moreOpen}
-              onPress={() => setMoreOpen((open) => !open)}
+              icon="code-slash"
+              label="Code"
+              active={stage === 'code'}
+              onPress={() => toggleStage('code')}
             />
-          )}
-          {showExtraTools && (
             <ToolbarButton
-              icon="people"
-              label="Participants"
-              active={panel === 'participants'}
-              onPress={() => togglePanel('participants')}
+              icon="library-outline"
+              label="Problems"
+              active={stage === 'code' && (compactProblems ? mobileProblem : problemsOpen)}
+              onPress={() => {
+                if (stage !== 'code') {
+                  session.updateSettings({ stage: 'code' });
+                  setProblemsOpen(true);
+                  setMobileProblem(true);
+                  return;
+                }
+                if (compactProblems) {
+                  setMobileProblem((open) => !open);
+                  return;
+                }
+                setProblemsOpen((open) => !open);
+              }}
             />
-          )}
-          {showExtraTools && (
-            <ToolbarButton
-              icon="chatbubble-ellipses"
-              label="Chat"
-              active={panel === 'chat'}
-              badge={unread}
-              onPress={() => togglePanel('chat')}
-            />
-          )}
-          {showExtraTools && (
-            <ToolbarButton
-              icon="folder-outline"
-              label="Files"
-              active={panel === 'files'}
-              badge={files.length}
-              onPress={() => togglePanel('files')}
-            />
-          )}
-          {showExtraTools && (
-            <ToolbarButton
-              icon="settings-outline"
-              label="Devices"
-              active={panel === 'devices'}
-              onPress={() => togglePanel('devices')}
-            />
-          )}
-          <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
-        </ScrollView>
+            {compact && (
+              <ToolbarButton
+                icon="ellipsis-horizontal"
+                label={moreOpen ? 'Less' : 'More'}
+                active={moreOpen}
+                onPress={() => setMoreOpen((open) => !open)}
+              />
+            )}
+            {showExtraTools && (
+              <ToolbarButton
+                icon="people"
+                label="Participants"
+                active={panel === 'participants'}
+                onPress={() => togglePanel('participants')}
+              />
+            )}
+            {showExtraTools && (
+              <ToolbarButton
+                icon="chatbubble-ellipses"
+                label="Chat"
+                active={panel === 'chat'}
+                badge={unread}
+                onPress={() => togglePanel('chat')}
+              />
+            )}
+            {showExtraTools && (
+              <ToolbarButton
+                icon="folder-outline"
+                label="Files"
+                active={panel === 'files'}
+                badge={files.length}
+                onPress={() => togglePanel('files')}
+              />
+            )}
+            {showExtraTools && (
+              <ToolbarButton
+                icon="settings-outline"
+                label="Devices"
+                active={panel === 'devices'}
+                onPress={() => togglePanel('devices')}
+              />
+            )}
+          </ScrollView>
+          {/* Leave stays in reach however many tools scroll beside it. */}
+          <View style={styles.toolbarEnd}>
+            <ToolbarButton icon="exit-outline" label="Leave" danger onPress={session.leave} />
+          </View>
+        </View>
       </View>
       {problemsDocked && (
         <>
@@ -878,24 +885,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  toolbarScroll: {
-    flexGrow: 0,
+  toolbarBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flexShrink: 0,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  toolbarRow: {
-    flexWrap: 'nowrap',
-    justifyContent: 'flex-start',
-    flexGrow: 1,
+  toolbarScroll: {
+    flex: 1,
+    minWidth: 0,
   },
   toolbar: {
+    flexGrow: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
     paddingHorizontal: 8,
-    paddingVertical: 10,
-    backgroundColor: colors.surface,
+    paddingVertical: 8,
+  },
+  /** A wide window has room for a second row, so no tool is ever scrolled out of sight. */
+  toolbarWrap: {
+    flexWrap: 'wrap',
+    rowGap: 4,
+  },
+  toolbarEnd: {
+    paddingLeft: 4,
+    paddingRight: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
   },
 });

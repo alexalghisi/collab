@@ -26,14 +26,18 @@ export function ToolbarButton({
 }: ToolbarButtonProps) {
   return (
     <Pressable
-      style={[styles.button, disabled && styles.disabled]}
+      style={({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+        styles.button,
+        (hovered || pressed) && !disabled && styles.buttonHover,
+        disabled && styles.disabled,
+      ]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
       <View style={[styles.iconWrap, active && styles.iconActive, danger && styles.iconDanger]}>
-        <Ionicons name={icon} size={22} color={colors.text} />
+        <Ionicons name={icon} size={20} color={colors.text} />
         {badge > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
@@ -51,15 +55,20 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     gap: 4,
-    width: 72,
+    width: 64,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  buttonHover: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   disabled: {
     opacity: 0.4,
   },
   iconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surfaceRaised,
@@ -90,5 +99,6 @@ const styles = StyleSheet.create({
   label: {
     color: colors.textMuted,
     fontSize: 11,
+    fontWeight: '500',
   },
 });

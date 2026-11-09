@@ -90,11 +90,11 @@ describe('the same categories as collaborare.ro', () => {
 
   it('builds the collection chips and then the topics, without bac', () => {
     expect(problemCategories(problems).map((chip) => chip.label)).toEqual([
-      'Toate problemele',
-      'Olimpiada de informatică (cls. V–XII)',
-      'Pregătire clasa IX–X',
-      'Pregătire clasa XI–XII',
-      'Antrenament secvențe',
+      'All problems',
+      'Informatics Olympiad (grades 5–12)',
+      'Practice: grades 9–10',
+      'Practice: grades 11–12',
+      'Sequences practice',
       'Vectori',
       'Subiecte oficiale OJI 2026',
       'secvențe',
