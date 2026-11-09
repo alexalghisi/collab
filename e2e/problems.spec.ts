@@ -141,7 +141,7 @@ test('a C++ solution is compiled once for all of its examples', async ({ browser
   await host.goto('/');
   await host.getByText('New meeting').first().click();
   await host.waitForURL(/room=/);
-  await host.getByRole('button', { name: 'Probleme', exact: true }).click();
+  await host.getByRole('button', { name: 'Problems', exact: true }).click();
   await host.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
   await expect(host.getByText('Example 3')).toBeVisible();
   await host.getByRole('button', { name: 'Load into editor' }).click();
@@ -186,13 +186,13 @@ test('both participants always see the same problem and example verdicts', async
   await expect(guest.getByText(roomId).first()).toBeVisible();
 
   // Host opens the panel and picks a problem.
-  await host.getByRole('button', { name: 'Probleme', exact: true }).click();
+  await host.getByRole('button', { name: 'Problems', exact: true }).click();
   await expect(host.getByText('Synced · you are the host')).toBeVisible();
   await host.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
   await expect(host.getByText('Example 1')).toBeVisible();
 
   // Guest sees the same problem without touching anything but the panel button.
-  const guestPanel = guest.getByRole('button', { name: 'Probleme', exact: true });
+  const guestPanel = guest.getByRole('button', { name: 'Problems', exact: true });
   if (!(await guest.getByText('Synced with the room').isVisible())) {
     await guestPanel.click();
   }
@@ -281,7 +281,7 @@ test('both participants always see the same problem and example verdicts', async
   await host.reload();
   await expect(host.getByText(roomId).first()).toBeVisible();
   if (!(await host.getByText('Synced · you are the host').isVisible())) {
-    await host.getByRole('button', { name: 'Probleme', exact: true }).click();
+    await host.getByRole('button', { name: 'Problems', exact: true }).click();
   }
   await expect(host.getByRole('heading', { name: 'Suma cifrelor (OLI 5)' })).toBeVisible();
 

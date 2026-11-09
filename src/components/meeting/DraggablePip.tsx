@@ -6,12 +6,21 @@ export interface DraggablePipProps {
   width?: number;
 }
 
-const DEFAULT_WIDTH = 148;
+const DEFAULT_WIDTH = 120;
+/**
+ * Where the thumbnail starts: near the bottom-right corner, but above the row of
+ * buttons that sits at the bottom of the editor and of the problem view.
+ */
+const INSET_X = 12;
+const INSET_Y = 120;
 
-/** A small video thumbnail that follows a finger or a pointer. */
+/**
+ * A small video thumbnail that follows a finger or a pointer. It is anchored to
+ * the bottom-right corner, so offsets are zero or negative.
+ */
 export function DraggablePip({ children, width = DEFAULT_WIDTH }: DraggablePipProps) {
-  const position = useRef({ x: 12, y: 12 });
-  const origin = useRef({ x: 12, y: 12 });
+  const position = useRef({ x: -INSET_X, y: -INSET_Y });
+  const origin = useRef({ x: -INSET_X, y: -INSET_Y });
   const [offset, setOffset] = useState(position.current);
   const responder = useMemo(
     () =>
@@ -23,8 +32,8 @@ export function DraggablePip({ children, width = DEFAULT_WIDTH }: DraggablePipPr
         },
         onPanResponderMove: (_event, gesture) => {
           const next = {
-            x: Math.max(0, origin.current.x + gesture.dx),
-            y: Math.max(0, origin.current.y + gesture.dy),
+            x: Math.min(0, origin.current.x + gesture.dx),
+            y: Math.min(0, origin.current.y + gesture.dy),
           };
           position.current = next;
           setOffset(next);
@@ -50,10 +59,13 @@ export function DraggablePip({ children, width = DEFAULT_WIDTH }: DraggablePipPr
 const styles = StyleSheet.create({
   pip: {
     position: 'absolute',
-    top: 0,
-    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 6,
-    borderRadius: 12,
+    borderRadius: 14,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
   },
 });
