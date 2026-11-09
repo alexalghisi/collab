@@ -35,6 +35,7 @@ describe('runOnHostedCompiler', () => {
       exitCode: 0,
       timedOut: false,
       error: null,
+      compileError: null,
     });
     expect(compiler).toBe('gcc-13.2.0');
   });
@@ -57,12 +58,13 @@ describe('runOnHostedCompiler', () => {
     expect(outcome.error).toBeNull();
     expect(outcome.exitCode).toBe(1);
     expect(outcome.stderr).toContain('cout');
+    expect(outcome.compileError).toContain('cout');
   });
 
   it('reports a compiler host that cannot be reached', async () => {
     const fetchImpl = vi.fn(async () => Promise.reject(new Error('ENOTFOUND')));
 
-    const outcome = await runOnHostedCompiler(request, fetchImpl);
+    const outcome = await runOnHostedCompiler(request, fetchImpl, async () => {});
 
     expect(outcome.error).toMatch(/could not be reached/);
     expect(outcome.stdout).toBe('');
