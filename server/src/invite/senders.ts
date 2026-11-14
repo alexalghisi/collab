@@ -100,8 +100,8 @@ function resendSendEmail(env: InviteEnv): InviteTransport['sendEmail'] | null {
 
 /**
  * A revoked or mistyped provider key is a configuration problem, not a delivery
- * failure: report it as "not configured" so clients fall back to Google Calendar
- * or the host's own mail app instead of failing the invite.
+ * failure: report it as "not configured" so the client can say the platform
+ * cannot send yet, instead of treating a bad key as a delivery error.
  */
 function rejectedCredentials(response: Response): boolean {
   return response.status === 401 || response.status === 403;
