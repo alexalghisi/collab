@@ -31,7 +31,7 @@ export function remoteCursorCss(editors: readonly CodePresence[]): string {
           font-weight: 700;
           white-space: nowrap;
           color: ${colors.background};
-          background-color: ${editor.color};
+          background-color: color-mix(in srgb, ${editor.color} 42%, transparent);
           border-radius: 3px;
           pointer-events: none;
           z-index: 20;
