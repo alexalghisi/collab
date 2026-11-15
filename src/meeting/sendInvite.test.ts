@@ -91,22 +91,30 @@ describe('sendContactInvite', () => {
       }),
     ).rejects.toThrow(/could not be delivered/i);
   });
-  it("falls back to the host's own mail app when the server has no mail provider", async () => {
+  it('reports that the platform could not send, without opening the mail app', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ error: 'not configured' }), { status: 503 })),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: 'Email invites are not configured on the server.' }),
+            {
+              status: 503,
+            },
+          ),
+      ),
     );
-    const location = { href: '' };
+    const location = { href: 'https://collab.example/meeting' };
     vi.stubGlobal('location', location);
-    const contact = await sendContactInvite('http://signaling.example', {
-      contact: 'ada@example.com, linus@example.com',
-      roomId: 'room-1',
-      sessionId: 'session-1',
-      hostName: 'Ada',
-      link: 'https://collab.example/?room=room-1',
-    });
-    expect(contact).toEqual({ kind: 'email', value: 'ada@example.com' });
-    expect(location.href).toMatch(/^mailto:ada%40example\.com,linus%40example\.com\?subject=/);
-    expect(decodeURIComponent(location.href)).toContain('https://collab.example/?room=room-1');
+    await expect(
+      sendContactInvite('http://signaling.example', {
+        contact: 'ada@example.com, linus@example.com',
+        roomId: 'room-1',
+        sessionId: 'session-1',
+        hostName: 'Ada',
+        link: 'https://collab.example/?room=room-1',
+      }),
+    ).rejects.toThrow('Email invites are not configured on the server.');
+    expect(location.href).toBe('https://collab.example/meeting');
   });
 });
