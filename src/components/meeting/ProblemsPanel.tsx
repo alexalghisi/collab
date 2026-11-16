@@ -348,14 +348,10 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
             {detail.examples.map((example, index) => (
               <View key={`${example.input}-${index}`} style={styles.example}>
                 <Text style={styles.exampleTitle}>Example {index + 1}</Text>
-                <Text style={styles.code}>
-                  Input{'\n'}
-                  {example.input}
-                </Text>
-                <Text style={styles.code}>
-                  Output{'\n'}
-                  {example.output}
-                </Text>
+                <Text style={styles.ioLabel}>Input</Text>
+                <Text style={styles.code}>{example.input || '(empty)'}</Text>
+                <Text style={styles.ioLabel}>Output</Text>
+                <Text style={styles.code}>{example.output || '(empty)'}</Text>
                 {example.explanation ? (
                   <Text style={styles.note}>{example.explanation}</Text>
                 ) : null}
@@ -366,10 +362,12 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
                       {verdicts[index].error ? ` — ${verdicts[index].error}` : ''}
                     </Text>
                     {!verdicts[index].passed && !verdicts[index].error && (
-                      <Text style={styles.code}>
-                        Your output{'\n'}
-                        {verdicts[index].actual === '' ? '(empty)' : verdicts[index].actual}
-                      </Text>
+                      <>
+                        <Text style={styles.ioLabel}>Your output</Text>
+                        <Text style={styles.code}>
+                          {verdicts[index].actual === '' ? '(empty)' : verdicts[index].actual}
+                        </Text>
+                      </>
                     )}
                   </View>
                 )}
@@ -762,12 +760,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  ioLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
   code: {
     color: colors.text,
     fontFamily: 'monospace',
     fontSize: 12,
+    lineHeight: 18,
     backgroundColor: colors.background,
     padding: 8,
+    borderRadius: 6,
   },
   pass: {
     color: colors.success,
