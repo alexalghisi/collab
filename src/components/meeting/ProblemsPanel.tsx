@@ -362,10 +362,12 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
                       {verdicts[index].error ? ` — ${verdicts[index].error}` : ''}
                     </Text>
                     {!verdicts[index].passed && !verdicts[index].error && (
-                      <Text style={styles.ioLabel}>Your output</Text>
-                      <Text style={styles.code}>
-                        {verdicts[index].actual === '' ? '(empty)' : verdicts[index].actual}
-                      </Text>
+                      <>
+                        <Text style={styles.ioLabel}>Your output</Text>
+                        <Text style={styles.code}>
+                          {verdicts[index].actual === '' ? '(empty)' : verdicts[index].actual}
+                        </Text>
+                      </>
                     )}
                   </View>
                 )}
@@ -774,9 +776,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     padding: 8,
     borderRadius: 6,
-    // Keep each sample line on its own row; the web text node would otherwise
-    // collapse newlines into one paragraph.
-    whiteSpace: 'pre-wrap',
   },
   pass: {
     color: colors.success,
