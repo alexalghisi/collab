@@ -47,7 +47,7 @@ describe('ReminderBook', () => {
       startsAt: 900_000 + 40 * 60_000,
     });
 
-    await expect(reminders.dispatch({ sendEmail, sendSms: vi.fn() })).resolves.toBe(1);
+    await expect(reminders.dispatch({ sendEmail })).resolves.toBe(1);
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail).toHaveBeenCalledWith(
       'ada@example.com',
@@ -58,9 +58,9 @@ describe('ReminderBook', () => {
     expect(reminders.list()[0]?.to).toBe('linus@example.com');
   });
 
-  it('sends an SMS reminder when the recipient is a phone number', async () => {
+  it('drops a phone reminder without sending it', async () => {
     const reminders = book(900_000);
-    const sendSms = vi.fn(async () => undefined);
+    const sendEmail = vi.fn(async () => undefined);
     reminders.schedule({
       to: '+40721123456',
       roomId: 'room-1',
@@ -71,12 +71,8 @@ describe('ReminderBook', () => {
       startsAt: 900_000 + 15 * 60_000,
     });
 
-    await expect(reminders.dispatch({ sendEmail: vi.fn(), sendSms })).resolves.toBe(1);
-    expect(sendSms).toHaveBeenCalledTimes(1);
-    expect(sendSms).toHaveBeenCalledWith(
-      '+40721123456',
-      expect.stringContaining('Ada invited you to a Collab call. Join:'),
-    );
+    await expect(reminders.dispatch({ sendEmail })).resolves.toBe(0);
+    expect(sendEmail).not.toHaveBeenCalled();
     expect(reminders.list()).toHaveLength(0);
   });
 });

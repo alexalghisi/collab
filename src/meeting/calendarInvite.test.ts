@@ -24,9 +24,6 @@ async function startInviteDoor(): Promise<string> {
     inviteRouter({
       membership: isAdmitted,
       transport: {
-        async sendSms(to) {
-          sent.push(to);
-        },
         async sendEmail(to) {
           sent.push(to);
         },

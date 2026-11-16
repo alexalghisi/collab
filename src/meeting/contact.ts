@@ -2,7 +2,7 @@ export type ContactKind = 'email' | 'phone';
 
 export interface ParsedContact {
   readonly kind: ContactKind;
-  /** Canonical form used in mailto / SMS (email as typed, phone as +digits). */
+  /** Canonical form (email as typed, phone as +digits for WhatsApp). */
   readonly value: string;
 }
 
@@ -109,15 +109,6 @@ export function meetingInviteCopy(input: {
 }): string {
   const name = input.title.trim() || 'A Collab meeting';
   return `${name}\n${input.when}\n\nJoin: ${input.link}\nMeeting ID: ${input.roomId}`;
-}
-
-export function smsInviteCopy(roomId: string, hostName: string, link: string): string {
-  const host = hostName.trim() || 'Someone';
-  const joinUrl =
-    /^https?:\/\//i.test(link) && !LOCAL_HOST.test(link)
-      ? link
-      : `https://alexalghisi.github.io/collab/?room=${encodeURIComponent(roomId)}`;
-  return `${host} invited you to a Collab call. Join: ${joinUrl}`;
 }
 
 export function inviteSubject(roomId: string): string {

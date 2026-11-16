@@ -47,14 +47,16 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
   };
 
   const sendInvite = async (): Promise<void> => {
+    if (typed?.kind === 'phone') {
+      openWhatsApp(contact);
+      return;
+    }
     setBusy(true);
     setError(null);
     setStatus(null);
     try {
       const sent = await onSend(contact);
-      setStatus(
-        sent.kind === 'phone' ? `SMS sent to ${sent.value}.` : `Email sent to ${sent.value}.`,
-      );
+      setStatus(`Email sent to ${sent.value}.`);
       setContact('');
     } catch (cause) {
       setError(cause instanceof InviteError ? cause.message : 'The invite could not be sent.');
@@ -78,8 +80,8 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
     <SidePanel title="Invite" onClose={onClose}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.body}>
         <Text style={styles.lede}>
-          Send the join link by SMS, email, or WhatsApp. The other person gets a message they can
-          open to join this call.
+          Send the join link by email or WhatsApp. The other person gets a message they can open to
+          join this call.
         </Text>
         <TextInput
           style={styles.input}
@@ -93,12 +95,14 @@ export function InvitePanel({ roomId, hostName = '', onSend, onClose }: InvitePa
           keyboardType="default"
           editable={!busy}
         />
-        <Button
-          label={busy ? 'Sending…' : typed?.kind === 'phone' ? 'Send SMS' : 'Send invite'}
-          icon="send"
-          onPress={() => void sendInvite()}
-          disabled={busy || contact.trim() === ''}
-        />
+        {typed?.kind !== 'phone' && (
+          <Button
+            label={busy ? 'Sending…' : 'Send invite'}
+            icon="send"
+            onPress={() => void sendInvite()}
+            disabled={busy || contact.trim() === ''}
+          />
+        )}
         {typed?.kind === 'phone' && (
           <Button
             label="Send on WhatsApp"

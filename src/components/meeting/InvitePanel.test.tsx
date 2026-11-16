@@ -17,7 +17,7 @@ function renderPanel(
 }
 
 describe('InvitePanel', () => {
-  it('keeps Send invite until the number is complete, then offers SMS and WhatsApp', () => {
+  it('keeps Send invite until the number is complete, then offers WhatsApp', () => {
     renderPanel();
     const input = screen.getByPlaceholderText('name@email.com or +40 721 123 456');
 
@@ -26,11 +26,12 @@ describe('InvitePanel', () => {
     expect(screen.queryByRole('button', { name: 'Send on WhatsApp' })).toBeNull();
 
     fireEvent.change(input, { target: { value: '+40770763175' } });
-    expect(screen.getByRole('button', { name: 'Send SMS' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send invite' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Send SMS' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Send on WhatsApp' })).toBeTruthy();
   });
 
-  it('sends a phone number as an SMS instead of opening WhatsApp', async () => {
+  it('opens WhatsApp for a phone number and does not ask the server to text it', async () => {
     const onSend = vi.fn(async () => ({ kind: 'phone' as const, value: '+40721123456' }));
     render(
       <InvitePanel roomId="room-1" hostName="Ada" onSend={onSend} onClose={() => undefined} />,
@@ -39,10 +40,14 @@ describe('InvitePanel', () => {
     fireEvent.change(screen.getByPlaceholderText('name@email.com or +40 721 123 456'), {
       target: { value: '+40 721 123 456' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send SMS' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send on WhatsApp' }));
 
-    expect(onSend).toHaveBeenCalledWith('+40 721 123 456');
-    expect(await screen.findByText('SMS sent to +40721123456.')).toBeTruthy();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(
+        'WhatsApp is open with the invite for +40 721 123 456. Press send there.',
+      ),
+    ).toBeTruthy();
   });
 
   it('sends an email through the same invite action', async () => {

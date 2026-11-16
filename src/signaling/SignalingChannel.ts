@@ -23,7 +23,7 @@ export interface SignalingChannel {
    * backend of its own. Rejects with an AttachmentError the sender can be shown.
    */
   upload(file: UploadableFile, onProgress: UploadProgress): Promise<FileAttachment>;
-  /** Delivers an email or SMS invite through the signaling server. */
+  /** Delivers an email invite through the signaling server. */
   sendInvite(
     input: string,
     hostName: string,

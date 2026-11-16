@@ -1,76 +1,24 @@
 export interface InviteTransport {
-  sendSms(to: string, body: string): Promise<void>;
   sendEmail(to: string, subject: string, body: string): Promise<void>;
 }
 
 export type InviteEnv = Record<string, string | undefined>;
 
 class UnconfiguredError extends Error {
-  constructor(kind: 'sms' | 'email') {
-    super(
-      kind === 'sms'
-        ? 'SMS invites are not configured on the server.'
-        : 'Email invites are not configured on the server.',
-    );
+  constructor() {
+    super('Email invites are not configured on the server.');
     this.name = 'UnconfiguredError';
   }
 }
 
-function notConfigured(kind: 'sms' | 'email'): () => Promise<never> {
+function notConfigured(): () => Promise<never> {
   return async () => {
-    throw new UnconfiguredError(kind);
+    throw new UnconfiguredError();
   };
 }
 
 function read(env: InviteEnv, key: string): string {
   return env[key]?.trim() ?? '';
-}
-
-function twilioAuth(
-  env: InviteEnv,
-): { accountSid: string; username: string; password: string } | null {
-  const accountSid = read(env, 'TWILIO_ACCOUNT_SID');
-  if (accountSid === '' || !accountSid.startsWith('AC')) {
-    return null;
-  }
-  const apiKey = read(env, 'TWILIO_API_KEY_SID');
-  const apiSecret = read(env, 'TWILIO_API_KEY_SECRET');
-  if (apiKey !== '' && apiSecret !== '') {
-    return { accountSid, username: apiKey, password: apiSecret };
-  }
-  const token = read(env, 'TWILIO_AUTH_TOKEN');
-  if (token !== '') {
-    return { accountSid, username: accountSid, password: token };
-  }
-  return null;
-}
-
-function twilioSendSms(env: InviteEnv): InviteTransport['sendSms'] | null {
-  const auth = twilioAuth(env);
-  const from = read(env, 'TWILIO_FROM_NUMBER');
-  if (!auth || from === '') {
-    return null;
-  }
-  return async (to, body) => {
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(auth.accountSid)}/Messages.json`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString('base64')}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
-      },
-    );
-    if (rejectedCredentials(response)) {
-      console.warn(`Twilio rejected the SMS credentials (HTTP ${response.status}).`);
-      throw new UnconfiguredError('sms');
-    }
-    if (!response.ok) {
-      throw new Error(await describeFailure(response, 'The SMS could not be delivered.'));
-    }
-  };
 }
 
 function resendSendEmail(env: InviteEnv): InviteTransport['sendEmail'] | null {
@@ -90,7 +38,7 @@ function resendSendEmail(env: InviteEnv): InviteTransport['sendEmail'] | null {
     });
     if (rejectedCredentials(response)) {
       console.warn(`Resend rejected RESEND_API_KEY (HTTP ${response.status}).`);
-      throw new UnconfiguredError('email');
+      throw new UnconfiguredError();
     }
     if (!response.ok) {
       throw new Error(await describeFailure(response, 'The email could not be delivered.'));
@@ -114,8 +62,7 @@ async function describeFailure(response: Response, fallback: string): Promise<st
 
 export function transportFromEnv(env: InviteEnv = process.env): InviteTransport {
   return {
-    sendSms: twilioSendSms(env) ?? notConfigured('sms'),
-    sendEmail: resendSendEmail(env) ?? notConfigured('email'),
+    sendEmail: resendSendEmail(env) ?? notConfigured(),
   };
 }
 

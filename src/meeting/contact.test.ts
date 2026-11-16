@@ -8,7 +8,6 @@ import {
   reminderCopy,
   reminderSubject,
   resolveInviteLink,
-  smsInviteCopy,
 } from './contact';
 
 describe('parseContact', () => {
@@ -47,13 +46,10 @@ describe('parseContact', () => {
 });
 
 describe('invite copy', () => {
-  it('puts the join link in the mail and a shorter line in the SMS', () => {
+  it('puts the join link in the mail', () => {
     const link = 'https://collab.example/?room=kqz-wrtm-pfa';
     expect(inviteCopy('kqz-wrtm-pfa', 'Ada', link)).toContain('Ada invited you');
     expect(inviteCopy('kqz-wrtm-pfa', 'Ada', link)).toContain(link);
-    expect(smsInviteCopy('kqz-wrtm-pfa', 'Ada', link)).toBe(
-      'Ada invited you to a Collab call. Join: https://collab.example/?room=kqz-wrtm-pfa',
-    );
   });
 
   it('leads a scheduled invite with what and when', () => {
@@ -81,9 +77,6 @@ describe('invite copy', () => {
       'https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
     );
     expect(inviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain('Meeting ID: kqz-wrtm-pfa');
-    expect(smsInviteCopy('kqz-wrtm-pfa', 'Ada', '')).toContain(
-      'Join: https://alexalghisi.github.io/collab/?room=kqz-wrtm-pfa',
-    );
   });
 });
 
