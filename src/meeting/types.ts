@@ -76,7 +76,7 @@ function uniqueContacts(values: readonly string[]): string[] {
   return contacts;
 }
 
-/** Emails and phone numbers used to send invites (named people plus extra guests). */
+/** Emails used to send invites (named people plus extra guests). */
 export function meetingInviteContacts(meeting: Pick<Meeting, 'guests' | 'invitees'>): string[] {
   return uniqueContacts([
     ...(meeting.invitees ?? []).map((person) => person.email),

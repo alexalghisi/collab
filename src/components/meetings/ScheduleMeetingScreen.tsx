@@ -134,7 +134,9 @@ export function ScheduleMeetingScreen({
     if (startsAt === null) {
       return;
     }
-    const extra = parsedContacts.map((contact) => contact.value);
+    const extra = parsedContacts
+      .filter((contact) => contact.kind === 'email')
+      .map((contact) => contact.value);
     const guests = meetingInviteContacts({ invitees, guests: extra });
     onSave({
       title: title.trim(),
@@ -243,28 +245,26 @@ export function ScheduleMeetingScreen({
         </Text>
       )}
 
-      <Text style={styles.label}>Other emails or phone numbers</Text>
+      <Text style={styles.label}>Other emails</Text>
       <TextInput
         style={styles.input}
         value={attendees}
         onChangeText={setAttendees}
-        placeholder="alex@example.com, +1 555 123 4567"
+        placeholder="alex@example.com, raluca@example.com"
         placeholderTextColor={colors.textSubtle}
         autoCapitalize="none"
         autoCorrect={false}
       />
       {parsedContacts.length > 0 ? (
         <View style={styles.attendeeChips}>
-          {parsedContacts.map((c) => (
-            <View key={`${c.kind}:${c.value}`} style={styles.attendeeChip}>
-              <Ionicons
-                name={c.kind === 'email' ? 'mail-outline' : 'call-outline'}
-                size={14}
-                color={colors.primary}
-              />
-              <Text style={styles.attendeeChipText}>{c.value}</Text>
-            </View>
-          ))}
+          {parsedContacts
+            .filter((contact) => contact.kind === 'email')
+            .map((c) => (
+              <View key={`${c.kind}:${c.value}`} style={styles.attendeeChip}>
+                <Ionicons name="mail-outline" size={14} color={colors.primary} />
+                <Text style={styles.attendeeChipText}>{c.value}</Text>
+              </View>
+            ))}
         </View>
       ) : null}
       <Text style={styles.helperText}>

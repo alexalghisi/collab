@@ -130,7 +130,7 @@ iOS ships as an **unsigned** `.ipa`. Apple does not allow installing a downloade
 - Multi-party video and voice calls over a mesh of WebRTC peer connections. Meetings start with the camera and microphone; turn the camera off from the call toolbar when you want audio only, without renegotiation.
 - **Call quality above a phone messenger**: 720p/30 fps capture, up to 2.5 Mbit/s of video (4 Mbit/s for a shared screen), and 64 kbit/s fullband Opus with echo cancellation, noise suppression, voice isolation and packet-loss recovery — see [Call quality](#call-quality).
 - In-call controls: mute, camera on/off, screen sharing (web), raise hand, emoji reactions, participants list with live status, and meeting chat.
-- Shareable invite links (`?room=…`) with meeting IDs named after the host, such as `alghisi-raluca-481937`. The ID is yours to write when scheduling — type `sedinta-de-luni` if that is easier to say out loud, or shuffle for another generated one. From a live meeting a phone number opens **WhatsApp** with the invite already written (the host presses send); an email still goes out through the signaling server (Resend). Scheduled reminders still use the server, including SMS through Twilio when it is configured.
+- Shareable invite links (`?room=…`) with meeting IDs named after the host, such as `alghisi-raluca-481937`. The ID is yours to write when scheduling — type `sedinta-de-luni` if that is easier to say out loud, or shuffle for another generated one. From a live meeting a phone number opens **WhatsApp** with the invite already written (the host presses send); an email goes out through the signaling server (Resend). Scheduled email reminders use the same server.
 - Collaboration inside the call: a shared **whiteboard** (freehand strokes synced live, undo your own, clear for everyone, late joiners get the current drawing), **shared files** (images, PDFs and documents in the Files panel, visible to everyone in the room), and **live captions** — each participant's speech becomes a turn on a shared transcript (Web Speech API on web; phones see the room's log but cannot contribute until a hosted recognizer is wired in). Anyone in the room can put the whiteboard or the code editor in front of everyone. The waiting room and breakout rooms stay with the host.
 - **Embedded editor**: a shared code document (Monaco on web and desktop, live read-only on phones). The first person into an empty room gets a small program that prints, in the language selected, and switching language carries that starter with it until somebody writes their own. Every participant's cursor and selection has its own colour, and a **Run** button sends the room's code — JavaScript, TypeScript, Python, Go or C++ — to a hosted compiler (Wandbox) from the browser, so GitHub Pages does not depend on the signaling sandbox. Stdin, stdout and stderr from that run appear for every participant.
 - **Meeting assistant**: an in-call panel that answers questions from the live transcript and chat, and a **Search** view on the dashboard that retrieves passages from past meetings. OpenAI, Claude and Gemini are interchangeable via `ASSISTANT_PROVIDER`; with no key the panel reports that the assistant is not enabled.
@@ -433,7 +433,7 @@ Collab/
 │   ├── chat/                   # Team chat channels (Firestore) and its hook
 │   ├── firebase/               # Single Firebase app / Auth / Firestore instance (web)
 │   ├── hooks/                  # useCollabSession orchestration hook
-│   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links / email / SMS
+│   ├── meeting/                # Meeting model, store (Firestore / local), calendar + .ics helpers, invite links / email / WhatsApp
 │   ├── signaling/              # Event contract, SignalingChannel, Socket.IO + Firestore transports
 │   ├── transcript/             # Live captions: segment contract and the speech-recognizer adapter
 │   ├── search/                 # VectorStore (memory / pgvector / Pinecone) and meeting chunking
@@ -574,13 +574,12 @@ defaults to `*`. For **Continue with
 Google**, set the repository variable `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` and
 the Render environment variable `GOOGLE_CLIENT_ID` to the same Web client ID.
 
-In-call **SMS and email invites** go through that same server. Set Twilio
-(`TWILIO_ACCOUNT_SID`, plus either `TWILIO_AUTH_TOKEN` or an API key
-`TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET`, and `TWILIO_FROM_NUMBER`) to
-deliver texts, and Resend (`RESEND_API_KEY`, `RESEND_FROM`) for mail. `PUBLIC_APP_URL`
-is the join link written into the message — use the public site, not
-`localhost`, or the recipient cannot open it. A Twilio trial only delivers to
-numbers you have verified in their console.
+In-call **email invites** go through that same server. Set Resend
+(`RESEND_API_KEY`, `RESEND_FROM`) for mail. A phone number opens WhatsApp on
+the host's device and is not sent by the server. `PUBLIC_APP_URL` is the join
+link written into the message — use the public site, not `localhost`, or the
+recipient cannot open it. Optional Twilio credentials (`TWILIO_ACCOUNT_SID`,
+`TWILIO_AUTH_TOKEN`) are only for the call relay on `/ice`.
 
 With neither configured, the build falls back to `http://localhost:4000` and
 joining a meeting fails with `Unable to reach the signaling service at

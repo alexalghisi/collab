@@ -21,8 +21,8 @@ function inviteUrl(baseUrl: string): string {
 }
 
 /**
- * Asks the signaling server to deliver the invite. The server is what talks to
- * the SMS / mail provider — the client only types the number.
+ * Asks the signaling server to deliver an email invite. A phone number is
+ * opened in WhatsApp from the call screen and is not sent here.
  */
 export async function sendContactInvite(
   baseUrl: string,

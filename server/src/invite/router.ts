@@ -4,7 +4,6 @@ import {
   inviteSubject,
   parseContactList,
   resolveInviteLink,
-  smsInviteCopy,
 } from '../../../src/meeting/contact';
 import { verifyToken } from '../auth/tokens';
 import { RateLimiter } from '../execution/RateLimiter';
@@ -29,8 +28,9 @@ const field = (request: Request, name: string): string => {
 };
 
 /**
- * Delivers a meeting invite by SMS or email. The body is always our own copy —
+ * Delivers a meeting invite by email. The body is always our own copy —
  * the client cannot send an arbitrary message through this door.
+ * A phone number is not texted; the call screen opens WhatsApp instead.
  */
 function bearerToken(request: Request): string {
   const header = request.headers.authorization;
@@ -73,9 +73,11 @@ export function inviteRouter({
       return;
     }
 
-    const contacts = parseContactList(contactInput);
+    const contacts = parseContactList(contactInput).filter((item) => item.kind === 'email');
     if (contacts.length === 0) {
-      response.status(400).json({ error: 'Enter an email address or a phone number.' });
+      response.status(400).json({
+        error: 'Enter an email address. A phone number is sent with WhatsApp from the call.',
+      });
       return;
     }
 
@@ -89,21 +91,12 @@ export function inviteRouter({
     const minutes = reminderMinutes(request);
     const when = startsAt(request);
     try {
-      const emailRecipients: string[] = [];
-      const phoneRecipients: string[] = [];
-
       for (const item of contacts) {
-        if (item.kind === 'phone') {
-          await transport.sendSms(item.value, smsInviteCopy(roomId, hostName, link));
-          phoneRecipients.push(item.value);
-        } else {
-          await transport.sendEmail(
-            item.value,
-            inviteSubject(roomId),
-            inviteCopy(roomId, hostName, link),
-          );
-          emailRecipients.push(item.value);
-        }
+        await transport.sendEmail(
+          item.value,
+          inviteSubject(roomId),
+          inviteCopy(roomId, hostName, link),
+        );
         if (reminders && when !== null) {
           reminders.schedule({
             to: item.value,
@@ -117,14 +110,9 @@ export function inviteRouter({
         }
       }
 
-      if (contacts.length === 1 && contacts[0].kind === 'phone') {
-        response.json({ ok: true, kind: 'phone', to: contacts[0].value });
-        return;
-      }
-
       response.json({
         ok: true,
-        kind: emailRecipients.length > 0 ? 'email' : 'phone',
+        kind: 'email',
         to: contacts[0]?.value,
         recipients: contacts.map((c) => c.value),
         count: contacts.length,

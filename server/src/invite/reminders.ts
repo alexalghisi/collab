@@ -1,11 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import {
-  parseContact,
-  reminderCopy,
-  reminderSubject,
-  smsInviteCopy,
-} from '../../../src/meeting/contact';
+import { parseContact, reminderCopy, reminderSubject } from '../../../src/meeting/contact';
 import type { InviteTransport } from './senders';
 
 export interface MeetingReminder {
@@ -72,30 +67,33 @@ export class ReminderBook {
   async dispatch(transport: InviteTransport): Promise<number> {
     const due = this.items.filter((item) => item.sendAt <= this.now());
     let sent = 0;
+    let changed = false;
     for (const item of due) {
       try {
         const contact = parseContact(item.to);
         if (contact?.kind === 'phone') {
-          await transport.sendSms(item.to, smsInviteCopy(item.roomId, item.hostName, item.link));
-        } else {
-          await transport.sendEmail(
-            item.to,
-            reminderSubject(item.title, item.minutes),
-            reminderCopy({
-              title: item.title,
-              hostName: item.hostName,
-              link: item.link,
-              minutes: item.minutes,
-            }),
-          );
+          this.items = this.items.filter((entry) => entry.id !== item.id);
+          changed = true;
+          continue;
         }
+        await transport.sendEmail(
+          item.to,
+          reminderSubject(item.title, item.minutes),
+          reminderCopy({
+            title: item.title,
+            hostName: item.hostName,
+            link: item.link,
+            minutes: item.minutes,
+          }),
+        );
         this.items = this.items.filter((entry) => entry.id !== item.id);
         sent += 1;
+        changed = true;
       } catch {
         continue;
       }
     }
-    if (sent > 0) {
+    if (changed) {
       this.write();
     }
     return sent;

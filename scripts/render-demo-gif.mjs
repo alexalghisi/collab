@@ -157,7 +157,7 @@ const meeting = page(
       <div class="grid"><div class="tile"><div class="letter">A</div><div class="label">Alex (You)<span class="host">Host</span></div></div></div>
       <div class="panel">
         <h3>Invite</h3>
-        <p>Send the join link by email or SMS. The other person gets a message they can open to join this call.</p>
+        <p>Send the join link by email or WhatsApp. The other person gets a message they can open to join this call.</p>
         <div class="field">name@email.com</div>
         <div class="btn">Send invite</div>
         <div class="copy">Copy link</div>
@@ -222,13 +222,13 @@ const schedule = page(
       <div class="field" style="flex:1">15:00</div>
     </div>
     <div style="margin-top:10px;font-weight:600;font-size:13px;display:flex;justify-content:space-between">
-      <span>Attendees (emails or phone numbers)</span>
+      <span>Attendees (emails)</span>
       <span style="color:${palette.primary}">✨ Auto-invites enabled</span>
     </div>
-    <div class="field">alex@example.com, +1 555 123 4567</div>
+    <div class="field">alex@example.com, raluca@example.com</div>
     <div style="display:flex;gap:8px;margin-top:4px">
       <span style="background:${palette.raised};border:1px solid ${palette.primary};padding:4px 8px;border-radius:6px;font-size:11px">✉️ alex@example.com</span>
-      <span style="background:${palette.raised};border:1px solid #34d399;padding:4px 8px;border-radius:6px;font-size:11px">📞 +15551234567</span>
+      <span style="background:${palette.raised};border:1px solid #34d399;padding:4px 8px;border-radius:6px;font-size:11px">✉️ raluca@example.com</span>
     </div>
     <div style="margin-top:16px"><div class="btn">Save meeting</div></div>
   </main></div>`,

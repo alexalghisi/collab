@@ -51,27 +51,22 @@ describe('the invite endpoint', () => {
     await once(http, 'close');
   });
 
-  it('sends an SMS with a public join link', async () => {
-    const sendSms = vi.fn(async () => undefined);
-    await serve(
-      { sendSms, sendEmail: vi.fn(async () => undefined) },
-      undefined,
-      'https://collab.example',
-    );
+  it('does not text a phone number', async () => {
+    const sendEmail = vi.fn(async () => undefined);
+    await serve({ sendEmail }, undefined, 'https://collab.example');
 
     const response = await send({ contact: '+40 721 123 456' });
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, kind: 'phone', to: '+40721123456' });
-    expect(sendSms).toHaveBeenCalledWith(
-      '+40721123456',
-      'Ada invited you to a Collab call. Join: https://collab.example/?room=room-1',
-    );
+    expect(response.status).toBe(400);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(await response.json()).toEqual({
+      error: 'Enter an email address. A phone number is sent with WhatsApp from the call.',
+    });
   });
 
   it('sends an email when the contact is an address', async () => {
     const sendEmail = vi.fn(async () => undefined);
-    await serve({ sendSms: vi.fn(async () => undefined), sendEmail });
+    await serve({ sendEmail });
 
     const response = await send({
       contact: 'ada@example.com',
@@ -87,37 +82,29 @@ describe('the invite endpoint', () => {
   });
 
   it('refuses a sender who is no longer in the room', async () => {
-    const sendSms = vi.fn(async () => undefined);
-    await serve({ sendSms, sendEmail: vi.fn(async () => undefined) });
+    const sendEmail = vi.fn(async () => undefined);
+    await serve({ sendEmail });
 
-    const response = await send({ contact: '+40721123456', sessionId: 'removed' });
+    const response = await send({ contact: 'ada@example.com', sessionId: 'removed' });
 
     expect(response.status).toBe(403);
-    expect(sendSms).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it('answers 429 once the sender has spent their allowance', async () => {
-    const sendSms = vi.fn(async () => undefined);
-    await serve(
-      { sendSms, sendEmail: vi.fn(async () => undefined) },
-      new RateLimiter({ burst: 1, refillMs: 60_000 }),
-    );
+    const sendEmail = vi.fn(async () => undefined);
+    await serve({ sendEmail }, new RateLimiter({ burst: 1, refillMs: 60_000 }));
 
-    expect((await send({ contact: '+40721123456' })).status).toBe(200);
-    expect((await send({ contact: '+40721123456' })).status).toBe(429);
-    expect(sendSms).toHaveBeenCalledTimes(1);
+    expect((await send({ contact: 'ada@example.com' })).status).toBe(200);
+    expect((await send({ contact: 'ada@example.com' })).status).toBe(429);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
   });
 
   it('lets a signed-in host mail everyone from the calendar and queue a reminder', async () => {
     const sendEmail = vi.fn(async () => undefined);
     const dir = mkdtempSync(join(tmpdir(), 'collab-invite-'));
     const reminders = new ReminderBook(join(dir, 'reminders.json'), () => 1_000);
-    await serve(
-      { sendSms: vi.fn(async () => undefined), sendEmail },
-      undefined,
-      undefined,
-      reminders,
-    );
+    await serve({ sendEmail }, undefined, undefined, reminders);
     const token = issueToken({ uid: 'ada', email: 'ada@example.com', displayName: 'Ada' });
 
     const response = await fetch(`${base}/invite`, {
@@ -144,12 +131,11 @@ describe('the invite endpoint', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('delivers to a mixed list of emails and phone numbers and schedules reminders for each', async () => {
+  it('mails the addresses in a mixed list and skips the phone number', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'collab-mixed-invites-'));
     const reminders = new ReminderBook(join(dir, 'reminders.json'), () => 1_000);
     const sendEmail = vi.fn(async () => undefined);
-    const sendSms = vi.fn(async () => undefined);
-    await serve({ sendEmail, sendSms }, undefined, 'https://collab.example', reminders);
+    await serve({ sendEmail }, undefined, 'https://collab.example', reminders);
 
     const token = issueToken({ uid: 'host-1', email: 'host@example.com', displayName: 'Ada' });
     const response = await fetch(`${base}/invite`, {
@@ -172,25 +158,22 @@ describe('the invite endpoint', () => {
 
     expect(response.status).toBe(200);
     expect(sendEmail).toHaveBeenCalledTimes(2);
-    expect(sendSms).toHaveBeenCalledTimes(1);
-    expect(sendSms).toHaveBeenCalledWith(
-      '+40721123456',
-      'Ada invited you to a Collab call. Join: https://collab.example/?room=room-10',
-    );
-    expect(reminders.list()).toHaveLength(3);
+    expect(reminders.list().map((item) => item.to)).toEqual([
+      'linus@example.com',
+      'tom@example.com',
+    ]);
     rmSync(dir, { recursive: true, force: true });
   });
 
   it('surfaces a provider failure', async () => {
     await serve({
-      sendSms: async () => {
-        throw new Error('The SMS could not be delivered.');
+      sendEmail: async () => {
+        throw new Error('The email could not be delivered.');
       },
-      sendEmail: vi.fn(async () => undefined),
     });
 
-    const response = await send({ contact: '+40721123456' });
+    const response = await send({ contact: 'ada@example.com' });
     expect(response.status).toBe(502);
-    expect(await response.json()).toEqual({ error: 'The SMS could not be delivered.' });
+    expect(await response.json()).toEqual({ error: 'The email could not be delivered.' });
   });
 });

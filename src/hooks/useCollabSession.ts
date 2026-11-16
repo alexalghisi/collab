@@ -191,7 +191,7 @@ export interface CollabSession {
   deleteMessage: (id: string) => void;
   /** Uploads a picked file through the transport and describes where it landed. */
   shareFile: (file: UploadableFile, onProgress: UploadProgress) => Promise<FileAttachment>;
-  /** Delivers an email or SMS invite for this meeting. */
+  /** Delivers an email invite for this meeting. */
   sendInvite: (input: string) => Promise<ParsedContact>;
   addStroke: (stroke: Omit<Stroke, 'id' | 'peerId'>) => void;
   addBoardFile: (item: Omit<BoardFile, 'id' | 'peerId'>) => void;
