@@ -55,16 +55,26 @@ A browser may call those routes only from `https://alexalghisi.github.io` or fro
 During a call, **Problems** opens the catalog beside the editor. Try it at **[alexalghisi.github.io/collab](https://alexalghisi.github.io/collab/)**.
 
 <p align="center">
-  <img src="./assets/problems-panel.gif" alt="Host picks a problem and the guest follows, Load into editor, Run on examples" width="800" />
+  <img src="./assets/showcase/hero.png" alt="Collab on desktop and phone: editor, video tiles and the Problems panel" width="100%" />
 </p>
 
-_Two real browsers in one call (recorded from the e2e stack): the host opens **Problems**, picks **Suma cifrelor**, loads a Python starter, and **Run on examples** reports 3/3. The guest's panel follows every change._
+<table>
+  <tr>
+    <td width="58%" valign="top">
+      <img src="./assets/showcase/problems-panel.gif" alt="Host picks a problem and the guest follows, Load into editor, Run on examples" width="100%" />
+      <p align="center"><sub><b>Live sync</b> · two real browsers in one call. The host picks <b>Suma cifrelor</b>, loads a Python starter, and <b>Run on examples</b> reports 3/3 while the guest's panel follows every change.</sub></p>
+    </td>
+    <td width="42%" valign="top">
+      <img src="./assets/showcase/mobile.png" alt="Problems panel on a 390px-wide phone" width="100%" />
+      <p align="center"><sub><b>Phone layout</b> · at 768px and below, <b>Code</b> and <b>Problem</b> become tabs so nothing scrolls sideways.</sub></p>
+    </td>
+  </tr>
+</table>
 
-![Problems panel beside the editor](./assets/problems-panel.png)
-
-On a wide screen the column can be dragged and its width is remembered. At 768 pixels and below, **Code** and **Problem** are tabs so the page does not scroll sideways. A 390px-wide frame looks like this:
-
-![Problems panel on a phone](./assets/problems-panel-mobile.png)
+<p align="center">
+  <img src="./assets/showcase/desktop.png" alt="Problems panel beside the editor on desktop" width="100%" />
+  <br/><sub><b>Desktop</b> · the problems column sits beside the editor; drag it wider and the width is remembered.</sub>
+</p>
 
 Search and the chips use the same categories as [collaborare.ro](https://collaborare.ro) (Vectori, Matrice, Backtracking, Programare dinamică, Grafuri, Subiecte oficiale OJI 2026, and the rest of that list). The host's choice is shared live. **Browsing freely** keeps a local choice until **Follow the host** is turned back on. **Load into editor** inserts a C++ or Python starter and the first example as the program input, after asking when the editor is not empty. **Run on examples** sends that program through the same hosted compiler as **Run** and marks each example. A C++ program is compiled once for all of its examples, and other languages run their examples side by side, so the verdicts take about as long as one **Run**. A busy compiler is asked again before any example is marked as failed. **Submit to collaborare.ro** stays disabled: this app is not signed into that judge and does not invent a score. **Open on collaborare.ro** is the fallback when the catalog cannot be loaded. A refresh restores the problem from the room.
 
