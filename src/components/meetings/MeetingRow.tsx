@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { buildIcs, googleCalendarUrl } from '../../meeting/calendarExport';
-import { formatDay, formatTime, meetingWithStartTime, toTimeInput } from '../../meeting/calendar';
+import {
+  formatDay,
+  formatTime,
+  meetingWithStartDate,
+  meetingWithStartTime,
+  toDateInput,
+  toTimeInput,
+} from '../../meeting/calendar';
 import { downloadTextFile } from '../../meeting/download';
 import { meetingInviteCopy } from '../../meeting/contact';
 import { buildInviteLink, shareInvite } from '../../meeting/invite';
@@ -16,7 +23,7 @@ import {
 import { colors } from '../../theme';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
-import { TimeField } from './SchedulePickers';
+import { DateField, TimeField } from './SchedulePickers';
 
 export interface MeetingInviteRequest {
   readonly emails: string;
@@ -81,15 +88,30 @@ export function MeetingRow({
           </Text>
           <Text style={styles.when}>{describeWhen(meeting)}</Text>
           {canMoveTime && onReschedule ? (
-            <TimeField
-              value={toTimeInput(new Date(meeting.startsAt))}
-              onChange={(time) => {
-                const next = meetingWithStartTime(meeting, time);
-                if (next) {
-                  onReschedule(next);
-                }
-              }}
-            />
+            <View style={styles.schedule}>
+              <View style={styles.dateField}>
+                <DateField
+                  value={toDateInput(new Date(meeting.startsAt))}
+                  onChange={(date) => {
+                    const next = meetingWithStartDate(meeting, date);
+                    if (next) {
+                      onReschedule(next);
+                    }
+                  }}
+                />
+              </View>
+              <View style={styles.timeField}>
+                <TimeField
+                  value={toTimeInput(new Date(meeting.startsAt))}
+                  onChange={(time) => {
+                    const next = meetingWithStartTime(meeting, time);
+                    if (next) {
+                      onReschedule(next);
+                    }
+                  }}
+                />
+              </View>
+            </View>
           ) : null}
           {who.length > 0 ? (
             <Text style={styles.who} numberOfLines={2}>
@@ -268,6 +290,20 @@ const styles = StyleSheet.create({
   when: {
     color: colors.textMuted,
     fontSize: 14,
+  },
+  schedule: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  dateField: {
+    flexGrow: 2,
+    flexBasis: 200,
+  },
+  timeField: {
+    flexGrow: 1,
+    flexBasis: 140,
   },
   who: {
     color: colors.text,

@@ -86,3 +86,11 @@ export function meetingWithStartTime(meeting: Meeting, time: string): Meeting | 
   }
   return { ...meeting, startsAt };
 }
+
+export function meetingWithStartDate(meeting: Meeting, date: string): Meeting | null {
+  const startsAt = parseDateTime(date, toTimeInput(new Date(meeting.startsAt)));
+  if (startsAt === null || startsAt === meeting.startsAt) {
+    return null;
+  }
+  return { ...meeting, startsAt };
+}
