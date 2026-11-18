@@ -268,22 +268,28 @@ jobs:
     if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
           path: artifacts
 
+      - name: Rename assets, checksum and render release notes
+        run: bash scripts/release/prepare-release.sh artifacts dist "${{ needs.check.outputs.tag }}" "${{ github.repository }}"
+
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.check.outputs.tag }}
+          name: Collab ${{ needs.check.outputs.tag }}
           target_commitish: ${{ github.sha }}
           draft: false
+          prerelease: false
+          make_latest: true
+          body_path: dist/release-notes.md
           generate_release_notes: true
           files: |
-            artifacts/collab-android/*.apk
-            artifacts/collab-ios/*.ipa
-            artifacts/collab-windows/*.exe
-            artifacts/collab-macos/*.dmg
-            artifacts/collab-linux/*.AppImage
-            artifacts/collab-linux/*.deb
+            dist/Collab-*
+            dist/SHA256SUMS.txt
