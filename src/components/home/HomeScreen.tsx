@@ -8,6 +8,7 @@ import { colors } from '../../theme';
 import { MeetingList } from '../meetings/MeetingList';
 import { splitByTime } from '../meetings/MeetingsScreen';
 import { FilesCard } from './FilesCard';
+import { WhyCollabCard } from './WhyCollabCard';
 import { Button } from '../ui/Button';
 import type { IconName } from '../ui/icons';
 
@@ -156,6 +157,8 @@ export function HomeScreen({
         onDelete={onDeleteMeeting}
         onInvite={onInviteMeeting}
       />
+
+      <WhyCollabCard />
     </ScrollView>
   );
 }
