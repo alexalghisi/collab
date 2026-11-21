@@ -244,6 +244,15 @@ describe('SharedCodeDocument', () => {
     expect(ada.document.text.toString()).toBe(written);
   });
 
+  it('adopts a language without replacing the program', () => {
+    const ada = attach('a', 'Ada');
+    ada.document.replaceText('print(1)\n');
+    ada.document.adoptLanguage('python');
+
+    expect(ada.document.language).toBe('python');
+    expect(ada.document.text.toString()).toBe('print(1)\n');
+  });
+
   it('does not publish an empty document when the room has no code yet', () => {
     const ada = attach('a', 'Ada');
     ada.channel.sent.length = 0;
