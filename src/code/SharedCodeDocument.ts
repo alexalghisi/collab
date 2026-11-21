@@ -124,6 +124,13 @@ export class SharedCodeDocument {
     });
   }
 
+  adoptLanguage(language: CodeLanguage): void {
+    if (this.language === language) {
+      return;
+    }
+    this.meta.set('language', language);
+  }
+
   /** Fires after any change, local or remote, to the text or the language. */
   onChange(listener: () => void): () => void {
     this.listeners.add(listener);

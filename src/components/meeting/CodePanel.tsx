@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Editor, { type OnMount } from '@monaco-editor/react';
+import { bindEditorRun, rememberRunLanguage } from '../../code/editorRun';
 import { applyFormattedCode } from '../../code/formatSource';
 import type { CodeLanguage } from '../../code/languages';
 import type { CodePresence, SharedCodeDocument } from '../../code/SharedCodeDocument';
@@ -26,7 +27,7 @@ export interface CodePanelProps {
   runs: CodeRun[];
   files: WorkspaceFile[];
   selfPeerId: string | null;
-  onRun: (stdin: string, files: WorkspaceFile[], source?: string) => void;
+  onRun: (stdin: string, files: WorkspaceFile[], source?: string, language?: CodeLanguage) => void;
   onFilesChange: (files: WorkspaceFile[]) => void;
   /** Example input for the problem loaded into the editor. */
   stdinSeed?: { readonly token: number; readonly value: string } | null;
@@ -57,6 +58,8 @@ export function CodePanel({
   stdinSeed,
 }: CodePanelProps) {
   const [language, setLanguage] = useState<CodeLanguage>(shared.language);
+  const languageRef = useRef<CodeLanguage>(shared.language);
+  languageRef.current = language;
   const [editors, setEditors] = useState<CodePresence[]>(shared.presence());
   const [stdin, setStdin] = useState(() => shared.stdin.toString() || stdinSeed?.value || '');
   const [selected, setSelected] = useState(CODE_MAIN_FILE);
@@ -102,6 +105,8 @@ export function CodePanel({
   useEffect(
     () =>
       shared.onChange(() => {
+        languageRef.current = shared.language;
+        rememberRunLanguage(shared.language);
         setLanguage(shared.language);
         setStdin(shared.stdin.toString());
         paintCursors();
@@ -109,6 +114,15 @@ export function CodePanel({
     [shared, paintCursors],
   );
   useEffect(() => shared.onPresence(paintCursors), [shared, paintCursors]);
+  useEffect(() => {
+    languageRef.current = shared.language;
+    rememberRunLanguage(shared.language);
+    bindEditorRun({
+      language: () => languageRef.current,
+      source: () => editorRef.current?.getModel()?.getValue() ?? shared.text.toString(),
+    });
+    return () => bindEditorRun(null);
+  }, [shared]);
   useEffect(() => () => bindingRef.current?.destroy(), []);
   useEffect(() => {
     if (stdinSeed) {
@@ -150,7 +164,12 @@ export function CodePanel({
     <View style={styles.panel}>
       <CodeControls
         language={language}
-        onLanguageChange={(next) => shared.setLanguage(next)}
+        onLanguageChange={(next) => {
+          shared.setLanguage(next);
+          languageRef.current = next;
+          rememberRunLanguage(next);
+          setLanguage(next);
+        }}
         stdin={stdin}
         onStdinChange={(value) => shared.replaceStdin(value)}
         onFormat={() => applyFormattedCode(language, shared, files, openFile, onFilesChange)}
@@ -159,7 +178,7 @@ export function CodePanel({
           if (typed != null && typed !== shared.text.toString()) {
             shared.replaceText(typed);
           }
-          onRun(stdin, files, shared.text.toString());
+          onRun(stdin, files, shared.text.toString(), languageRef.current);
         }}
         running={running}
         editors={editors}
