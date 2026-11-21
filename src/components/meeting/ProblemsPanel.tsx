@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   Image,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,6 +22,11 @@ import {
   type ProblemSummary,
 } from '../../collaborare/types';
 import { colors } from '../../theme';
+
+const webSampleText =
+  Platform.OS === 'web'
+    ? ({ whiteSpace: 'pre-wrap' } as unknown as NonNullable<Text['props']['style']>)
+    : null;
 
 const SUBMIT_HINT =
   'Opens this problem on collaborare.ro with your code already in its editor and submits it there.';
@@ -297,11 +303,6 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
             </Text>
             <Text style={styles.meta}>{limitLine(detail)}</Text>
             <Statement source={detail.statement} />
-            {detail.formulas.map((formula) => (
-              <Text key={formula} style={styles.formula} accessibilityLabel={`Formula ${formula}`}>
-                {formula}
-              </Text>
-            ))}
             {detail.images.map((image) => (
               <Image
                 key={image.url}
@@ -314,7 +315,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
             {detail.inputFormat !== '' && (
               <View style={styles.sectionBlock}>
                 <Text style={styles.sectionTitle} accessibilityRole="header" aria-level={3}>
-                  Input
+                  Date de intrare
                 </Text>
                 <Statement source={detail.inputFormat} />
               </View>
@@ -322,7 +323,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
             {detail.outputFormat !== '' && (
               <View style={styles.sectionBlock}>
                 <Text style={styles.sectionTitle} accessibilityRole="header" aria-level={3}>
-                  Output
+                  Date de ieșire
                 </Text>
                 <Statement source={detail.outputFormat} />
               </View>
@@ -330,7 +331,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
             {detail.constraints !== '' && (
               <View style={styles.sectionBlock}>
                 <Text style={styles.sectionTitle} accessibilityRole="header" aria-level={3}>
-                  Constraints
+                  Restricții
                 </Text>
                 <Statement source={detail.constraints} />
               </View>
@@ -347,11 +348,11 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
             )}
             {detail.examples.map((example, index) => (
               <View key={`${example.input}-${index}`} style={styles.example}>
-                <Text style={styles.exampleTitle}>Example {index + 1}</Text>
-                <Text style={styles.ioLabel}>Input</Text>
-                <Text style={styles.code}>{example.input || '(empty)'}</Text>
-                <Text style={styles.ioLabel}>Output</Text>
-                <Text style={styles.code}>{example.output || '(empty)'}</Text>
+                <Text style={styles.exampleTitle}>Exemplul {index + 1}</Text>
+                <View style={styles.sampleRow}>
+                  <SampleData label="Date de intrare (tastatură)" value={example.input} />
+                  <SampleData label="Date de ieșire (ecran)" value={example.output} />
+                </View>
                 {example.explanation ? (
                   <Text style={styles.note}>{example.explanation}</Text>
                 ) : null}
@@ -362,12 +363,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
                       {verdicts[index].error ? ` — ${verdicts[index].error}` : ''}
                     </Text>
                     {!verdicts[index].passed && !verdicts[index].error && (
-                      <>
-                        <Text style={styles.ioLabel}>Your output</Text>
-                        <Text style={styles.code}>
-                          {verdicts[index].actual === '' ? '(empty)' : verdicts[index].actual}
-                        </Text>
-                      </>
+                      <SampleData label="Your output" value={verdicts[index].actual} />
                     )}
                   </View>
                 )}
@@ -454,6 +450,24 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
   );
 }
 
+function exampleDataText(value: string): string {
+  const shown = value.endsWith('\n') ? value.slice(0, -1) : value;
+  return shown === '' ? '(empty)' : shown;
+}
+
+function SampleData({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.sample}>
+      <Text style={styles.sampleLabel}>{label}</Text>
+      <View style={styles.sampleBox}>
+        <Text style={[styles.sampleCode, webSampleText]} selectable>
+          {exampleDataText(value)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function Spans({ spans }: { spans: readonly StatementSpan[] }) {
   return (
     <>
@@ -465,7 +479,9 @@ function Spans({ spans }: { spans: readonly StatementSpan[] }) {
               ? styles.inlineCode
               : span.kind === 'bold'
                 ? styles.bold
-                : undefined
+                : span.kind === 'italic'
+                  ? styles.italic
+                  : undefined
           }
         >
           {span.text}
@@ -482,9 +498,11 @@ function Statement({ source }: { source: string }) {
       {parseStatement(source).map((block, index) => {
         if (block.kind === 'code') {
           return (
-            <Text key={index} style={styles.code}>
-              {block.text}
-            </Text>
+            <View key={index} style={styles.sampleBox}>
+              <Text style={[styles.sampleCode, webSampleText]} selectable>
+                {block.text.replace(/\n$/, '')}
+              </Text>
+            </View>
           );
         }
         if (block.kind === 'heading') {
@@ -714,13 +732,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 8,
   },
-  formula: {
-    color: colors.text,
-    fontFamily: 'monospace',
-    backgroundColor: colors.surfaceRaised,
-    padding: 8,
-    marginTop: 8,
-  },
   figure: {
     width: '100%',
     height: 180,
@@ -751,31 +762,49 @@ const styles = StyleSheet.create({
   bold: {
     fontWeight: '700',
   },
+  italic: {
+    fontStyle: 'italic',
+  },
   example: {
-    marginTop: 10,
-    gap: 4,
+    marginTop: 14,
+    gap: 8,
   },
   exampleTitle: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  ioLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    marginTop: 4,
-  },
-  code: {
-    color: colors.text,
+    color: colors.primary,
     fontFamily: 'monospace',
     fontSize: 12,
-    lineHeight: 18,
-    backgroundColor: colors.background,
-    padding: 8,
+    fontWeight: '700',
+  },
+  sampleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sample: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 160,
+    minWidth: 140,
+    gap: 4,
+  },
+  sampleLabel: {
+    color: colors.textMuted,
+    fontFamily: 'monospace',
+    fontSize: 11,
+  },
+  sampleBox: {
+    borderWidth: 1,
+    borderColor: '#374151',
     borderRadius: 6,
+    backgroundColor: colors.background,
+  },
+  sampleCode: {
+    color: colors.text,
+    fontFamily: 'monospace',
+    fontSize: 13,
+    lineHeight: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   pass: {
     color: colors.success,
