@@ -1,5 +1,6 @@
 import { Linking } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
+import { editorRunProgram } from '../code/editorRun';
 import { runOnHostedCompiler } from '../code/hostedRun';
 import type { SharedCodeDocument } from '../code/SharedCodeDocument';
 import { SIGNALING_URL } from '../signaling/config';
@@ -141,14 +142,22 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
     if (!detail || !session.code || detail.examples.length === 0 || examplesRunning) {
       return;
     }
-    const language = session.code.language;
-    const code = session.code.text.toString();
+    const program = editorRunProgram({
+      language: session.code.language,
+      source: session.code.text.toString(),
+    });
+    if (program.code !== session.code.text.toString()) {
+      session.code.replaceText(program.code);
+    }
+    if (session.code.language !== program.language) {
+      session.code.adoptLanguage(program.language);
+    }
     const problemSlug = detail.slug;
     setLocalRunning(true);
     session.shareExamples({ slug: problemSlug, running: true, verdicts: [] });
     void runProblemExamples({
-      language,
-      code,
+      language: program.language,
+      code: program.code,
       examples: detail.examples,
       run: runOnHostedCompiler,
     })

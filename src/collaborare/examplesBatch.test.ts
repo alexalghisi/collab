@@ -340,6 +340,8 @@ describe('running examples without one shared compile', () => {
       code: 'print(input())',
       examples: ['1', '2', '3', '4', '5', '6'].map((value) => ({ input: value, output: value })),
       run: async (request) => {
+        expect(request.language).toBe('python');
+        expect(request.code).toBe('print(input())');
         running += 1;
         most = Math.max(most, running);
         await new Promise((resolve) => setTimeout(resolve, 5));

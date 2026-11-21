@@ -10,7 +10,7 @@ import {
   type ExecutionRequest,
 } from '../code/execution';
 import { runOnHostedCompiler, serverHasNoSandbox } from '../code/hostedRun';
-import { programSource } from '../code/programSource';
+import { editorRunProgram } from '../code/editorRun';
 import { mergeWorkspaceFiles, type WorkspaceFile } from '../code/workspaceFiles';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
@@ -1459,14 +1459,31 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   }, [captionsOn, beginCaptions]);
 
   const runCode = useCallback(
-    (stdin: string, files: readonly WorkspaceFile[] = [], source?: string) => {
+    (
+      stdin: string,
+      files: readonly WorkspaceFile[] = [],
+      source?: string,
+      language?: CodeLanguage,
+    ) => {
       const document = codeRef.current;
       if (!document) {
         return;
       }
+      const program = editorRunProgram({
+        language: language ?? document.language,
+        source: document.text.toString(),
+      });
+      const selected = language ?? program.language;
+      const code = source !== undefined && source.trim() !== '' ? source : program.code;
+      if (code !== document.text.toString()) {
+        document.replaceText(code);
+      }
+      if (document.language !== selected) {
+        document.adoptLanguage(selected);
+      }
       const payload = {
-        language: document.language,
-        code: programSource(source, document.text.toString()),
+        language: selected,
+        code,
         stdin,
         files: [...files],
       };
