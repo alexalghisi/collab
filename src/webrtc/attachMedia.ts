@@ -46,7 +46,6 @@ function sharedPlaybackContext(): AudioContext | null {
   return holder[PLAYBACK_KEY];
 }
 
-/** The context a click on this page has already resumed, shared with the call. */
 export function playbackAudioContext(): AudioContext | null {
   return sharedPlaybackContext();
 }

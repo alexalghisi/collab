@@ -91,10 +91,6 @@ function script(table: Record<string, string>, value: string): string {
   return [...value].map((character) => table[character] ?? character).join('');
 }
 
-/**
- * LaTeX from a collaborare.ro statement, written the way a person would read it:
- * symbols, powers, indexes, and spaces around the signs.
- */
 export function readableMath(text: string): string {
   const withCommands = text
     .replace(/\^\\circ\b/g, '°')
@@ -121,7 +117,6 @@ export function readableMath(text: string): string {
     .replace(/[ \t]{2,}/g, ' ');
 }
 
-/** `26=16·1+5` is hard to read; `26 = 16 · 1 + 5` is the same equation. */
 function spaceSigns(text: string): string {
   let current = text;
   const jammed = /([^\s])([=+\u00b7×≤≥≠→⊕])([^\s])/g;

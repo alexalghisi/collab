@@ -23,7 +23,6 @@ import {
 } from '../../collaborare/types';
 import { colors } from '../../theme';
 
-/** Keeps spaces and line breaks in a sample, the way a `<pre>` does on collaborare.ro. */
 const webSampleText =
   Platform.OS === 'web'
     ? ({ whiteSpace: 'pre-wrap' } as unknown as NonNullable<Text['props']['style']>)
@@ -451,13 +450,11 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
   );
 }
 
-/** One trailing newline is the line ending, not an extra blank row in the box. */
 function exampleDataText(value: string): string {
   const shown = value.endsWith('\n') ? value.slice(0, -1) : value;
   return shown === '' ? '(empty)' : shown;
 }
 
-/** A sample the way collaborare.ro shows it: a caption over a monospace block. */
 function SampleData({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.sample}>

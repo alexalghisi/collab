@@ -1,6 +1,5 @@
 import { playbackAudioContext, unlockAudioPlayback } from '../webrtc/attachMedia';
 
-/** A message already on screen, or older than this, does not ring again. */
 export const CHAT_BELL_MAX_AGE_MS = 20_000;
 
 const CHIME_GAP_MS = 700;
@@ -12,10 +11,6 @@ export interface RingableMessage {
   readonly deletedAt?: number;
 }
 
-/**
- * Messages that just arrived from somebody else. History loaded with the room,
- * the sender's own copy, and edits of a message already shown are left out.
- */
 export function messagesToRing(
   previous: readonly { readonly id: string }[],
   incoming: readonly RingableMessage[],
@@ -49,7 +44,6 @@ function armChime(): void {
   document.addEventListener('touchstart', resume);
 }
 
-/** Two short tones on this device's speakers. Silent when audio is unavailable. */
 export function playChatBell(now = Date.now()): void {
   armChime();
   if (now - lastChimeAt < CHIME_GAP_MS) {
