@@ -143,7 +143,7 @@ test('a C++ solution is compiled once for all of its examples', async ({ browser
   await host.waitForURL(/room=/);
   await host.getByRole('button', { name: 'Problems', exact: true }).click();
   await host.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
-  await expect(host.getByText('Example 3')).toBeVisible();
+  await expect(host.getByText('Exemplul 3')).toBeVisible();
   await host.getByRole('button', { name: 'Load into editor' }).click();
   await expect.poll(() => editorText(host)).toContain('int main()');
 
@@ -189,7 +189,7 @@ test('both participants always see the same problem and example verdicts', async
   await host.getByRole('button', { name: 'Problems', exact: true }).click();
   await expect(host.getByText('Synced · you are the host')).toBeVisible();
   await host.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
-  await expect(host.getByText('Example 1')).toBeVisible();
+  await expect(host.getByText('Exemplul 1')).toBeVisible();
 
   // Guest sees the same problem without touching anything but the panel button.
   const guestPanel = guest.getByRole('button', { name: 'Problems', exact: true });
@@ -198,7 +198,7 @@ test('both participants always see the same problem and example verdicts', async
   }
   await expect(guest.getByText('Synced with the room')).toBeVisible();
   await expect(guest.getByRole('heading', { name: 'Suma cifrelor (OLI 5)' })).toBeVisible();
-  await expect(guest.getByText('Example 1')).toBeVisible();
+  await expect(guest.getByText('Exemplul 1')).toBeVisible();
 
   // Host changes problem with the keyboard; the guest follows.
   await host.keyboard.press('Alt+ArrowLeft');
@@ -208,7 +208,7 @@ test('both participants always see the same problem and example verdicts', async
   // Back to "Suma cifrelor" through the list, then load a Python starter.
   await host.getByRole('button', { name: 'Back to list' }).click();
   await host.getByRole('button', { name: 'Suma cifrelor (OLI 5)' }).click();
-  await expect(guest.getByText('Example 1')).toBeVisible();
+  await expect(guest.getByText('Exemplul 1')).toBeVisible();
   await host.getByRole('button', { name: 'Switch to Python' }).click();
   await host.getByRole('button', { name: 'Load into editor' }).click();
   await expect.poll(() => editorText(host)).toContain('# Suma cifrelor (OLI 5)');

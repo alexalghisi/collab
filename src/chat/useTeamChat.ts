@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AuthUser } from '../auth/types';
 import { firestore } from '../firebase/app';
 import type { ChatMessage } from '../signaling/events';
+import { messagesToRing, playChatBell } from './bell';
 import {
   createChannel,
   deleteMessage,
@@ -30,6 +31,8 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const selfId = user?.uid ?? null;
 
   useEffect(() => {
     return subscribeChannels(db, (nextChannels) => {
@@ -44,12 +47,21 @@ export function useTeamChat(user: AuthUser | null): TeamChat {
   }, [db]);
 
   useEffect(() => {
+    messagesRef.current = [];
     setMessages([]);
     if (!activeChannelId) {
       return;
     }
-    return subscribeMessages(db, activeChannelId, setMessages);
-  }, [db, activeChannelId]);
+    let primed = false;
+    return subscribeMessages(db, activeChannelId, (next) => {
+      if (primed && messagesToRing(messagesRef.current, next, [selfId], Date.now()).length > 0) {
+        playChatBell();
+      }
+      primed = true;
+      messagesRef.current = next;
+      setMessages(next);
+    });
+  }, [db, activeChannelId, selfId]);
 
   const create = useCallback(
     async (name: string) => {

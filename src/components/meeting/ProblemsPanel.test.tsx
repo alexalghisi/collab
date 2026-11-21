@@ -179,8 +179,12 @@ describe('ProblemsPanel', () => {
     render(<ProblemsPanel {...props({ slug: 'suma-vector', detail: DETAIL })} />);
     expect(screen.getByText('Se dau n numere. Afișați suma lor.')).toBeTruthy();
     expect(screen.getByText(/Pe prima linie n, apoi n numere\./)).toBeTruthy();
-    expect(screen.getByText('Example 1')).toBeTruthy();
-    expect(screen.getByText('Example 2')).toBeTruthy();
+    expect(screen.getByText('Exemplul 1')).toBeTruthy();
+    expect(screen.getByText('Exemplul 2')).toBeTruthy();
+    expect(screen.getAllByText('Date de intrare (tastatură)')).toHaveLength(2);
+    expect(screen.getAllByText('Date de ieșire (ecran)')).toHaveLength(2);
+    expect(screen.getByText((content) => content.includes('1 2 3'))).toBeTruthy();
+    expect(screen.getByText('6')).toBeTruthy();
   });
 
   it('shows pass and fail per example, with the output that differed', () => {

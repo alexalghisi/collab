@@ -46,6 +46,11 @@ function sharedPlaybackContext(): AudioContext | null {
   return holder[PLAYBACK_KEY];
 }
 
+/** The context a click on this page has already resumed, shared with the call. */
+export function playbackAudioContext(): AudioContext | null {
+  return sharedPlaybackContext();
+}
+
 /** Everything currently bound to a stream, so playback can be started again. */
 const bound = new Set<HTMLMediaElement>();
 let speakerId = '';
