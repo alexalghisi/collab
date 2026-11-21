@@ -7,6 +7,7 @@
 export type StatementSpan =
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'bold'; readonly text: string }
+  | { readonly kind: 'italic'; readonly text: string }
   | { readonly kind: 'code'; readonly text: string };
 
 export type StatementBlock =
@@ -14,6 +15,129 @@ export type StatementBlock =
   | { readonly kind: 'paragraph'; readonly spans: StatementSpan[] }
   | { readonly kind: 'bullet'; readonly spans: StatementSpan[] }
   | { readonly kind: 'code'; readonly text: string };
+
+const COMMANDS: Record<string, string> = {
+  in: '∈',
+  le: '≤',
+  leq: '≤',
+  ge: '≥',
+  geq: '≥',
+  neq: '≠',
+  ne: '≠',
+  times: '×',
+  cdot: '·',
+  dots: '…',
+  ldots: '…',
+  cdots: '⋯',
+  to: '→',
+  pm: '±',
+  sigma: 'σ',
+  ell: 'ℓ',
+  oplus: '⊕',
+  lfloor: '⌊',
+  rfloor: '⌋',
+  bmod: ' mod ',
+  min: 'min',
+  max: 'max',
+  gcd: 'cmmdc',
+  quad: ' ',
+  circ: '°',
+};
+
+const SUPERSCRIPT: Record<string, string> = {
+  '0': '⁰',
+  '1': '¹',
+  '2': '²',
+  '3': '³',
+  '4': '⁴',
+  '5': '⁵',
+  '6': '⁶',
+  '7': '⁷',
+  '8': '⁸',
+  '9': '⁹',
+};
+
+const SUBSCRIPT: Record<string, string> = {
+  '0': '₀',
+  '1': '₁',
+  '2': '₂',
+  '3': '₃',
+  '4': '₄',
+  '5': '₅',
+  '6': '₆',
+  '7': '₇',
+  '8': '₈',
+  '9': '₉',
+  a: 'ₐ',
+  e: 'ₑ',
+  h: 'ₕ',
+  i: 'ᵢ',
+  j: 'ⱼ',
+  k: 'ₖ',
+  l: 'ₗ',
+  m: 'ₘ',
+  n: 'ₙ',
+  o: 'ₒ',
+  p: 'ₚ',
+  r: 'ᵣ',
+  s: 'ₛ',
+  t: 'ₜ',
+  u: 'ᵤ',
+  v: 'ᵥ',
+  x: 'ₓ',
+};
+
+function script(table: Record<string, string>, value: string): string {
+  return [...value].map((character) => table[character] ?? character).join('');
+}
+
+export function readableMath(text: string): string {
+  const withCommands = text
+    .replace(/\^\\circ\b/g, '°')
+    .replace(/\\text\{([^{}]*)\}/g, '$1')
+    .replace(/\\color\{[^{}]*\}/g, '')
+    .replace(/\\sqrt\{([^{}]*)\}/g, '√$1')
+    .replace(/\\sqrt\s*([0-9a-zA-Z])/g, '√$1')
+    .replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '$1/$2')
+    .replace(/\\(?:begin|end)\{[^{}]*\}/g, '')
+    .replace(/\\([a-zA-Z]+)\b/g, (full, name: string) => COMMANDS[name] ?? full)
+    .replace(/\\[,;]/g, ' ')
+    .replace(/\\ /g, ' ')
+    .replace(/\\[{}]/g, '')
+    .replace(/&/g, ' ');
+  const withScripts = withCommands
+    .replace(/_\{([^{}]+)\}/g, (_, value: string) => script(SUBSCRIPT, value))
+    .replace(/_([0-9a-z])/g, (_, value: string) => script(SUBSCRIPT, value))
+    .replace(/\^\{(\d+)\}/g, (_, value: string) => script(SUPERSCRIPT, value))
+    .replace(/\^(\d)/g, (_, value: string) => script(SUPERSCRIPT, value))
+    .replace(/\\([a-zA-Z]+)/g, '$1');
+  return spaceSigns(withScripts)
+    .replace(/⌊\s+/g, '⌊')
+    .replace(/\s+⌋/g, '⌋')
+    .replace(/[ \t]{2,}/g, ' ');
+}
+
+function spaceSigns(text: string): string {
+  let current = text;
+  const jammed = /([^\s])([=+\u00b7×≤≥≠→⊕])([^\s])/g;
+  const numeric = /[0-9⁰¹²³⁴⁵⁶⁷⁸⁹·×]/;
+  for (let pass = 0; pass < 8; pass += 1) {
+    const next = current.replace(jammed, (full, left: string, sign: string, right: string) => {
+      if (
+        sign === '+' &&
+        (left === '+' || right === '+' || (!numeric.test(left) && !numeric.test(right)))
+      ) {
+        return full;
+      }
+      return `${left} ${sign} ${right}`;
+    });
+    if (next === current) {
+      break;
+    }
+    current = next;
+  }
+  return current.replace(/([0-9⁰¹²³⁴⁵⁶⁷⁸⁹])-(?=[0-9])/g, '$1 - ');
+}
 
 function stripMarkup(statement: string): string {
   return statement
@@ -26,9 +150,16 @@ function stripMarkup(statement: string): string {
     .replace(/(^|[^\\$])\$([^$\n]+?)\$/g, '$1$2');
 }
 
+function present(spans: StatementSpan[]): StatementSpan[] {
+  return spans.map((span) =>
+    span.kind === 'code' ? span : { ...span, text: readableMath(span.text) },
+  );
+}
+
 export function inlineSpans(line: string): StatementSpan[] {
   const spans: StatementSpan[] = [];
-  const pattern = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+  const pattern =
+    /`([^`]+)`|\*\*([^*]+)\*\*|(?<!\*)\*([^*\n]+)\*(?!\*)|(?<![A-Za-z0-9])_([^_\n]+)_(?![A-Za-z0-9])/g;
   let last = 0;
   for (const match of line.matchAll(pattern)) {
     const at = match.index ?? 0;
@@ -39,13 +170,17 @@ export function inlineSpans(line: string): StatementSpan[] {
       spans.push({ kind: 'code', text: match[1] });
     } else if (match[2] !== undefined) {
       spans.push({ kind: 'bold', text: match[2] });
+    } else if (match[3] !== undefined) {
+      spans.push({ kind: 'italic', text: match[3] });
+    } else if (match[4] !== undefined) {
+      spans.push({ kind: 'italic', text: match[4] });
     }
     last = at + match[0].length;
   }
   if (last < line.length) {
     spans.push({ kind: 'text', text: line.slice(last) });
   }
-  return spans;
+  return present(spans);
 }
 
 export function parseStatement(statement: string): StatementBlock[] {

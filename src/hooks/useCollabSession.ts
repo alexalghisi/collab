@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
 import type { StructuredAction } from '../assistant/types';
+import { messagesToRing, playChatBell } from '../chat/bell';
 import { mergeChatHistory } from '../chat/history';
 import { type ChatDraft, withDeletedChatMessage, withEditedChatMessage } from '../chat/messages';
 import {
@@ -316,6 +317,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechRef = useRef(createSpeechCapture());
   const selfPeerIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
   const joinGenerationRef = useRef(0);
   const wantVideoRef = useRef(false);
   /** What the user asked for. The published flags also go off when a track dies. */
@@ -391,6 +393,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
     settingsRef.current = DEFAULT_ROOM_SETTINGS;
     setParticipants([]);
     setLinkQuality({});
+    messagesRef.current = [];
     setMessages([]);
     setStrokes([]);
     setBoardFiles([]);
@@ -509,6 +512,7 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
         video: !selfRef.current.videoOff,
       });
       const snapshot = loadRoomSnapshot(nextRoomId);
+      messagesRef.current = snapshot.messages;
       setMessages(snapshot.messages);
       setStrokes(snapshot.strokes);
       setTranscript(snapshot.transcript);
@@ -542,11 +546,10 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
           saveRoomSnapshot(nextRoomId, { transcript: next });
           return next;
         });
-        setMessages((current) => {
-          const next = mergeChatHistory(current, room.messages);
-          saveRoomSnapshot(nextRoomId, { messages: next });
-          return next;
-        });
+        const joinedMessages = mergeChatHistory(messagesRef.current, room.messages);
+        messagesRef.current = joinedMessages;
+        saveRoomSnapshot(nextRoomId, { messages: joinedMessages });
+        setMessages(joinedMessages);
         if (room.code) {
           sharedCode.applyState(room.code);
         }
@@ -600,13 +603,23 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       signaling.on('peer:left', dropParticipant);
       signaling.on('peer:state', ({ peerId, state }) => patchParticipant(peerId, { state }));
       const applyChatUpdate = (message: ChatMessage) => {
-        setMessages((current) => {
-          const next = mergeChatHistory(current, [message]);
-          saveRoomSnapshot(nextRoomId, { messages: next });
-          return next;
-        });
+        const next = mergeChatHistory(messagesRef.current, [message]);
+        messagesRef.current = next;
+        saveRoomSnapshot(nextRoomId, { messages: next });
+        setMessages(next);
       };
-      signaling.on('chat:message', applyChatUpdate);
+      signaling.on('chat:message', (message) => {
+        const heard = messagesToRing(
+          messagesRef.current,
+          [message],
+          [selfPeerIdRef.current, sessionIdRef.current],
+          Date.now(),
+        );
+        if (heard.length > 0) {
+          playChatBell();
+        }
+        applyChatUpdate(message);
+      });
       signaling.on('chat:edited', applyChatUpdate);
       signaling.on('chat:deleted', applyChatUpdate);
       // Firestore echoes our own strokes back, so adding is keyed by id.
@@ -1327,26 +1340,26 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
   }, []);
 
   const editMessage = useCallback((id: string, text: string) => {
-    setMessages((current) => {
-      const next = mergeChatHistory(current, withEditedChatMessage(current, id, text, Date.now()));
-      const room = roomIdRef.current;
-      if (room) {
-        saveRoomSnapshot(room, { messages: next });
-      }
-      return next;
-    });
+    const current = messagesRef.current;
+    const next = mergeChatHistory(current, withEditedChatMessage(current, id, text, Date.now()));
+    messagesRef.current = next;
+    const room = roomIdRef.current;
+    if (room) {
+      saveRoomSnapshot(room, { messages: next });
+    }
+    setMessages(next);
     signalingRef.current?.emit('chat:edit', { id, text });
   }, []);
 
   const deleteMessage = useCallback((id: string) => {
-    setMessages((current) => {
-      const next = mergeChatHistory(current, withDeletedChatMessage(current, id, Date.now()));
-      const room = roomIdRef.current;
-      if (room) {
-        saveRoomSnapshot(room, { messages: next });
-      }
-      return next;
-    });
+    const current = messagesRef.current;
+    const next = mergeChatHistory(current, withDeletedChatMessage(current, id, Date.now()));
+    messagesRef.current = next;
+    const room = roomIdRef.current;
+    if (room) {
+      saveRoomSnapshot(room, { messages: next });
+    }
+    setMessages(next);
     signalingRef.current?.emit('chat:delete', { id });
   }, []);
 
