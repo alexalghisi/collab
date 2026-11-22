@@ -240,6 +240,87 @@ describe('problem API client', () => {
       now: 6,
     });
     expect(loaded.statement).toBe('Enunț');
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
+  });
+
+  it('uses the public catalog statement for every shared problem', async () => {
+    const calls: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes('supabase.co')) {
+        const slug = new URL(url).searchParams.get('slug')?.replace(/^eq\./, '') ?? '';
+        return new Response(
+          JSON.stringify([
+            {
+              slug,
+              title: 'Problema din catalog',
+              statement: `Enunțul public pentru ${slug}.`,
+              input_format: 'Pe prima linie: n.',
+              output_format: 'Rezultatul.',
+              constraints: '1 ≤ n ≤ 300',
+              examples: [{ input: '1\n', output: '1\n' }],
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          ...row({ slug: 'rec-fibonacci', title: 'Fibonacci' }),
+          statement: 'Enunțul local, mai scurt.',
+          inputFormat: 'n',
+          outputFormat: 'f',
+          constraints: '1 ≤ n ≤ 40',
+          hint: '',
+          examples: [],
+          images: [],
+          formulas: [],
+          url: 'https://collaborare.ro/probleme/rec-fibonacci',
+        }),
+        { status: 200 },
+      );
+    };
+    const loaded = await fetchProblemDetail({
+      signalingUrl: 'http://localhost:4000',
+      slug: 'rec-fibonacci',
+      fetchImpl,
+      cache: memoryProblemCache(),
+    });
+    expect(loaded.statement).toBe('Enunțul public pentru rec-fibonacci.');
+    expect(loaded.constraints).toBe('1 ≤ n ≤ 300');
+    expect(loaded.examples).toEqual([{ input: '1\n', output: '1\n' }]);
+    expect(calls.some((url) => url.includes('localhost'))).toBe(false);
+  });
+
+  it('keeps a local statement when the public catalog has no such problem', async () => {
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('supabase.co')) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          ...row({ slug: 'rec-factorial', title: 'Factorialul' }),
+          statement: 'Calculează n!',
+          inputFormat: 'n',
+          outputFormat: 'n!',
+          constraints: '',
+          hint: '',
+          examples: [],
+          images: [],
+          formulas: [],
+          url: 'https://collaborare.ro/probleme/rec-factorial',
+        }),
+        { status: 200 },
+      );
+    };
+    const loaded = await fetchProblemDetail({
+      signalingUrl: 'http://localhost:4000',
+      slug: 'rec-factorial',
+      fetchImpl,
+      cache: memoryProblemCache(),
+    });
+    expect(loaded.statement).toBe('Calculează n!');
   });
 });
