@@ -61,6 +61,7 @@ export function createProblemCatalog(options: SourceOptions = {}): ProblemCatalo
     readonly at: number;
     readonly fetchedAt: string;
     readonly problems: ProblemSummary[];
+    readonly remoteSlugs: ReadonlySet<string>;
   } | null = null;
   const details = new Map<
     string,
@@ -83,14 +84,16 @@ export function createProblemCatalog(options: SourceOptions = {}): ProblemCatalo
     endpoint.searchParams.set('order', 'difficulty.asc,title.asc');
     endpoint.searchParams.set('limit', '2000');
     const rows = await readRows(await fetchImpl(endpoint, { headers }));
-    const remoteSlugs = new Set(rows.map((row) => row.slug));
-    const local = localRows.filter((row) => !remoteSlugs.has(row.slug));
+    const remoteSlugs = new Set(
+      rows.flatMap((row) => (typeof row.slug === 'string' && row.slug !== '' ? [row.slug] : [])),
+    );
+    const local = localRows.filter((row) => !remoteSlugs.has(String(row.slug ?? '')));
     const problems = [...rows, ...local].flatMap((row) => {
       const summary = summaryFromRow(row);
       return summary ? [summary] : [];
     });
     const fetchedAt = new Date(now()).toISOString();
-    listCache = { at: now(), fetchedAt, problems };
+    listCache = { at: now(), fetchedAt, problems, remoteSlugs };
     return { fetchedAt, problems };
   };
 
@@ -101,19 +104,26 @@ export function createProblemCatalog(options: SourceOptions = {}): ProblemCatalo
         return null;
       }
       const local = localRows.find((row) => row.slug === slug);
-      if (local) {
-        return detailFromRow(local);
-      }
       const cached = details.get(slug);
       if (cached && now() - cached.at < ttlMs) {
         return cached.problem;
+      }
+      // The public catalog wins when the same slug exists in both places.
+      // A fresh list already knows which slugs are remote, so a local-only
+      // problem does not need another request.
+      const listed = listCache;
+      if (local && listed && now() - listed.at < ttlMs && !listed.remoteSlugs.has(slug)) {
+        const problem = detailFromRow(local);
+        details.set(slug, { at: now(), problem });
+        return problem;
       }
       const endpoint = new URL('/rest/v1/problems', base);
       endpoint.searchParams.set('select', DETAIL_COLUMNS);
       endpoint.searchParams.set('slug', `eq.${slug}`);
       endpoint.searchParams.set('limit', '1');
       const rows = await readRows(await fetchImpl(endpoint, { headers }));
-      const problem = rows[0] ? detailFromRow(rows[0]) : null;
+      const remote = rows[0] ? detailFromRow(rows[0]) : null;
+      const problem = remote ?? (local ? detailFromRow(local) : null);
       details.set(slug, { at: now(), problem });
       return problem;
     },
