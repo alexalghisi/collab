@@ -1,7 +1,8 @@
+import { fetchPublicProblem } from './publicCatalog';
 import type { ProblemDetail, ProblemListPayload, ProblemSummary } from './types';
 
 /** Bumped when a cached statement could disagree with the public catalog. */
-export const PROBLEM_LIST_CACHE_KEY = 'collab.problems.list.v2';
+export const PROBLEM_LIST_CACHE_KEY = 'collab.problems.list.v3';
 export const PROBLEM_LIST_TTL_MS = 10 * 60 * 1000;
 
 export interface ProblemCache {
@@ -169,13 +170,22 @@ export async function fetchProblemDetail(options: {
     return cachedDetail;
   }
   try {
-    const response = await fetchImpl(problemsApiUrl(options.signalingUrl, options.slug));
-    if (!response.ok) {
-      throw new Error(`problem answered ${response.status}`);
+    let body: ProblemDetail | null = null;
+    try {
+      body = await fetchPublicProblem(options.slug, fetchImpl);
+    } catch {
+      body = null;
     }
-    const body = await readJson(response);
-    if (!isDetail(body)) {
-      throw new Error('problem was not a statement');
+    if (!body) {
+      const response = await fetchImpl(problemsApiUrl(options.signalingUrl, options.slug));
+      if (!response.ok) {
+        throw new Error(`problem answered ${response.status}`);
+      }
+      const signaled = await readJson(response);
+      if (!isDetail(signaled)) {
+        throw new Error('problem was not a statement');
+      }
+      body = signaled;
     }
     cache.write(
       key,

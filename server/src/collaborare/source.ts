@@ -4,11 +4,12 @@ import {
   summaryFromRow,
   type CatalogRow,
 } from '../../../src/collaborare/map';
+import { PUBLIC_CATALOG_KEY, PUBLIC_CATALOG_URL } from '../../../src/collaborare/publicCatalog';
 import type { ProblemDetail, ProblemSummary } from '../../../src/collaborare/types';
 
 /** Public catalog the collaborare.ro site itself reads. Not a service-role key. */
-export const DEFAULT_CATALOG_URL = 'https://fiinesljtryrjttzacbn.supabase.co';
-export const DEFAULT_CATALOG_KEY = 'sb_publishable_IvFBgLjRs62GyrZHn0aaLw_GQEdSOqU';
+export const DEFAULT_CATALOG_URL = PUBLIC_CATALOG_URL;
+export const DEFAULT_CATALOG_KEY = PUBLIC_CATALOG_KEY;
 
 const LIST_COLUMNS =
   'slug,title,source,topic,category,time_limit_ms,memory_limit_kb,tests_count,difficulty,olymp_grade,olymp_level';
