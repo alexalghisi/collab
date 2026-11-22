@@ -1,6 +1,7 @@
 import type { ProblemDetail, ProblemListPayload, ProblemSummary } from './types';
 
-export const PROBLEM_LIST_CACHE_KEY = 'collab.problems.list';
+/** Bumped when a cached statement could disagree with the public catalog. */
+export const PROBLEM_LIST_CACHE_KEY = 'collab.problems.list.v2';
 export const PROBLEM_LIST_TTL_MS = 10 * 60 * 1000;
 
 export interface ProblemCache {

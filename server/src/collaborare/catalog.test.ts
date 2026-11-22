@@ -74,8 +74,25 @@ describe('catalog source', () => {
 
   it('serves local rows after the public catalog, which wins on a shared slug', async () => {
     let calls = 0;
-    const fetchImpl = async () => {
+    const fetchImpl = async (input: RequestInfo | URL) => {
       calls += 1;
+      const url = String(input);
+      if (url.includes('slug=eq.bucati')) {
+        return new Response(
+          JSON.stringify([
+            {
+              ...summaryRow,
+              statement: 'Enunțul de pe colaborare.ro',
+              input_format: 'Pe prima linie: n.',
+              constraints: '1 ≤ n ≤ 300',
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      if (url.includes('slug=eq.')) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
       return new Response(JSON.stringify([summaryRow]), { status: 200 });
     };
     const catalog = createProblemCatalog({
@@ -83,7 +100,11 @@ describe('catalog source', () => {
       url: 'https://catalog.test',
       key: 'test-key',
       localRows: [
-        { ...summaryRow, title: 'Local duplicate' },
+        {
+          ...summaryRow,
+          title: 'Local duplicate',
+          statement: 'Enunț local, mai scurt.',
+        },
         {
           ...summaryRow,
           slug: 'rec-factorial',
@@ -95,7 +116,50 @@ describe('catalog source', () => {
     const { problems } = await catalog.list();
     expect(problems.map((problem) => problem.title)).toEqual(['Bucăți crescătoare', 'Factorialul']);
     expect((await catalog.detail('rec-factorial'))?.statement).toBe('Calculează $n!$');
-    expect(calls).toBe(1);
+    const shared = await catalog.detail('bucati');
+    expect(shared?.title).toBe('Bucăți crescătoare');
+    expect(shared?.statement).toBe('Enunțul de pe colaborare.ro');
+    expect(shared?.constraints).toBe('1 ≤ n ≤ 300');
+    expect((await catalog.detail('bucati'))?.statement).toBe('Enunțul de pe colaborare.ro');
+    expect(calls).toBe(2);
+  });
+
+  it('uses the public statement when the statement is opened before the list', async () => {
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('slug=eq.rec-suma-vector')) {
+        return new Response(
+          JSON.stringify([
+            {
+              ...summaryRow,
+              slug: 'rec-suma-vector',
+              title: 'Suma elementelor unui vector',
+              statement: 'Se dă un vector cu n numere întregi.',
+              constraints: '1 ≤ n ≤ 300',
+            },
+          ]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    };
+    const catalog = createProblemCatalog({
+      fetchImpl,
+      url: 'https://catalog.test',
+      key: 'test-key',
+      localRows: [
+        {
+          ...summaryRow,
+          slug: 'rec-suma-vector',
+          title: 'Suma elementelor unui vector',
+          statement: 'Calculează recursiv suma elementelor vectorului.',
+          constraints: '1 ≤ n ≤ 1000',
+        },
+      ],
+    });
+    const opened = await catalog.detail('rec-suma-vector');
+    expect(opened?.statement).toBe('Se dă un vector cu n numere întregi.');
+    expect(opened?.constraints).toBe('1 ≤ n ≤ 300');
   });
 
   it('does not cache a failed read', async () => {
