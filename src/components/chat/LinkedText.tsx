@@ -4,6 +4,7 @@ import { colors } from '../../theme';
 
 export interface LinkedTextProps {
   readonly text: string;
+  readonly mine?: boolean;
 }
 
 function openHref(href: string): void {
@@ -15,14 +16,14 @@ function openHref(href: string): void {
 }
 
 /** Renders chat text with http(s) URLs as links that open outside the call. */
-export function LinkedText({ text }: LinkedTextProps) {
+export function LinkedText({ text, mine }: LinkedTextProps) {
   return (
-    <Text style={styles.text}>
+    <Text style={styles.text} selectable>
       {splitMessageLinks(text).map((part, index) =>
         part.kind === 'link' ? (
           <Text
             key={`${part.href}-${index}`}
-            style={styles.link}
+            style={[styles.link, mine && styles.linkMine]}
             accessibilityRole="link"
             accessibilityLabel={part.value}
             onPress={() => openHref(part.href)}
@@ -41,9 +42,13 @@ const styles = StyleSheet.create({
   text: {
     color: colors.text,
     fontSize: 14,
+    lineHeight: 21,
   },
   link: {
     color: '#93c5fd',
     textDecorationLine: 'underline',
+  },
+  linkMine: {
+    color: '#ffffff',
   },
 });

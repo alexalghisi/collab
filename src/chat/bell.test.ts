@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { messagesToRing, playChatBell } from './bell';
+import { CHAT_BELL_VOLUME, messagesToRing, playChatBell } from './bell';
 
 const audio = vi.hoisted(() => ({
   context: null as null | {
@@ -49,16 +49,21 @@ describe('messagesToRing', () => {
 });
 
 describe('playChatBell', () => {
-  it('plays two tones, and skips a second chime that arrives immediately', () => {
+  it('plays a loud three-tone chime, and skips a second chime that arrives immediately', () => {
     audio.started = [];
+    const ramps: ReturnType<typeof vi.fn>[] = [];
     audio.context = {
       currentTime: 0,
       resume: vi.fn(async () => undefined),
       destination: {},
-      createGain: () => ({
-        gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
-        connect: vi.fn(),
-      }),
+      createGain: () => {
+        const exponentialRampToValueAtTime = vi.fn();
+        ramps.push(exponentialRampToValueAtTime);
+        return {
+          gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime },
+          connect: vi.fn(),
+        };
+      },
       createOscillator: () => {
         const start = vi.fn();
         audio.started.push(start);
@@ -73,7 +78,9 @@ describe('playChatBell', () => {
     };
     playChatBell(10_000);
     playChatBell(10_100);
-    expect(audio.started).toHaveLength(2);
+    expect(audio.started).toHaveLength(3);
+    expect(ramps[0]).toHaveBeenCalledWith(CHAT_BELL_VOLUME, expect.any(Number));
+    expect(CHAT_BELL_VOLUME).toBeGreaterThanOrEqual(0.8);
     expect(audio.context.resume).toHaveBeenCalled();
   });
 

@@ -6,9 +6,9 @@ import type { LinkedTextProps } from './LinkedText';
 
 export type { LinkedTextProps };
 
-export function LinkedText({ text }: LinkedTextProps) {
+export function LinkedText({ text, mine }: LinkedTextProps) {
   return (
-    <Text style={styles.text}>
+    <Text style={styles.text} selectable>
       {splitMessageLinks(text).map((part, index) =>
         part.kind === 'link'
           ? createElement(
@@ -19,10 +19,13 @@ export function LinkedText({ text }: LinkedTextProps) {
                 target: '_blank',
                 rel: 'noopener noreferrer',
                 style: {
-                  color: '#93c5fd',
+                  color: mine ? '#ffffff' : '#93c5fd',
                   textDecoration: 'underline',
+                  textUnderlineOffset: 2,
                   fontSize: 14,
+                  fontWeight: 600,
                   cursor: 'pointer',
+                  overflowWrap: 'anywhere',
                 },
               },
               part.value,
@@ -37,5 +40,6 @@ const styles = StyleSheet.create({
   text: {
     color: colors.text,
     fontSize: 14,
+    lineHeight: 21,
   },
 });

@@ -12,6 +12,7 @@ import {
 import { runOnHostedCompiler, serverHasNoSandbox } from '../code/hostedRun';
 import { editorRunProgram } from '../code/editorRun';
 import { mergeWorkspaceFiles, type WorkspaceFile } from '../code/workspaceFiles';
+import { roomCodeStore } from '../code/codeStore';
 import { SharedCodeDocument } from '../code/SharedCodeDocument';
 import type { CodeLanguage } from '../code/languages';
 import type { FileAttachment } from '../files/attachments';
@@ -519,10 +520,14 @@ export function useCollabSession(createSignaling: SignalingFactory): CollabSessi
       setProblemSync(snapshot.problem);
       problemSyncRef.current = snapshot.problem;
 
-      const sharedCode = new SharedCodeDocument(signaling, {
-        peerId: sessionIdRef.current,
-        displayName: displayNameRef.current,
-      });
+      const sharedCode = new SharedCodeDocument(
+        signaling,
+        {
+          peerId: sessionIdRef.current,
+          displayName: displayNameRef.current,
+        },
+        roomCodeStore(nextRoomId),
+      );
       codeRef.current = sharedCode;
       setCode(sharedCode);
 
