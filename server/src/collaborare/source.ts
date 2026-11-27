@@ -16,6 +16,8 @@ const LIST_COLUMNS =
 const DETAIL_COLUMNS = `${LIST_COLUMNS},statement,input_format,output_format,constraints,hint,examples`;
 
 export const CATALOG_TTL_MS = 5 * 60 * 1000;
+export const CATALOG_PAGE_SIZE = 1000;
+export const CATALOG_MAX_PAGES = 20;
 
 export interface ProblemCatalog {
   list(): Promise<{ fetchedAt: string; problems: ProblemSummary[] }>;
@@ -80,11 +82,19 @@ export function createProblemCatalog(options: SourceOptions = {}): ProblemCatalo
     if (cached && now() - cached.at < ttlMs) {
       return { fetchedAt: cached.fetchedAt, problems: cached.problems };
     }
-    const endpoint = new URL('/rest/v1/problems', base);
-    endpoint.searchParams.set('select', LIST_COLUMNS);
-    endpoint.searchParams.set('order', 'difficulty.asc,title.asc');
-    endpoint.searchParams.set('limit', '2000');
-    const rows = await readRows(await fetchImpl(endpoint, { headers }));
+    const rows: CatalogRow[] = [];
+    for (let page = 0; page < CATALOG_MAX_PAGES; page += 1) {
+      const endpoint = new URL('/rest/v1/problems', base);
+      endpoint.searchParams.set('select', LIST_COLUMNS);
+      endpoint.searchParams.set('order', 'difficulty.asc,title.asc,slug.asc');
+      endpoint.searchParams.set('limit', String(CATALOG_PAGE_SIZE));
+      endpoint.searchParams.set('offset', String(page * CATALOG_PAGE_SIZE));
+      const batch = await readRows(await fetchImpl(endpoint, { headers }));
+      rows.push(...batch);
+      if (batch.length < CATALOG_PAGE_SIZE) {
+        break;
+      }
+    }
     const remoteSlugs = new Set(
       rows.flatMap((row) => (typeof row.slug === 'string' && row.slug !== '' ? [row.slug] : [])),
     );

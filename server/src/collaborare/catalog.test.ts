@@ -6,7 +6,7 @@ import express from 'express';
 import { afterEach, describe, expect, it } from 'vitest';
 import { problemsCors } from './cors';
 import { problemsRouter } from './router';
-import { createProblemCatalog, type ProblemCatalog } from './source';
+import { CATALOG_PAGE_SIZE, createProblemCatalog, type ProblemCatalog } from './source';
 
 const summaryRow = {
   slug: 'bucati',
@@ -70,6 +70,37 @@ describe('catalog source', () => {
     expect(detail?.url).toBe('https://collaborare.ro/probleme/bucati');
     expect(calls).toBe(2);
     expect(await catalog.detail('Not A Slug')).toBeNull();
+  });
+
+  it('reads every page of a catalog larger than one response', async () => {
+    const total = CATALOG_PAGE_SIZE + 159;
+    const all = Array.from({ length: total }, (_, index) => ({
+      ...summaryRow,
+      slug: `problem-${index}`,
+      title: `Problem ${index}`,
+    }));
+    const offsets: number[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const offset = Number(url.searchParams.get('offset'));
+      const limit = Number(url.searchParams.get('limit'));
+      offsets.push(offset);
+      expect(url.searchParams.get('order')).toBe('difficulty.asc,title.asc,slug.asc');
+      return new Response(
+        JSON.stringify(all.slice(offset, offset + Math.min(limit, CATALOG_PAGE_SIZE))),
+        { status: 200 },
+      );
+    };
+    const catalog = createProblemCatalog({
+      fetchImpl,
+      now: () => 1_000,
+      url: 'https://catalog.test',
+      key: 'test-key',
+    });
+    const { problems } = await catalog.list();
+    expect(problems).toHaveLength(total);
+    expect(problems.at(-1)?.slug).toBe(`problem-${total - 1}`);
+    expect(offsets).toEqual([0, CATALOG_PAGE_SIZE]);
   });
 
   it('serves local rows after the public catalog, which wins on a shared slug', async () => {

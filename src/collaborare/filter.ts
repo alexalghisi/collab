@@ -6,6 +6,9 @@ export const CATEGORY_OLYMPIAD = '__oly';
 export const CATEGORY_START_9_10 = '__start';
 export const CATEGORY_START_11_12 = '__start1112';
 export const CATEGORY_SEQUENCES = '__seq';
+export const CATEGORY_BAC = '__bac';
+
+const OFFICIAL_BAC_SLUG = /^bac-\d{4}-/;
 
 export interface ProblemQuery {
   readonly text: string;
@@ -14,13 +17,17 @@ export interface ProblemQuery {
   readonly olympLevel?: string | null;
 }
 
-/** The public list on collaborare.ro hides the bacalaureat category. */
+/** The public list on collaborare.ro keeps the bacalaureat category on its own page. */
 export function isListedProblem(problem: ProblemSummary): boolean {
   return problem.category !== 'bac';
 }
 
+export function isBacProblem(problem: ProblemSummary): boolean {
+  return problem.category === 'bac' || OFFICIAL_BAC_SLUG.test(problem.slug);
+}
+
 /**
- * The same chips as collaborare.ro: five collections, then each topic in the
+ * The chips of collaborare.ro plus its bacalaureat page: six collections, then each topic in the
  * order the catalog returns it (difficulty, then title).
  */
 export function problemCategories(problems: readonly ProblemSummary[]): ProblemCategory[] {
@@ -39,6 +46,7 @@ export function problemCategories(problems: readonly ProblemSummary[]): ProblemC
     { key: CATEGORY_START_9_10, label: 'Practice: grades 9–10' },
     { key: CATEGORY_START_11_12, label: 'Practice: grades 11–12' },
     { key: CATEGORY_SEQUENCES, label: 'Sequences practice' },
+    { key: CATEGORY_BAC, label: 'Baccalaureate' },
     ...topics.map((topic) => ({ key: topic, label: topic })),
   ];
 }
@@ -50,9 +58,6 @@ export function filterProblems(
   const needle = query.text.trim().toLowerCase();
   const category = query.category === '' ? CATEGORY_ALL : query.category;
   return problems.filter((problem) => {
-    if (!isListedProblem(problem)) {
-      return false;
-    }
     if (needle !== '') {
       const haystack =
         `${problem.title} ${problem.source} ${problem.slug} ${problem.topic}`.toLowerCase();
@@ -62,6 +67,9 @@ export function filterProblems(
     }
     if (category === CATEGORY_ALL) {
       return true;
+    }
+    if (category === CATEGORY_BAC) {
+      return isBacProblem(problem);
     }
     if (category === CATEGORY_OLYMPIAD) {
       if (problem.olympGrade === null) {

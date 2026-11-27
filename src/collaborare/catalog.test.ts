@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { fetchProblemDetail, fetchProblemList, memoryProblemCache, problemsApiUrl } from './client';
 import {
   CATEGORY_OLYMPIAD,
+  CATEGORY_BAC,
   CATEGORY_SEQUENCES,
   CATEGORY_START_9_10,
   filterProblems,
@@ -78,7 +79,21 @@ describe('the same categories as collaborare.ro', () => {
       source: 'OJI 2026',
     }),
     row({ slug: 'seq', title: 'Pare', topic: 'secvențe', source: 'Secvențe (antrenament)' }),
-    row({ slug: 'bac', title: 'Bac', category: 'bac', topic: 'Grafuri' }),
+    row({ slug: 'bac', title: 'Bac', category: 'bac', topic: 'Grafuri', source: 'Bacalaureat' }),
+    row({
+      slug: 'bac-2027-model-sn-3-1',
+      title: 'Parcele pătrate',
+      category: 'bac',
+      topic: 'BAC oficial',
+      source: 'BAC 2027 · Model · S-N · Subiectul 3.1',
+    }),
+    row({
+      slug: 'bac-2020-model-sn-3-1',
+      title: 'Duplicarea cifrelor impare',
+      category: 'oji',
+      topic: '',
+      source: 'BAC 2020 · Model · Științe ale naturii · Subiectul III.1',
+    }),
     row({
       slug: 'graf',
       title: 'Graf',
@@ -88,13 +103,14 @@ describe('the same categories as collaborare.ro', () => {
     }),
   ];
 
-  it('builds the collection chips and then the topics, without bac', () => {
+  it('builds the collection chips and then the topics of the public list', () => {
     expect(problemCategories(problems).map((chip) => chip.label)).toEqual([
       'All problems',
       'Informatics Olympiad (grades 5–12)',
       'Practice: grades 9–10',
       'Practice: grades 11–12',
       'Sequences practice',
+      'Baccalaureate',
       'Vectori',
       'Subiecte oficiale OJI 2026',
       'secvențe',
@@ -108,7 +124,7 @@ describe('the same categories as collaborare.ro', () => {
     ).toEqual(['v']);
     expect(
       filterProblems(problems, { text: '', category: 'Grafuri' }).map((item) => item.slug),
-    ).toEqual(['graf']);
+    ).toEqual(['bac', 'graf']);
     expect(
       filterProblems(problems, { text: '', category: CATEGORY_START_9_10 }).map(
         (item) => item.slug,
@@ -122,7 +138,15 @@ describe('the same categories as collaborare.ro', () => {
         (item) => item.slug,
       ),
     ).toEqual(['oji']);
-    expect(filterProblems(problems, { text: 'bac', category: '' })).toEqual([]);
+    expect(
+      filterProblems(problems, { text: 'model-sn-3-1', category: '' }).map((item) => item.slug),
+    ).toEqual(['bac-2027-model-sn-3-1', 'bac-2020-model-sn-3-1']);
+    expect(
+      filterProblems(problems, { text: '', category: CATEGORY_BAC }).map((item) => item.slug),
+    ).toEqual(['bac', 'bac-2027-model-sn-3-1', 'bac-2020-model-sn-3-1']);
+    expect(
+      filterProblems(problems, { text: '2027', category: CATEGORY_BAC }).map((item) => item.slug),
+    ).toEqual(['bac-2027-model-sn-3-1']);
   });
 
   it('formats the limits the catalog actually stores', () => {
