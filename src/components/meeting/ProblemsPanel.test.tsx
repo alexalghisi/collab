@@ -259,4 +259,25 @@ describe('ProblemsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit on collaborare.ro' }));
     expect(await screen.findByText(/Code copied: paste it there/)).toBeTruthy();
   });
+
+  it('offers no collaborare.ro links for a problem that only Collab has', () => {
+    render(
+      <ProblemsPanel
+        {...props({
+          slug: 'suma-vector',
+          detail: { ...DETAIL, collabOnly: true },
+        })}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Submit on collaborare.ro' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open on collaborare.ro' })).toBeNull();
+    expect(screen.getByText(/has no page on collaborare.ro/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Run on examples/ })).toBeTruthy();
+  });
+
+  it('keeps the collaborare.ro links for a problem the site has', () => {
+    render(<ProblemsPanel {...props({ slug: 'suma-vector', detail: DETAIL })} />);
+    expect(screen.getByRole('link', { name: 'Open on collaborare.ro' })).toBeTruthy();
+    expect(screen.queryByText(/has no page on collaborare.ro/)).toBeNull();
+  });
 });

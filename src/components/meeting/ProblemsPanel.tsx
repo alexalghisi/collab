@@ -1,4 +1,4 @@
-import { SUBMIT_NOTES, type SubmitOutcome } from '../../collaborare/handoff';
+import { COLLAB_ONLY_NOTE, SUBMIT_NOTES, type SubmitOutcome } from '../../collaborare/handoff';
 import { useEffect, useState } from 'react';
 import {
   Image,
@@ -136,6 +136,7 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
   }, [onNext, onPrev]);
 
   const page = slug ? problemPageUrl(slug) : COLLABORARE_SITE;
+  const collabOnly = detail?.collabOnly === true;
   const titleFor = (item: string): string =>
     problems.find((problem) => problem.slug === item)?.title ??
     (detail?.slug === item ? detail.title : item);
@@ -423,28 +424,33 @@ export function ProblemsPanel(props: ProblemsPanelProps) {
           onPress={onRunExamples}
           disabled={!detail || detail.examples.length === 0 || examplesRunning}
         />
-        <Pressable
-          onPress={() => void Linking.openURL(page)}
-          accessibilityRole="link"
-          accessibilityLabel="Open on collaborare.ro"
-          style={styles.action}
-        >
-          <Text style={styles.actionText}>Open on collaborare.ro</Text>
-        </Pressable>
-        <Pressable
-          disabled={!detail}
-          onPress={() => {
-            void onSubmit().then((outcome) => setSubmitNote(SUBMIT_NOTES[outcome]));
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Submit on collaborare.ro"
-          accessibilityHint={SUBMIT_HINT}
-          accessibilityState={{ disabled: !detail }}
-          style={[styles.action, !detail && styles.actionDisabled]}
-        >
-          <Text style={styles.actionText}>Submit on collaborare.ro</Text>
-        </Pressable>
-        {submitNote && <Text style={styles.note}>{submitNote}</Text>}
+        {!collabOnly && (
+          <Pressable
+            onPress={() => void Linking.openURL(page)}
+            accessibilityRole="link"
+            accessibilityLabel="Open on collaborare.ro"
+            style={styles.action}
+          >
+            <Text style={styles.actionText}>Open on collaborare.ro</Text>
+          </Pressable>
+        )}
+        {!collabOnly && (
+          <Pressable
+            disabled={!detail}
+            onPress={() => {
+              void onSubmit().then((outcome) => setSubmitNote(SUBMIT_NOTES[outcome]));
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Submit on collaborare.ro"
+            accessibilityHint={SUBMIT_HINT}
+            accessibilityState={{ disabled: !detail }}
+            style={[styles.action, !detail && styles.actionDisabled]}
+          >
+            <Text style={styles.actionText}>Submit on collaborare.ro</Text>
+          </Pressable>
+        )}
+        {collabOnly && <Text style={styles.note}>{COLLAB_ONLY_NOTE}</Text>}
+        {!collabOnly && submitNote && <Text style={styles.note}>{submitNote}</Text>}
       </View>
     </View>
   );

@@ -123,7 +123,7 @@ export function useProblemBrowser(session: ProblemBrowserSession) {
    * domain). The code is also copied, as a fallback for languages it can't judge.
    */
   const submitOnSite = async (): Promise<SubmitOutcome> => {
-    if (!detail) {
+    if (!detail || detail.collabOnly) {
       return 'opened';
     }
     const code = session.code?.text.toString() ?? '';

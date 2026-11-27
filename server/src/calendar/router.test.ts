@@ -98,9 +98,15 @@ describe('calendar router', () => {
     }
 
     it('never exposes the refresh token in the grant handed to the browser', async () => {
-      const { app, grant } = await connected();
+      const secret = 'refresh-token-that-must-stay-sealed';
+      const { app, grant } = await connected(async (params) =>
+        params.grant_type === 'authorization_code'
+          ? { status: 200, body: { access_token: 'a1', expires_in: 3599, refresh_token: secret } }
+          : { status: 200, body: { access_token: 'a2', expires_in: 3599 } },
+      );
       expect(typeof grant).toBe('string');
-      expect(grant).not.toContain('r1');
+      expect(app.store.calendarRefreshToken(app.user.uid)).toBe(secret);
+      expect(grant).not.toContain(secret);
       await app.close();
     });
 

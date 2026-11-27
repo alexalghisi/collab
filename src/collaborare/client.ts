@@ -2,7 +2,7 @@ import { fetchPublicProblem } from './publicCatalog';
 import type { ProblemDetail, ProblemListPayload, ProblemSummary } from './types';
 
 /** Bumped when a cached statement could disagree with the public catalog. */
-export const PROBLEM_LIST_CACHE_KEY = 'collab.problems.list.v3';
+export const PROBLEM_LIST_CACHE_KEY = 'collab.problems.list.v4';
 export const PROBLEM_LIST_TTL_MS = 10 * 60 * 1000;
 
 export interface ProblemCache {
@@ -171,8 +171,10 @@ export async function fetchProblemDetail(options: {
   }
   try {
     let body: ProblemDetail | null = null;
+    let missingOnSite = false;
     try {
       body = await fetchPublicProblem(options.slug, fetchImpl);
+      missingOnSite = body === null;
     } catch {
       body = null;
     }
@@ -185,7 +187,7 @@ export async function fetchProblemDetail(options: {
       if (!isDetail(signaled)) {
         throw new Error('problem was not a statement');
       }
-      body = signaled;
+      body = missingOnSite ? { ...signaled, collabOnly: true } : signaled;
     }
     cache.write(
       key,
