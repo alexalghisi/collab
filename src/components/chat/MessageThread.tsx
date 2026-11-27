@@ -27,6 +27,7 @@ import { formatTime } from '../../meeting/calendar';
 import type { ChatMessage } from '../../signaling/events';
 import { colors } from '../../theme';
 import { FileDrop } from '../files/FileDrop';
+import { chatInitial, sendsOnKey, startsChatGroup } from '../../chat/layout';
 import { LinkedText } from './LinkedText';
 
 export interface MessageThreadProps {
@@ -64,6 +65,13 @@ function confirmDelete(onConfirm: () => void): void {
   ]);
 }
 
+const COMPOSER_MIN_HEIGHT = 42;
+const COMPOSER_MAX_HEIGHT = 148;
+
+function composerHeight(contentHeight: number): number {
+  return Math.min(COMPOSER_MAX_HEIGHT, Math.max(COMPOSER_MIN_HEIGHT, Math.ceil(contentHeight) + 2));
+}
+
 /** Scrolling message list with a composer; used by the meeting chat and team channels. */
 export function MessageThread({
   messages,
@@ -81,6 +89,7 @@ export function MessageThread({
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  const [inputHeight, setInputHeight] = useState(COMPOSER_MIN_HEIGHT);
   const listRef = useRef<ScrollView>(null);
   const visible = visibleChatMessages(messages);
 
@@ -95,6 +104,7 @@ export function MessageThread({
     }
     onSend({ text, file: null });
     setDraft('');
+    setInputHeight(COMPOSER_MIN_HEIGHT);
     setError(null);
   };
 
@@ -140,15 +150,31 @@ export function MessageThread({
         </Pressable>
       )}
       <TextInput
-        style={styles.input}
+        style={[styles.input, { height: inputHeight }]}
         value={draft}
-        onChangeText={setDraft}
-        onSubmitEditing={submit}
+        onChangeText={(next) => {
+          setDraft(next);
+          if (next === '') {
+            setInputHeight(COMPOSER_MIN_HEIGHT);
+          }
+        }}
+        onContentSizeChange={(event) =>
+          setInputHeight(composerHeight(event.nativeEvent.contentSize.height))
+        }
+        onKeyPress={(event) => {
+          if (sendsOnKey(event.nativeEvent)) {
+            event.preventDefault();
+            submit();
+          }
+        }}
         placeholder={placeholder}
         placeholderTextColor={colors.textSubtle}
-        returnKeyType="send"
+        maxLength={MAX_MESSAGE_CHARS}
+        multiline
+        textAlignVertical="top"
         blurOnSubmit={false}
         editable={!busy}
+        accessibilityLabel={placeholder}
       />
       <Pressable
         style={[styles.send, !draft.trim() && styles.sendDisabled]}
@@ -166,116 +192,139 @@ export function MessageThread({
     <>
       <ScrollView ref={listRef} contentContainerStyle={styles.list}>
         {visible.length === 0 && <Text style={styles.empty}>{emptyText}</Text>}
-        {visible.map((message) => {
+        {visible.map((message, index) => {
           const mine = isOwnChatMessage(message, selfId, ...(selfIds ?? []));
           const file = message.file;
           const editing = editingId === message.id;
           const canSaveEdit = editDraft.trim() !== '' || Boolean(file);
+          const opensGroup = startsChatGroup(visible[index - 1], message);
           return (
-            <View key={message.id} style={[styles.message, mine && styles.messageMine]}>
-              <View style={styles.meta}>
-                <Text style={styles.author}>{mine ? 'You' : message.displayName}</Text>
-                <Text style={styles.time}>{formatTime(message.sentAt)}</Text>
-                {message.editedAt && !editing && <Text style={styles.time}>edited</Text>}
-                {mine && (onEdit || onDelete) && !editing && (
-                  <View style={styles.actions}>
-                    {onEdit && (
-                      <Pressable
-                        style={styles.action}
-                        onPress={() => {
-                          setEditingId(message.id);
-                          setEditDraft(message.text);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Edit message"
-                        hitSlop={8}
-                      >
-                        <Ionicons name="create-outline" size={14} color={colors.text} />
-                        <Text style={styles.actionLabel}>Edit</Text>
-                      </Pressable>
-                    )}
-                    {onDelete && (
-                      <Pressable
-                        style={styles.action}
-                        onPress={() => confirmDelete(() => onDelete(message.id))}
-                        accessibilityRole="button"
-                        accessibilityLabel="Delete message"
-                        hitSlop={8}
-                      >
-                        <Ionicons name="trash-outline" size={14} color={colors.text} />
-                        <Text style={styles.actionLabel}>Delete</Text>
-                      </Pressable>
-                    )}
+            <View
+              key={message.id}
+              style={[styles.row, mine && styles.rowMine, opensGroup && styles.rowSpaced]}
+              testID="chat-message"
+            >
+              {!mine &&
+                (opensGroup ? (
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{chatInitial(message.displayName)}</Text>
                   </View>
-                )}
-              </View>
-              {editing ? (
-                <>
-                  <TextInput
-                    style={styles.editInput}
-                    value={editDraft}
-                    onChangeText={setEditDraft}
-                    onSubmitEditing={() => {
-                      if (!canSaveEdit || !onEdit) {
-                        return;
-                      }
-                      onEdit(message.id, editDraft.trim());
-                      setEditingId(null);
-                    }}
-                    maxLength={MAX_MESSAGE_CHARS}
-                    autoFocus
-                    multiline
-                    textAlignVertical="top"
-                    returnKeyType="done"
-                    blurOnSubmit
-                  />
-                  <View style={styles.editActions}>
-                    <Pressable
-                      onPress={() => setEditingId(null)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Cancel edit"
-                    >
-                      <Text style={styles.editActionText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => {
+                ) : (
+                  <View style={styles.avatarGap} />
+                ))}
+              <View
+                style={[
+                  styles.message,
+                  mine ? styles.messageMine : styles.messageTheirs,
+                  opensGroup && (mine ? styles.messageMineFirst : styles.messageTheirsFirst),
+                ]}
+              >
+                <View style={styles.meta}>
+                  {opensGroup && (
+                    <Text style={[styles.author, !mine && styles.authorTheirs]}>
+                      {mine ? 'You' : message.displayName}
+                    </Text>
+                  )}
+                  <Text style={styles.time}>{formatTime(message.sentAt)}</Text>
+                  {message.editedAt && !editing && <Text style={styles.time}>edited</Text>}
+                  {mine && (onEdit || onDelete) && !editing && (
+                    <View style={styles.actions}>
+                      {onEdit && (
+                        <Pressable
+                          style={styles.action}
+                          onPress={() => {
+                            setEditingId(message.id);
+                            setEditDraft(message.text);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Edit message"
+                          hitSlop={8}
+                        >
+                          <Ionicons name="create-outline" size={15} color={colors.text} />
+                        </Pressable>
+                      )}
+                      {onDelete && (
+                        <Pressable
+                          style={styles.action}
+                          onPress={() => confirmDelete(() => onDelete(message.id))}
+                          accessibilityRole="button"
+                          accessibilityLabel="Delete message"
+                          hitSlop={8}
+                        >
+                          <Ionicons name="trash-outline" size={15} color={colors.text} />
+                        </Pressable>
+                      )}
+                    </View>
+                  )}
+                </View>
+                {editing ? (
+                  <>
+                    <TextInput
+                      style={styles.editInput}
+                      value={editDraft}
+                      onChangeText={setEditDraft}
+                      onSubmitEditing={() => {
                         if (!canSaveEdit || !onEdit) {
                           return;
                         }
                         onEdit(message.id, editDraft.trim());
                         setEditingId(null);
                       }}
-                      disabled={!canSaveEdit}
-                      accessibilityRole="button"
-                      accessibilityLabel="Save edit"
-                    >
-                      <Text
-                        style={[styles.editActionText, !canSaveEdit && styles.editActionDisabled]}
+                      maxLength={MAX_MESSAGE_CHARS}
+                      autoFocus
+                      multiline
+                      textAlignVertical="top"
+                      returnKeyType="done"
+                      blurOnSubmit
+                    />
+                    <View style={styles.editActions}>
+                      <Pressable
+                        onPress={() => setEditingId(null)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel edit"
                       >
-                        Save
-                      </Text>
-                    </Pressable>
-                  </View>
-                </>
-              ) : (
-                <>
-                  {message.text.length > 0 && <LinkedText text={message.text} />}
-                  {file && (
-                    <Pressable
-                      style={styles.file}
-                      onPress={() => openHref(attachmentHref(file.url))}
-                      accessibilityRole="link"
-                      accessibilityLabel={`Download ${file.name}`}
-                    >
-                      <Ionicons name="document-outline" size={16} color={colors.text} />
-                      <Text style={styles.fileName} numberOfLines={1}>
-                        {file.name}
-                      </Text>
-                      <Text style={styles.fileSize}>{formatBytes(file.size)}</Text>
-                    </Pressable>
-                  )}
-                </>
-              )}
+                        <Text style={styles.editActionText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => {
+                          if (!canSaveEdit || !onEdit) {
+                            return;
+                          }
+                          onEdit(message.id, editDraft.trim());
+                          setEditingId(null);
+                        }}
+                        disabled={!canSaveEdit}
+                        accessibilityRole="button"
+                        accessibilityLabel="Save edit"
+                      >
+                        <Text
+                          style={[styles.editActionText, !canSaveEdit && styles.editActionDisabled]}
+                        >
+                          Save
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    {message.text.length > 0 && <LinkedText text={message.text} mine={mine} />}
+                    {file && (
+                      <Pressable
+                        style={styles.file}
+                        onPress={() => openHref(attachmentHref(file.url))}
+                        accessibilityRole="link"
+                        accessibilityLabel={`Download ${file.name}`}
+                      >
+                        <Ionicons name="document-outline" size={16} color={colors.text} />
+                        <Text style={styles.fileName} numberOfLines={1}>
+                          {file.name}
+                        </Text>
+                        <Text style={styles.fileSize}>{formatBytes(file.size)}</Text>
+                      </Pressable>
+                    )}
+                  </>
+                )}
+              </View>
             </View>
           );
         })}
@@ -294,41 +343,87 @@ export function MessageThread({
 
 const styles = StyleSheet.create({
   list: {
-    padding: 16,
-    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    gap: 3,
   },
   empty: {
     color: colors.textSubtle,
     textAlign: 'center',
     marginTop: 24,
   },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  rowMine: {
+    justifyContent: 'flex-end',
+  },
+  rowSpaced: {
+    marginTop: 10,
+  },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#334155',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.35)',
+  },
+  avatarText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  avatarGap: {
+    width: 28,
+  },
   message: {
-    alignSelf: 'flex-start',
-    maxWidth: '85%',
-    backgroundColor: colors.surfaceRaised,
-    borderRadius: 12,
+    flexShrink: 1,
+    minWidth: 84,
+    maxWidth: '86%',
+    borderRadius: 16,
+    borderWidth: 1,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
+    paddingTop: 7,
+    paddingBottom: 9,
+    gap: 4,
+  },
+  messageTheirs: {
+    backgroundColor: '#1e293b',
+    borderColor: 'rgba(148, 163, 184, 0.22)',
+  },
+  messageTheirsFirst: {
+    borderTopLeftRadius: 5,
   },
   messageMine: {
-    alignSelf: 'flex-end',
-    backgroundColor: colors.primary,
+    backgroundColor: '#1d4ed8',
+    borderColor: 'rgba(147, 197, 253, 0.35)',
+  },
+  messageMineFirst: {
+    borderTopRightRadius: 5,
   },
   meta: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 8,
+    columnGap: 8,
+    minHeight: 18,
   },
   author: {
     color: colors.text,
     fontSize: 12,
     fontWeight: '700',
   },
+  authorTheirs: {
+    color: '#7dd3fc',
+  },
   time: {
-    color: 'rgba(249, 250, 251, 0.7)',
-    fontSize: 12,
+    color: 'rgba(249, 250, 251, 0.62)',
+    fontSize: 11,
   },
   actions: {
     flexDirection: 'row',
@@ -336,16 +431,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   action: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-  },
-  actionLabel: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '700',
+    justifyContent: 'center',
+    width: 26,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.28)',
   },
   editInput: {
     backgroundColor: 'rgba(0, 0, 0, 0.25)',
@@ -391,7 +482,7 @@ const styles = StyleSheet.create({
   },
   composer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: 8,
     padding: 12,
     borderTopWidth: 1,
@@ -408,11 +499,12 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     backgroundColor: colors.background,
-    borderColor: colors.border,
+    borderColor: 'rgba(148, 163, 184, 0.3)',
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 14,
     color: colors.text,
     fontSize: 14,
+    lineHeight: 20,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },

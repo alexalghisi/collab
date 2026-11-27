@@ -6,6 +6,7 @@ import {
   removeAwarenessStates,
 } from 'y-protocols/awareness';
 import type { SignalingChannel } from '../signaling/SignalingChannel';
+import type { CodeStore } from './codeStore';
 import { decodeUpdate, encodeUpdate } from './updates';
 import { DEFAULT_CODE_LANGUAGE, isCodeLanguage, type CodeLanguage } from './languages';
 import { toLf } from './lineEndings';
@@ -61,6 +62,8 @@ const COLORS = [
 
 const REMOTE = 'remote';
 
+export const CODE_SAVE_DELAY_MS = 400;
+
 export function colorFor(peerId: string): string {
   let hash = 0;
   for (let index = 0; index < peerId.length; index += 1) {
@@ -87,10 +90,13 @@ export class SharedCodeDocument {
   private readonly meta = this.doc.getMap<string>('meta');
   private readonly listeners = new Set<() => void>();
   private live = true;
+  private worthKeeping = false;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly channel: SignalingChannel,
     identity: CodeIdentity,
+    private readonly store: CodeStore | null = null,
   ) {
     this.color = colorFor(identity.peerId);
     this.awareness.setLocalStateField('user', {
@@ -99,8 +105,12 @@ export class SharedCodeDocument {
       color: this.color,
     } satisfies AwarenessUser);
 
+    this.restore();
     this.doc.on('update', this.onDocUpdate);
     this.awareness.on('update', this.onAwarenessUpdate);
+    if (store && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('pagehide', this.saveNow);
+    }
     channel.on('code:update', this.receiveUpdate);
     channel.on('code:awareness', this.receiveAwareness);
     channel.on('room:joined', this.onRoomJoined);
@@ -302,6 +312,10 @@ export class SharedCodeDocument {
     if (!this.live) {
       return;
     }
+    this.saveNow();
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('pagehide', this.saveNow);
+    }
     removeAwarenessStates(this.awareness, [this.doc.clientID], 'local');
     this.live = false;
     this.doc.off('update', this.onDocUpdate);
@@ -314,9 +328,46 @@ export class SharedCodeDocument {
     if (origin !== REMOTE) {
       this.channel.emit('code:update', encodeUpdate(update));
     }
+    this.scheduleSave();
     for (const listener of this.listeners) {
       listener();
     }
+  };
+
+  private restore(): void {
+    const saved = this.store?.load();
+    if (!saved) {
+      return;
+    }
+    try {
+      Y.applyUpdate(this.doc, decodeUpdate(saved), REMOTE);
+      this.worthKeeping = true;
+    } catch {
+      return;
+    }
+  }
+
+  private scheduleSave(): void {
+    if (!this.store || this.saveTimer !== null) {
+      return;
+    }
+    this.saveTimer = setTimeout(this.saveNow, CODE_SAVE_DELAY_MS);
+  }
+
+  private readonly saveNow = (): void => {
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (!this.store || !this.live) {
+      return;
+    }
+    const text = this.text.toString();
+    if (!this.worthKeeping && (text === '' || isStarterCode(text))) {
+      return;
+    }
+    this.worthKeeping = true;
+    this.store.save(this.encodeState());
   };
 
   private readonly onAwarenessUpdate = (
