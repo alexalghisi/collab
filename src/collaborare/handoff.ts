@@ -55,6 +55,9 @@ export function submitHandoffUrl(
 /** What pressing "Submit on collaborare.ro" did. */
 export type SubmitOutcome = 'sent' | 'copied' | 'opened';
 
+export const COLLAB_ONLY_NOTE =
+  'This problem is part of Collab and has no page on collaborare.ro. Check it with Run on examples.';
+
 export const SUBMIT_NOTES: Readonly<Record<SubmitOutcome, string>> = {
   sent: 'Sent to collaborare.ro: your code is in its editor and is being submitted. Sign in there if asked.',
   copied:

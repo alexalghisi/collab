@@ -291,6 +291,7 @@ describe('problem API client', () => {
     expect(loaded.constraints).toBe('1 ≤ n ≤ 300');
     expect(loaded.examples).toEqual([{ input: '1\n', output: '1\n' }]);
     expect(calls.some((url) => url.includes('localhost'))).toBe(false);
+    expect(loaded.collabOnly).toBeUndefined();
   });
 
   it('keeps a local statement when the public catalog has no such problem', async () => {
@@ -322,5 +323,38 @@ describe('problem API client', () => {
       cache: memoryProblemCache(),
     });
     expect(loaded.statement).toBe('Calculează n!');
+    expect(loaded.collabOnly).toBe(true);
+  });
+
+  it('does not call a problem Collab-only when the public catalog is unreachable', async () => {
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('supabase.co')) {
+        return new Response('down', { status: 503 });
+      }
+      return new Response(
+        JSON.stringify({
+          ...row({ slug: 'rec-cmmdc', title: 'CMMDC' }),
+          statement: 'Calculează cmmdc.',
+          inputFormat: 'a b',
+          outputFormat: 'cmmdc',
+          constraints: '',
+          hint: '',
+          examples: [],
+          images: [],
+          formulas: [],
+          url: 'https://collaborare.ro/probleme/rec-cmmdc',
+        }),
+        { status: 200 },
+      );
+    };
+    const loaded = await fetchProblemDetail({
+      signalingUrl: 'http://localhost:4000',
+      slug: 'rec-cmmdc',
+      fetchImpl,
+      cache: memoryProblemCache(),
+    });
+    expect(loaded.statement).toBe('Calculează cmmdc.');
+    expect(loaded.collabOnly).toBeUndefined();
   });
 });

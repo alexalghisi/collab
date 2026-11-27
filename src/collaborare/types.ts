@@ -13,6 +13,7 @@ export interface ProblemSummary {
   readonly difficulty: number;
   readonly olympGrade: number | null;
   readonly olympLevel: string | null;
+  readonly collabOnly?: boolean;
 }
 
 export interface ProblemExample {
