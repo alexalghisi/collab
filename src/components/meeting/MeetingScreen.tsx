@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
@@ -32,6 +32,8 @@ import { InvitePanel } from './InvitePanel';
 import { codeFillsScreen, isCompactCall } from './callLayout';
 import { CodePanel } from './CodePanel';
 import { DraggablePip } from './DraggablePip';
+import { FloatingWindow } from './FloatingWindow';
+import { PANEL_SIDE_KEY, PanelDockContext, readPanelSide, type PanelSide } from './panelDock';
 import { ProblemsPanel } from './ProblemsPanel';
 import { ParticipantsPanel, type ParticipantRow } from './ParticipantsPanel';
 import { ReactionPicker } from './ReactionPicker';
@@ -91,6 +93,21 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
   const [mobileProblem, setMobileProblem] = useState(false);
   const [problemWidth, setProblemWidth] = useState(DEFAULT_PANEL_WIDTH);
   const [spotlitPeerId, setSpotlitPeerId] = useState<string | null>(null);
+  const [panelSide, setPanelSide] = useState<PanelSide>(() =>
+    readPanelSide(storage.read(PANEL_SIDE_KEY)),
+  );
+  const [shareFloating, setShareFloating] = useState(true);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const panelDock = useMemo(
+    () => ({
+      side: panelSide,
+      setSide: (side: PanelSide): void => {
+        storage.write(PANEL_SIDE_KEY, side);
+        setPanelSide(side);
+      },
+    }),
+    [panelSide],
+  );
   const problems = useProblemBrowser(session);
 
   // When anyone opens a problem or runs the examples, bring the panel back on
@@ -277,9 +294,68 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
     sharerPeerId,
   );
   const pipTile = tiles.find(([key]) => key !== 'self') ?? tiles[0];
+  const sharer = session.participants.find(({ peerId }) => peerId === sharerPeerId) ?? null;
+  const shareOnStage =
+    stage !== 'grid' && !fullCode && sharer !== null && spotlit?.peerId !== sharer.peerId;
+  const floatingSharer = shareOnStage && shareFloating && stageSize.width > 0 ? sharer : null;
+  const stripTiles = floatingSharer
+    ? tiles.filter(([key]) => key !== floatingSharer.peerId)
+    : tiles;
+  const panelLeft = wide && panelSide === 'left';
+
+  const sidePanel = panel && (
+    <View style={wide ? styles.sidePanel : styles.overlayPanel}>
+      <PanelDockContext.Provider value={wide ? panelDock : null}>
+        {panel === 'participants' && (
+          <ParticipantsPanel
+            rows={rows}
+            host={session.isHost ? session : null}
+            onClose={() => setPanel(null)}
+          />
+        )}
+        {panel === 'chat' && (
+          <ChatPanel
+            messages={session.messages}
+            selfPeerId={session.selfPeerId}
+            selfSessionId={session.sessionId}
+            onSend={session.sendMessage}
+            onEdit={session.editMessage}
+            onDelete={session.deleteMessage}
+            onUpload={session.shareFile}
+            onClose={() => setPanel(null)}
+          />
+        )}
+        {panel === 'invite' && (
+          <InvitePanel
+            roomId={roomId}
+            hostName={displayName}
+            onSend={onInvite ?? session.sendInvite}
+            onClose={() => setPanel(null)}
+          />
+        )}
+        {panel === 'files' && (
+          <FilesPanel
+            files={files}
+            onUpload={session.shareFile}
+            onShare={(file) => session.sendMessage({ text: '', file })}
+            onClose={() => setPanel(null)}
+          />
+        )}
+        {panel === 'devices' && (
+          <DevicePanel
+            devices={session.devices}
+            selected={session.selectedDevices}
+            onChoose={(kind, deviceId) => void session.chooseDevice(kind, deviceId)}
+            onClose={() => setPanel(null)}
+          />
+        )}
+      </PanelDockContext.Provider>
+    </View>
+  );
 
   return (
     <View style={styles.screen}>
+      {panelLeft && sidePanel}
       <View style={styles.mainColumn}>
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -304,6 +380,15 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
               onPress={session.returnToMain}
             />
           )}
+          {shareOnStage && !shareFloating && (
+            <Button
+              label="Pop out screen"
+              icon="open-outline"
+              variant="secondary"
+              compact
+              onPress={() => setShareFloating(true)}
+            />
+          )}
           <Pressable
             style={[styles.inviteButton, panel === 'invite' && styles.inviteButtonActive]}
             onPress={() => togglePanel('invite')}
@@ -317,14 +402,35 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
 
         <View style={styles.body}>
           {stage !== 'grid' ? (
-            <View style={styles.stage}>
-              {!fullCode && (
+            <View
+              style={styles.stage}
+              onLayout={({ nativeEvent: { layout } }) =>
+                setStageSize((current) =>
+                  current.width === layout.width && current.height === layout.height
+                    ? current
+                    : { width: layout.width, height: layout.height },
+                )
+              }
+            >
+              {floatingSharer && (
+                <FloatingWindow
+                  title={`${floatingSharer.displayName}'s screen`}
+                  expandLabel={`Expand ${floatingSharer.displayName}`}
+                  bounds={stageSize}
+                  initialWidth={shareStripWidth}
+                  onExpand={() => setSpotlitPeerId(floatingSharer.peerId)}
+                  onDock={() => setShareFloating(false)}
+                >
+                  {remoteTile(floatingSharer, true)}
+                </FloatingWindow>
+              )}
+              {!fullCode && stripTiles.length > 0 && (
                 <ScrollView
                   horizontal
                   style={styles.stripScroll}
                   contentContainerStyle={styles.strip}
                 >
-                  {tiles.map(([key, tile]) => (
+                  {stripTiles.map(([key, tile]) => (
                     <View
                       key={key}
                       style={[
@@ -599,53 +705,7 @@ export function MeetingScreen({ session, roomId, displayName, onInvite }: Meetin
           <View style={[styles.problemsColumn, { width: columnWidth }]}>{problemPanel}</View>
         </>
       )}
-      {panel && (
-        <View style={wide ? styles.sidePanel : styles.overlayPanel}>
-          {panel === 'participants' && (
-            <ParticipantsPanel
-              rows={rows}
-              host={session.isHost ? session : null}
-              onClose={() => setPanel(null)}
-            />
-          )}
-          {panel === 'chat' && (
-            <ChatPanel
-              messages={session.messages}
-              selfPeerId={session.selfPeerId}
-              selfSessionId={session.sessionId}
-              onSend={session.sendMessage}
-              onEdit={session.editMessage}
-              onDelete={session.deleteMessage}
-              onUpload={session.shareFile}
-              onClose={() => setPanel(null)}
-            />
-          )}
-          {panel === 'invite' && (
-            <InvitePanel
-              roomId={roomId}
-              hostName={displayName}
-              onSend={onInvite ?? session.sendInvite}
-              onClose={() => setPanel(null)}
-            />
-          )}
-          {panel === 'files' && (
-            <FilesPanel
-              files={files}
-              onUpload={session.shareFile}
-              onShare={(file) => session.sendMessage({ text: '', file })}
-              onClose={() => setPanel(null)}
-            />
-          )}
-          {panel === 'devices' && (
-            <DevicePanel
-              devices={session.devices}
-              selected={session.selectedDevices}
-              onChoose={(kind, deviceId) => void session.chooseDevice(kind, deviceId)}
-              onClose={() => setPanel(null)}
-            />
-          )}
-        </View>
-      )}
+      {!panelLeft && sidePanel}
       {spotlit && (
         <TileSpotlight
           title={spotlit.displayName}

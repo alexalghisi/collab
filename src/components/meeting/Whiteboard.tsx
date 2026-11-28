@@ -15,6 +15,7 @@ import { AttachmentError, type UploadableFile, type UploadProgress } from '../..
 import type { BoardFile, Stroke } from '../../signaling/events';
 import { colors } from '../../theme';
 import { previewSize } from '../../whiteboard/boardFiles';
+import { isTextMime, rememberBoardText } from '../../whiteboard/boardText';
 import { BoardFilePreview } from './BoardFilePreview';
 import { BoardSurface } from './BoardSurface';
 
@@ -89,6 +90,9 @@ export function Whiteboard({
       try {
         for (const [index, file] of files.entries()) {
           const attachment = await onUploadFile(file, () => {});
+          if (isTextMime(attachment.mimeType) && file.blob) {
+            rememberBoardText(attachment.id, await file.blob.text());
+          }
           const box = previewSize(attachment.mimeType);
           const offset = index * 0.04;
           onAddBoardFile({
@@ -103,7 +107,7 @@ export function Whiteboard({
         setError(
           cause instanceof AttachmentError
             ? cause.message
-            : 'The file could not be added to the board.',
+            : 'That could not be added to the board.',
         );
       } finally {
         setBusy(false);
@@ -193,7 +197,9 @@ export function Whiteboard({
           <Ionicons name="trash-outline" size={18} color={colors.text} />
           <Text style={styles.toolLabel}>Clear</Text>
         </Pressable>
-        <Text style={styles.hint}>{busy ? 'Adding file…' : 'Paste or drop a file'}</Text>
+        <Text style={styles.hint}>
+          {busy ? 'Adding to the board…' : 'Paste text or drop a file'}
+        </Text>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
