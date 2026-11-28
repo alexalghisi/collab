@@ -1,6 +1,7 @@
 import { isFileAttachment } from '../chat/messages';
 import type { FileAttachment } from '../files/attachments';
 import type { BoardFile } from '../signaling/events';
+import { isTextMime } from './boardText';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -19,6 +20,9 @@ export function previewSize(mimeType: string): { readonly w: number; readonly h:
   }
   if (mimeType.startsWith('audio/')) {
     return { w: 0.34, h: 0.12 };
+  }
+  if (isTextMime(mimeType)) {
+    return { w: 0.34, h: 0.32 };
   }
   return { w: 0.3, h: 0.16 };
 }

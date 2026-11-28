@@ -1,6 +1,7 @@
-import { createElement, useEffect, useState, type DragEvent } from 'react';
+import { createElement, useEffect, useRef, useState, type DragEvent } from 'react';
 import { uploadableFromBrowserFile } from '../../files/browser';
 import { colors } from '../../theme';
+import { PASTED_TEXT_NAME, pastePoint, pastedText } from '../../whiteboard/boardText';
 import type { BoardPoint, BoardSurfaceProps } from './board-surface';
 
 export type { BoardPoint, BoardSurfaceProps } from './board-surface';
@@ -26,7 +27,11 @@ function filesFromClipboard(data: DataTransfer | null): File[] {
       }
     }
   }
-  return files;
+  if (files.length > 0) {
+    return files;
+  }
+  const text = pastedText(data.getData('text/plain'));
+  return text === null ? [] : [new File([text], PASTED_TEXT_NAME, { type: 'text/plain' })];
 }
 
 function pointOf(event: {
@@ -45,6 +50,7 @@ function pointOf(event: {
 
 export function BoardSurface({ children, onFiles, disabled = false }: BoardSurfaceProps) {
   const [over, setOver] = useState(false);
+  const pastes = useRef(0);
 
   const highlight = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -70,7 +76,8 @@ export function BoardSurface({ children, onFiles, disabled = false }: BoardSurfa
         return;
       }
       event.preventDefault();
-      onFiles(filesFromList(files), { x: 0.18, y: 0.16 });
+      onFiles(filesFromList(files), pastePoint(pastes.current));
+      pastes.current += 1;
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
@@ -80,7 +87,7 @@ export function BoardSurface({ children, onFiles, disabled = false }: BoardSurfa
     'div',
     {
       tabIndex: 0,
-      'aria-label': 'Whiteboard. Paste or drop a file to preview it.',
+      'aria-label': 'Whiteboard. Paste text, or paste or drop a file to preview it.',
       onDragEnter: highlight,
       onDragOver: highlight,
       onDragLeave: () => setOver(false),
@@ -90,7 +97,7 @@ export function BoardSurface({ children, onFiles, disabled = false }: BoardSurfa
         if (disabled) {
           return;
         }
-        const files = filesFromList(event.dataTransfer.files);
+        const files = filesFromList(filesFromClipboard(event.dataTransfer));
         if (files.length > 0) {
           onFiles(files, pointOf(event));
         }

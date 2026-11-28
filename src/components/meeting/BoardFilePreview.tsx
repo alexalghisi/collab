@@ -1,10 +1,11 @@
-import { createElement } from 'react';
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { createElement, useEffect, useState } from 'react';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatBytes } from '../../files/attachments';
 import { attachmentHref } from '../../files/urls';
 import type { BoardFile } from '../../signaling/events';
 import { colors } from '../../theme';
+import { isTextMime, loadBoardText } from '../../whiteboard/boardText';
 
 export interface BoardFilePreviewProps {
   readonly item: BoardFile;
@@ -13,7 +14,66 @@ export interface BoardFilePreviewProps {
   readonly onRemove: (id: string) => void;
 }
 
-function MediaPreview({ mimeType, href, name }: { mimeType: string; href: string; name: string }) {
+function FileCard({ name }: { name: string }) {
+  return (
+    <View style={styles.card}>
+      <Ionicons name="document-outline" size={28} color={colors.textMuted} />
+      <Text style={styles.name} numberOfLines={2}>
+        {name}
+      </Text>
+    </View>
+  );
+}
+
+function TextPreview({ id, href, name }: { id: string; href: string; name: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setFailed(false);
+    loadBoardText(id, href)
+      .then((loaded) => {
+        if (active) {
+          setText(loaded);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setFailed(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [id, href]);
+
+  if (failed) {
+    return <FileCard name={name} />;
+  }
+  return (
+    <ScrollView style={styles.note} contentContainerStyle={styles.noteContent}>
+      <Text style={styles.noteText} selectable>
+        {text ?? 'Loading…'}
+      </Text>
+    </ScrollView>
+  );
+}
+
+function MediaPreview({
+  id,
+  mimeType,
+  href,
+  name,
+}: {
+  id: string;
+  mimeType: string;
+  href: string;
+  name: string;
+}) {
+  if (isTextMime(mimeType)) {
+    return <TextPreview id={id} href={href} name={name} />;
+  }
   if (mimeType.startsWith('image/')) {
     return <Image source={{ uri: href }} style={styles.media} resizeMode="contain" />;
   }
@@ -38,14 +98,7 @@ function MediaPreview({ mimeType, href, name }: { mimeType: string; href: string
       style: { width: '100%' },
     });
   }
-  return (
-    <View style={styles.card}>
-      <Ionicons name="document-outline" size={28} color={colors.textMuted} />
-      <Text style={styles.name} numberOfLines={2}>
-        {name}
-      </Text>
-    </View>
-  );
+  return <FileCard name={name} />;
 }
 
 export function BoardFilePreview({ item, owned, onOpen, onRemove }: BoardFilePreviewProps) {
@@ -63,12 +116,33 @@ export function BoardFilePreview({ item, owned, onOpen, onRemove }: BoardFilePre
         },
       ]}
     >
-      <Pressable style={styles.body} onPress={() => onOpen(href)} accessibilityRole="button">
-        <MediaPreview mimeType={item.file.mimeType} href={href} name={item.file.name} />
-        <Text style={styles.meta} numberOfLines={1}>
-          {item.file.name} · {formatBytes(item.file.size)}
-        </Text>
-      </Pressable>
+      {isTextMime(item.file.mimeType) ? (
+        <View style={styles.body}>
+          <MediaPreview
+            id={item.file.id}
+            mimeType={item.file.mimeType}
+            href={href}
+            name={item.file.name}
+          />
+          <Pressable onPress={() => onOpen(href)} accessibilityRole="button">
+            <Text style={styles.meta} numberOfLines={1}>
+              {item.file.name} · {formatBytes(item.file.size)}
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable style={styles.body} onPress={() => onOpen(href)} accessibilityRole="button">
+          <MediaPreview
+            id={item.file.id}
+            mimeType={item.file.mimeType}
+            href={href}
+            name={item.file.name}
+          />
+          <Text style={styles.meta} numberOfLines={1}>
+            {item.file.name} · {formatBytes(item.file.size)}
+          </Text>
+        </Pressable>
+      )}
       {owned && (
         <Pressable
           style={styles.remove}
@@ -100,6 +174,22 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     backgroundColor: '#e2e8f0',
+  },
+  note: {
+    flex: 1,
+    backgroundColor: '#fffbeb',
+  },
+  noteContent: {
+    padding: 10,
+  },
+  noteText: {
+    color: '#111827',
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: Platform.select({
+      web: 'ui-monospace, Menlo, Consolas, monospace',
+      default: 'monospace',
+    }),
   },
   card: {
     flex: 1,
